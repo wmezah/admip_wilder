@@ -1,0 +1,70 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg:       #f9fafb;
+  --surface:  #ffffff;
+  --card:     #ffffff;
+  --border:   #e5e7eb;
+  --muted:    #f3f4f6;
+  --text:     #111827;
+  --text-dim: #6b7280;
+  --accent:   #7c3aed;
+  --accent-lt:#f5f3ff;
+  --green:    #16a34a;
+  --red:      #dc2626;
+  --amber:    #d97706;
+  --blue:     #2563eb;
+  --cyan:     #0891b2;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+.font-display { font-family: 'Syne', sans-serif; }
+
+@layer components {
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; }
+  .btn-primary {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 16px; border-radius: 8px;
+    background: var(--accent); color: #fff;
+    border: none; font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+    transition: opacity 0.15s; box-shadow: 0 1px 6px rgba(124,58,237,0.28);
+  }
+  .btn-primary:hover { opacity: 0.87; }
+  .btn-ghost {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 8px;
+    background: transparent; color: var(--text-dim);
+    border: 1px solid var(--border); font-size: 13px; font-weight: 500;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.15s, color 0.15s;
+  }
+  .btn-ghost:hover { background: var(--muted); color: var(--text); border-color: #d1d5db; }
+  .input {
+    width: 100%; padding: 8px 12px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface); color: var(--text);
+    font-size: 13px; font-family: inherit; outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .input:focus { border-color: #a78bfa; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+  .input::placeholder { color: var(--text-dim); }
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-in { animation: fadeSlideIn 0.25s ease forwards; }
