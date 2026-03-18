@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 nce/collector.py  –  Descarga archivos PM desde NCE por SFTP (Paramiko) o FTP.
 Usa Paramiko si NCE_USE_SFTP=true, si no usa ftplib estándar.

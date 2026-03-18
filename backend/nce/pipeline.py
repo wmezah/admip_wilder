@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 nce/pipeline.py  –  Orquestador de recolección. Guarda datos en Django ORM.
 """
@@ -9,8 +10,8 @@ logger = logging.getLogger('nce.pipeline')
 
 def run_collection(
     dry_run: bool = False,
-    only_codes: list[str] | None = None,
-    local_files: dict[str, bytes] | None = None,
+    only_codes: Optional[list] = None,
+    local_files: Optional[dict] = None,
 ) -> list[dict]:
     """
     Ejecuta ciclo completo de recolección.

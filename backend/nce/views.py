@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 nce/views.py  –  API REST para datos NCE (consumidos por el dashboard Dash y React).
 """

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 nce/parser.py  –  Parsea archivos PM CSV del NCE.
 Formato:
@@ -10,7 +11,6 @@ import io
 import logging
 import re
 from datetime import datetime
-from typing import Optional
 
 logger = logging.getLogger('nce.parser')
 
@@ -35,10 +35,19 @@ def _to_int(value: str) -> Optional[int]:
 
 
 def _parse_collection_time(raw: str) -> Optional[datetime]:
+    from django.utils import timezone as tz
+    import pytz
     for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S',
                 '%Y%m%d%H%M%S', '%Y-%m-%dT%H:%M:%S'):
         try:
-            return datetime.strptime(raw.strip(), fmt)
+            naive = datetime.strptime(raw.strip(), fmt)
+            # Make timezone-aware using local timezone
+            try:
+                from django.conf import settings
+                local_tz = pytz.timezone(settings.TIME_ZONE)
+                return local_tz.localize(naive)
+            except Exception:
+                return tz.make_aware(naive)
         except ValueError:
             continue
     return None
