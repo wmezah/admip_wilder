@@ -111,3 +111,7 @@ CORS_ALLOWED_ORIGINS = [
     'http://127.0.0.1:5173',
 ]
 CORS_ALLOW_ALL_ORIGINS = DEBUG
+
+# ─── Upload limits ────────────────────────────────────────────────────────────
+DATA_UPLOAD_MAX_NUMBER_FILES = 1000
+DATA_UPLOAD_MAX_MEMORY_SIZE  = 100 * 1024 * 1024  # 100 MB
