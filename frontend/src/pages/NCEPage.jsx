@@ -482,8 +482,8 @@ export default function NCEPage() {
                       background: d.prefix==='rMPLS' ? '#dbeafe' : '#ede9fe',
                       color: d.prefix==='rMPLS' ? C.rmpls : C.rhub }}>{d.prefix||'—'}</span>
                   </td>
-                  <td style={{ padding:'8px 14px', fontSize:11, color:C.muted }}>{String(d.first_seen||'').substring(0,16)}</td>
-                  <td style={{ padding:'8px 14px', fontSize:11, color:C.muted }}>{String(d.last_seen||'').substring(0,16)}</td>
+                  <td style={{ padding:'8px 14px', fontSize:11, color:C.muted }}>{String(d.first_seen||'').substring(0,16).replace('T',' ')}</td>
+                  <td style={{ padding:'8px 14px', fontSize:11, color:C.muted }}>{String(d.last_seen||'').substring(0,16).replace('T',' ')}</td>
                 </tr>
               ))}
             </tbody>
