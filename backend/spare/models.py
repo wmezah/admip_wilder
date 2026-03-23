@@ -63,8 +63,13 @@ class Spare(models.Model):
         return f"{self.sap} – {self.descripcion[:60] if self.descripcion else ''}"
 
 
+<<<<<<< HEAD
 # ─── SAP Catalog ──────────────────────────────────────────────────────────────
 class SAPCatalog(models.Model):
+=======
+class SAPCatalog(models.Model):
+    """Catálogo maestro SAP MM (del reporte Excel SAP_MM)."""
+>>>>>>> origin/main
     sap             = models.CharField(max_length=100, db_index=True, unique=True)
     texto_breve     = models.TextField(blank=True, null=True)
     denom_tpmt      = models.CharField(max_length=200, blank=True, null=True)
@@ -96,15 +101,26 @@ class SAPCatalog(models.Model):
         return f"{self.sap} – {(self.texto_breve or '')[:60]}"
 
 
+<<<<<<< HEAD
 # ─── Centro / Almacén ─────────────────────────────────────────────────────────
 class CentroAlmacen(models.Model):
+=======
+class CentroAlmacen(models.Model):
+    """Tabla de centros y almacenes disponibles."""
+>>>>>>> origin/main
     centro  = models.CharField(max_length=50)
     almacen = models.CharField(max_length=50)
 
     class Meta:
+<<<<<<< HEAD
         db_table        = 'centro_almacen'
         unique_together = [('centro', 'almacen')]
         ordering        = ['centro', 'almacen']
+=======
+        db_table            = 'centro_almacen'
+        unique_together     = [('centro', 'almacen')]
+        ordering            = ['centro', 'almacen']
+>>>>>>> origin/main
         verbose_name        = 'Centro / Almacén'
         verbose_name_plural = 'Centros / Almacenes'
 
@@ -112,8 +128,14 @@ class CentroAlmacen(models.Model):
         return f"{self.centro} / {self.almacen}"
 
 
+<<<<<<< HEAD
 # ─── Part Number ──────────────────────────────────────────────────────────────
 class PartNumber(models.Model):
+=======
+
+class PartNumber(models.Model):
+    """Catálogo de Part Numbers con su proveedor asociado."""
+>>>>>>> origin/main
     sap         = models.CharField(max_length=100, blank=True, null=True)
     part_number = models.CharField(max_length=200, unique=True)
     proveedor   = models.CharField(max_length=100)
@@ -130,8 +152,13 @@ class PartNumber(models.Model):
         return f"{self.part_number} ({self.proveedor})"
 
 
+<<<<<<< HEAD
 # ─── SAP Material (legacy) ────────────────────────────────────────────────────
 class SAPMaterial(models.Model):
+=======
+class SAPMaterial(models.Model):
+    """Tabla legacy para importación de reporte SAP MM stock."""
+>>>>>>> origin/main
     numero_serie   = models.CharField(max_length=200, blank=True, null=True, db_index=True)
     material       = models.CharField(max_length=100, db_index=True)
     texto_breve    = models.TextField(blank=True, null=True)
@@ -164,6 +191,7 @@ class RMA(models.Model):
         ('CANCELADO',  'Cancelado'),
     ]
 
+<<<<<<< HEAD
     solicitud           = models.CharField(max_length=100, blank=True, null=True)
     usuario_solicitante = models.CharField(max_length=200, blank=True, null=True)
     usuario_login       = models.CharField(max_length=100, blank=True, null=True)
@@ -190,6 +218,39 @@ class RMA(models.Model):
     estado              = models.CharField(max_length=50, choices=ESTADO_CHOICES, default='PENDIENTE')
     created_at          = models.DateTimeField(auto_now_add=True)
     updated_at          = models.DateTimeField(auto_now=True)
+=======
+    # LLENADO POR BOTN
+    solicitud         = models.CharField(max_length=100, blank=True, null=True)
+    usuario_solicitante = models.CharField(max_length=200, blank=True, null=True)
+    usuario_login     = models.CharField(max_length=100, blank=True, null=True)
+    red               = models.CharField(max_length=100, blank=True, null=True)
+    region            = models.CharField(max_length=100, blank=True, null=True)
+    ne                = models.CharField(max_length=100, blank=True, null=True)
+    modelo_ne         = models.CharField(max_length=200, blank=True, null=True)
+    codigo_sap        = models.CharField(max_length=100, blank=True, null=True)
+    part_number       = models.CharField(max_length=200, blank=True, null=True)
+    proveedor         = models.CharField(max_length=100, blank=True, null=True)
+    descripcion       = models.TextField(blank=True, null=True)
+    sn_averiada       = models.CharField(max_length=200, blank=True, null=True)
+    rma_proveedor     = models.CharField(max_length=200, blank=True, null=True)
+    ticket_proveedor  = models.CharField(max_length=200, blank=True, null=True)
+    sr_proveedor      = models.CharField(max_length=200, blank=True, null=True)
+
+    # LLENADO POR ADMIP
+    sap_asignado      = models.CharField(max_length=100, blank=True, null=True)
+    pn_asignado       = models.CharField(max_length=200, blank=True, null=True)
+    desc_asignado     = models.TextField(blank=True, null=True)
+    sn_asignado       = models.CharField(max_length=200, blank=True, null=True)
+    fecha_sn_asignado = models.DateField(blank=True, null=True)
+    fecha_inicio_rma  = models.DateField(blank=True, null=True)
+    sn_rma            = models.CharField(max_length=200, blank=True, null=True)
+    fecha_retorno     = models.DateField(blank=True, null=True)
+    estado            = models.CharField(max_length=50, choices=ESTADO_CHOICES,
+                                         default='PENDIENTE')
+
+    created_at        = models.DateTimeField(auto_now_add=True)
+    updated_at        = models.DateTimeField(auto_now=True)
+>>>>>>> origin/main
 
     class Meta:
         db_table = 'rma'
@@ -199,6 +260,7 @@ class RMA(models.Model):
         return f"RMA {self.solicitud or self.id}"
 
 
+<<<<<<< HEAD
 # ─── Stock SAP ────────────────────────────────────────────────────────────────
 class StockSAP(models.Model):
     material      = models.CharField(max_length=50)
@@ -208,6 +270,17 @@ class StockSAP(models.Model):
     centro        = models.CharField(max_length=50,  blank=True, null=True)
     almacen       = models.CharField(max_length=50,  blank=True, null=True)
     unidad_medida = models.CharField(max_length=20,  blank=True, null=True)
+=======
+# ─── Stock SAP Logon ───────────────────────────────────────────────────────────
+class StockSAP(models.Model):
+    material       = models.CharField(max_length=50)
+    descripcion    = models.CharField(max_length=500, blank=True, null=True)
+    stock          = models.DecimalField(max_digits=14, decimal_places=3, default=0)
+    lote           = models.CharField(max_length=100, blank=True, null=True)
+    centro         = models.CharField(max_length=50, blank=True, null=True)
+    almacen        = models.CharField(max_length=50, blank=True, null=True)
+    unidad_medida  = models.CharField(max_length=20, blank=True, null=True)
+>>>>>>> origin/main
 
     class Meta:
         db_table = 'stock_sap'
@@ -217,7 +290,11 @@ class StockSAP(models.Model):
         return f"{self.material} - {self.descripcion}"
 
 
+<<<<<<< HEAD
 # ─── Seguimiento de Spare Asignado ────────────────────────────────────────────
+=======
+# ─── Seguimiento de Spares ─────────────────────────────────────────────────────
+>>>>>>> origin/main
 class Seguimiento(models.Model):
     STATUS_CHOICES = [
         ('Concluido',       'Concluido'),
@@ -225,6 +302,7 @@ class Seguimiento(models.Model):
         ('Pendiente Crear', 'Pendiente Crear'),
         ('Aprobado',        'Aprobado'),
     ]
+<<<<<<< HEAD
 
     red               = models.CharField(max_length=100, blank=True, null=True)
     proveedor         = models.CharField(max_length=200, blank=True, null=True)
@@ -245,16 +323,43 @@ class Seguimiento(models.Model):
     comentarios       = models.TextField(blank=True, null=True)
     created_at        = models.DateTimeField(auto_now_add=True)
     updated_at        = models.DateTimeField(auto_now=True)
+=======
+    red                = models.CharField(max_length=100, blank=True, null=True)
+    sap                = models.CharField(max_length=50,  blank=True, null=True)
+    descripcion        = models.CharField(max_length=500, blank=True, null=True)
+    cantidad_serie     = models.CharField(max_length=200, blank=True, null=True)
+    lote               = models.CharField(max_length=100, blank=True, null=True)
+    motivo_asignacion  = models.TextField(blank=True, null=True)
+    fecha_asignacion   = models.DateField(blank=True, null=True)
+    site               = models.CharField(max_length=200, blank=True, null=True)
+    codigo_site        = models.CharField(max_length=100, blank=True, null=True)
+    elemento_pep       = models.CharField(max_length=200, blank=True, null=True)
+    numero_pedido      = models.CharField(max_length=100, blank=True, null=True)
+    folio              = models.CharField(max_length=100, blank=True, null=True)
+    usuario_folio      = models.CharField(max_length=200, blank=True, null=True)
+    status_folio       = models.CharField(max_length=100, choices=STATUS_CHOICES, blank=True, null=True)
+    oym_encargado      = models.CharField(max_length=200, blank=True, null=True)
+    comentarios        = models.TextField(blank=True, null=True)
+    created_at         = models.DateTimeField(auto_now_add=True)
+    updated_at         = models.DateTimeField(auto_now=True)
+>>>>>>> origin/main
 
     class Meta:
         db_table = 'seguimiento'
         ordering = ['-fecha_asignacion', '-created_at']
 
     def __str__(self):
+<<<<<<< HEAD
         return f"{self.sap} – {self.codigo_site} – {self.status_folio}"
 
 
 # ─── Seguimiento Spare (modelo legacy) ───────────────────────────────────────
+=======
+        return f"{self.sap} — {self.codigo_site} — {self.status_folio}"
+
+
+# ─── Seguimiento de Spares ─────────────────────────────────────────────────────
+>>>>>>> origin/main
 class SeguimientoSpare(models.Model):
     STATUS_CHOICES = [
         ('Aprobado',        'Aprobado'),
@@ -272,8 +377,13 @@ class SeguimientoSpare(models.Model):
         ('OTRO',   'OTRO'),
     ]
 
+<<<<<<< HEAD
     red               = models.CharField(max_length=50,  blank=True, null=True, choices=RED_CHOICES)
     sap               = models.CharField(max_length=50,  blank=True, null=True)
+=======
+    red               = models.CharField(max_length=50, blank=True, null=True, choices=RED_CHOICES)
+    sap               = models.CharField(max_length=50, blank=True, null=True)
+>>>>>>> origin/main
     descripcion       = models.CharField(max_length=500, blank=True, null=True)
     serial_lote       = models.CharField(max_length=100, blank=True, null=True, verbose_name='Cantidad / N° Serie')
     lote              = models.CharField(max_length=100, blank=True, null=True)
@@ -285,7 +395,11 @@ class SeguimientoSpare(models.Model):
     numero_pedido     = models.CharField(max_length=100, blank=True, null=True)
     folio             = models.CharField(max_length=100, blank=True, null=True)
     usuario_folio     = models.CharField(max_length=100, blank=True, null=True)
+<<<<<<< HEAD
     status_folio      = models.CharField(max_length=50,  blank=True, null=True, choices=STATUS_CHOICES)
+=======
+    status_folio      = models.CharField(max_length=50, blank=True, null=True, choices=STATUS_CHOICES)
+>>>>>>> origin/main
     oym_encargado     = models.CharField(max_length=100, blank=True, null=True, verbose_name='OyM Encargado')
     comentarios       = models.TextField(blank=True, null=True)
     created_at        = models.DateTimeField(auto_now_add=True)
@@ -297,6 +411,7 @@ class SeguimientoSpare(models.Model):
 
     def __str__(self):
         return f"{self.red} | {self.sap} | {self.codigo_site} | {self.status_folio}"
+<<<<<<< HEAD
 
 # ─── Seguimiento Piezas Averiadas ─────────────────────────────────────────────
 class SeguimientoAveriadas(models.Model):
@@ -397,3 +512,5 @@ class SeguimientoProveedor(models.Model):
     def __str__(self):
         return f"{self.proveedor} | {self.sap} | {self.estado}"
 
+=======
+>>>>>>> origin/main

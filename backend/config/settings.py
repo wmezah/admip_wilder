@@ -25,8 +25,11 @@ INSTALLED_APPS = [
     # Apps locales — agrega nuevos aplicativos aquí
     'spare',
     'nce',
+<<<<<<< HEAD
     'rest_framework_simplejwt',
     'users',
+=======
+>>>>>>> origin/main
 ]
 
 MIDDLEWARE = [
@@ -93,12 +96,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ─── Django REST Framework ────────────────────────────────────────────────────
 REST_FRAMEWORK = {
+<<<<<<< HEAD
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+=======
+>>>>>>> origin/main
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
@@ -123,6 +129,7 @@ CORS_ALLOW_ALL_ORIGINS = DEBUG
 # ─── Upload limits ────────────────────────────────────────────────────────────
 DATA_UPLOAD_MAX_NUMBER_FILES = 1000
 DATA_UPLOAD_MAX_MEMORY_SIZE  = 100 * 1024 * 1024  # 100 MB
+<<<<<<< HEAD
 
 # ─── JWT ──────────────────────────────────────────────────────────────────────
 from datetime import timedelta
@@ -133,3 +140,5 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES':      ('Bearer',),
 }
 
+=======
+>>>>>>> origin/main

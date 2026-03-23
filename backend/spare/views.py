@@ -11,6 +11,7 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 import pandas as pd
 import io
 
+<<<<<<< HEAD
    # DESPUÉS:
 from .models import (
     Spare, SAPCatalog, CentroAlmacen, SAPMaterial,
@@ -18,6 +19,9 @@ from .models import (
     SeguimientoAveriadas, SeguimientoUpgrades, SeguimientoProveedor,
 )
 
+=======
+from .models import Spare, SAPCatalog, CentroAlmacen, SAPMaterial, PartNumber, RMA, StockSAP, SeguimientoSpare, Seguimiento
+>>>>>>> origin/main
 from .serializers import (
     PartNumberSerializer,
     SpareSerializer, SpareListSerializer,
@@ -27,20 +31,28 @@ from .serializers import (
     StockSAPSerializer,
     SeguimientoSpareSerializer,
     SeguimientoSerializer,
+<<<<<<< HEAD
     SeguimientoAveridasSerializer,
     SeguimientoUpgradesSerializer,
     SeguimientoProveedorSerializer,
+=======
+>>>>>>> origin/main
 )
 from .filters import SpareFilter
 
 
 # ─── Paginación flexible ──────────────────────────────────────────────────────
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main
 class FlexPagePagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = 'page_size'
     max_page_size = 10000
 
 
+<<<<<<< HEAD
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 def safe_str(val):
     try:
@@ -84,6 +96,10 @@ def extract_proveedor(texto_breve):
 
 
 # ─── Spare ViewSet ────────────────────────────────────────────────────────────
+=======
+# ─── Spare ViewSet ────────────────────────────────────────────────────────────
+
+>>>>>>> origin/main
 class SpareViewSet(viewsets.ModelViewSet):
     queryset = Spare.objects.all()
     pagination_class = FlexPagePagination
@@ -124,6 +140,10 @@ class SpareViewSet(viewsets.ModelViewSet):
 
 
 # ─── SAP Catalog ViewSet ──────────────────────────────────────────────────────
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main
 class SAPCatalogViewSet(viewsets.ModelViewSet):
     queryset = SAPCatalog.objects.all()
     serializer_class = SAPCatalogSerializer
@@ -150,6 +170,10 @@ class SAPCatalogViewSet(viewsets.ModelViewSet):
         file = request.FILES.get('file')
         if not file:
             return Response({'error': 'No se envió archivo.'}, status=400)
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/main
         try:
             df = pd.read_excel(file)
         except Exception as e:
@@ -206,10 +230,18 @@ class SAPCatalogViewSet(viewsets.ModelViewSet):
 
 
 # ─── Centro / Almacén ViewSet ─────────────────────────────────────────────────
+<<<<<<< HEAD
 class CentroAlmacenViewSet(viewsets.ModelViewSet):
     queryset = CentroAlmacen.objects.all()
     serializer_class = CentroAlmacenSerializer
     pagination_class = None
+=======
+
+class CentroAlmacenViewSet(viewsets.ModelViewSet):
+    queryset = CentroAlmacen.objects.all()
+    serializer_class = CentroAlmacenSerializer
+    pagination_class = None   # sin paginación — lista completa siempre
+>>>>>>> origin/main
     filter_backends = [SearchFilter]
     search_fields   = ['centro', 'almacen']
 
@@ -226,7 +258,11 @@ class CentroAlmacenViewSet(viewsets.ModelViewSet):
         return Response(centros)
 
 
+<<<<<<< HEAD
 # ─── Part Number ViewSet ──────────────────────────────────────────────────────
+=======
+
+>>>>>>> origin/main
 class PartNumberViewSet(viewsets.ModelViewSet):
     queryset         = PartNumber.objects.all()
     serializer_class = PartNumberSerializer
@@ -261,7 +297,12 @@ class PartNumberViewSet(viewsets.ModelViewSet):
             return Response(None)
 
 
+<<<<<<< HEAD
 # ─── RMA ViewSet ──────────────────────────────────────────────────────────────
+=======
+# ─── RMA ──────────────────────────────────────────────────────────────────────
+
+>>>>>>> origin/main
 class RMAViewSet(viewsets.ModelViewSet):
     queryset = RMA.objects.all()
     serializer_class = RMASerializer
@@ -272,7 +313,13 @@ class RMAViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
 
+<<<<<<< HEAD
 # ─── Stock SAP ViewSet ────────────────────────────────────────────────────────
+=======
+
+
+# ─── Stock SAP ─────────────────────────────────────────────────────────────────
+>>>>>>> origin/main
 class StockSAPViewSet(viewsets.ModelViewSet):
     queryset = StockSAP.objects.all()
     serializer_class = StockSAPSerializer
@@ -295,22 +342,35 @@ class StockSAPViewSet(viewsets.ModelViewSet):
         for _, row in df.iterrows():
             try:
                 StockSAP.objects.create(
+<<<<<<< HEAD
                     material     =safe_str(row.get('Material') or row.get('material')) or '',
                     descripcion  =safe_str(row.get('Descripcion') or row.get('Descripción')),
                     stock        =float(row.get('Suma de Stock disponible') or row.get('stock') or 0),
                     lote         =safe_str(row.get('Lote') or row.get('lote')),
                     centro       =safe_str(row.get('Centro') or row.get('centro')),
                     almacen      =safe_str(row.get('Almacén') or row.get('Almacen') or row.get('almacen')),
+=======
+                    material=safe_str(row.get('Material') or row.get('material')) or '',
+                    descripcion=safe_str(row.get('Descripcion') or row.get('Descripción')),
+                    stock=float(row.get('Suma de Stock disponible') or row.get('stock') or 0),
+                    lote=safe_str(row.get('Lote') or row.get('lote')),
+                    centro=safe_str(row.get('Centro') or row.get('centro')),
+                    almacen=safe_str(row.get('Almacén') or row.get('Almacen') or row.get('almacen')),
+>>>>>>> origin/main
                     unidad_medida=safe_str(row.get('Unidad medida base') or row.get('unidad_medida')),
                 )
                 created += 1
             except Exception as e:
                 errors.append(str(e))
+<<<<<<< HEAD
         return Response({
             'imported': created, 'errors': len(errors),
             'error_details': errors[:20],
             'first_error': errors[0] if errors else None,
         })
+=======
+        return Response({'imported': created, 'errors': len(errors), 'error_details': errors[:20], 'first_error': errors[0] if errors else None})
+>>>>>>> origin/main
 
     @action(detail=False, methods=['delete'])
     def clear_all(self, request):
@@ -318,22 +378,34 @@ class StockSAPViewSet(viewsets.ModelViewSet):
         return Response({'deleted': count})
 
 
+<<<<<<< HEAD
 # ─── Seguimiento ViewSet ──────────────────────────────────────────────────────
+=======
+
+# ─── Seguimiento ───────────────────────────────────────────────────────────────
+>>>>>>> origin/main
 class SeguimientoViewSet(viewsets.ModelViewSet):
     queryset = Seguimiento.objects.all()
     serializer_class = SeguimientoSerializer
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields   = ['sap', 'descripcion', 'red', 'codigo_site', 'site',
+<<<<<<< HEAD
                        'usuario_folio', 'oym_encargado', 'status_folio',
                        'folio', 'proveedor']
     ordering_fields = ['fecha_asignacion', 'red', 'status_folio', 'created_at']
     pagination_class = FlexPagePagination
+=======
+                        'usuario_folio', 'oym_encargado', 'status_folio', 'folio']
+    ordering_fields = ['fecha_asignacion', 'red', 'status_folio', 'created_at']
+    pagination_class = PageNumberPagination
+>>>>>>> origin/main
 
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
     def import_xlsx(self, request):
         file = request.FILES.get('file')
         if not file:
             return Response({'error': 'No se envió archivo.'}, status=400)
+<<<<<<< HEAD
 
         # Auto-detect header row
         try:
@@ -343,10 +415,15 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
                 file.seek(0)
                 df = pd.read_excel(file, header=1)
                 df.columns = [str(col).strip() for col in df.columns]
+=======
+        try:
+            df = pd.read_excel(file, header=1)   # row 2 is header
+>>>>>>> origin/main
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
         col_map = {
+<<<<<<< HEAD
             'RED':                        'red',
             'PROVEEDOR':                  'proveedor',
             'SAP':                        'sap',
@@ -376,22 +453,47 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
         created = skipped = 0
         errors  = []
 
+=======
+            'RED':                     'red',
+            'SAP':                     'sap',
+            'DESCRIPCION':             'descripcion',
+            'CANTIDAD / NUMERO DE SERIE': 'cantidad_serie',
+            'LOTE':                    'lote',
+            'MOTIVO DE ASIGNACION':    'motivo_asignacion',
+            'FECHA DE ASIGNACION':     'fecha_asignacion',
+            'SITE':                    'site',
+            'CODIGO DE SITE':          'codigo_site',
+            'ELEMENTO PEP':            'elemento_pep',
+            'NUMERO DE PEDIDO':        'numero_pedido',
+            'FOLIO':                   'folio',
+            'USUARIO FOLIO':           'usuario_folio',
+            'STATUS FOLIO':            'status_folio',
+            'OYM ENCARGADO':           'oym_encargado',
+            'Comentarios':             'comentarios',
+        }
+        created, errors = 0, []
+>>>>>>> origin/main
         for _, row in df.iterrows():
             try:
                 kwargs = {}
                 for excel_col, field in col_map.items():
                     val = row.get(excel_col)
+<<<<<<< HEAD
                     is_na = False
                     try:
                         is_na = pd.isna(val)
                     except Exception:
                         pass
                     if is_na:
+=======
+                    if pd.isna(val) if hasattr(pd, 'isna') else val != val:
+>>>>>>> origin/main
                         kwargs[field] = None
                     elif field == 'fecha_asignacion':
                         kwargs[field] = safe_date(str(val))
                     else:
                         kwargs[field] = safe_str(val)
+<<<<<<< HEAD
 
                 # Auto-completar proveedor desde SAPCatalog si está vacío
                 if not kwargs.get('proveedor') and kwargs.get('sap'):
@@ -404,10 +506,16 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
                     skipped += 1
                     continue
 
+=======
+                # Skip fully empty rows
+                if not kwargs.get('sap') and not kwargs.get('red'):
+                    continue
+>>>>>>> origin/main
                 Seguimiento.objects.create(**kwargs)
                 created += 1
             except Exception as e:
                 errors.append(str(e))
+<<<<<<< HEAD
 
         return Response({
             'imported':    created,
@@ -426,6 +534,14 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         total     = Seguimiento.objects.count()
+=======
+        return Response({'imported': created, 'errors': len(errors), 'error_details': errors[:20], 'first_error': errors[0] if errors else None})
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        from django.db.models import Count
+        total   = Seguimiento.objects.count()
+>>>>>>> origin/main
         by_status = list(Seguimiento.objects.values('status_folio')
                          .annotate(count=Count('id')).order_by('-count'))
         by_red    = list(Seguimiento.objects.values('red')
@@ -433,7 +549,12 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
         return Response({'total': total, 'by_status': by_status, 'by_red': by_red})
 
 
+<<<<<<< HEAD
 # ─── Seguimiento Spare ViewSet (legacy) ──────────────────────────────────────
+=======
+
+# ─── Seguimiento Spare ─────────────────────────────────────────────────────────
+>>>>>>> origin/main
 class SeguimientoSpareViewSet(viewsets.ModelViewSet):
     queryset = SeguimientoSpare.objects.all()
     serializer_class = SeguimientoSpareSerializer
@@ -449,6 +570,10 @@ class SeguimientoSpareViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({'error': 'No se envió archivo.'}, status=400)
         try:
+<<<<<<< HEAD
+=======
+            # Auto-detect header row: try row 1, if RED not found try row 2
+>>>>>>> origin/main
             df = pd.read_excel(file, header=0)
             df.columns = [str(col).strip() for col in df.columns]
             if 'RED' not in df.columns:
@@ -480,6 +605,7 @@ class SeguimientoSpareViewSet(viewsets.ModelViewSet):
                             fecha = None
 
                 SeguimientoSpare.objects.create(
+<<<<<<< HEAD
                     red               =red,
                     sap               =safe_str(row.get('SAP')),
                     descripcion       =safe_str(row.get('DESCRIPCION')),
@@ -496,6 +622,24 @@ class SeguimientoSpareViewSet(viewsets.ModelViewSet):
                     status_folio      =safe_str(row.get('STATUS FOLIO')),
                     oym_encargado     =safe_str(row.get('OYM ENCARGADO')),
                     comentarios       =safe_str(row.get('Comentarios')),
+=======
+                    red=red,
+                    sap=safe_str(row.get('SAP')),
+                    descripcion=safe_str(row.get('DESCRIPCION')),
+                    serial_lote=safe_str(row.get('CANTIDAD / NUMERO DE SERIE')),
+                    lote=safe_str(row.get('LOTE')),
+                    motivo_asignacion=safe_str(row.get('MOTIVO DE ASIGNACION')),
+                    fecha_asignacion=fecha,
+                    site=safe_str(row.get('SITE')),
+                    codigo_site=safe_str(row.get('CODIGO DE SITE')),
+                    elemento_pep=safe_str(row.get('ELEMENTO PEP')),
+                    numero_pedido=safe_str(row.get('NUMERO DE PEDIDO')),
+                    folio=safe_str(row.get('FOLIO')),
+                    usuario_folio=safe_str(row.get('USUARIO FOLIO')),
+                    status_folio=safe_str(row.get('STATUS FOLIO')),
+                    oym_encargado=safe_str(row.get('OYM ENCARGADO')),
+                    comentarios=safe_str(row.get('Comentarios')),
+>>>>>>> origin/main
                 )
                 created += 1
             except Exception as e:
@@ -510,13 +654,19 @@ class SeguimientoSpareViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def stats(self, request):
+<<<<<<< HEAD
         total     = SeguimientoSpare.objects.count()
+=======
+        from django.db.models import Count
+        total  = SeguimientoSpare.objects.count()
+>>>>>>> origin/main
         by_status = list(SeguimientoSpare.objects.values('status_folio')
                          .annotate(count=Count('id')).order_by('-count'))
         by_red    = list(SeguimientoSpare.objects.values('red')
                          .annotate(count=Count('id')).order_by('-count'))
         return Response({'total': total, 'by_status': by_status, 'by_red': by_red})
 
+<<<<<<< HEAD
 
 # ─── Seguimiento Averiadas ViewSet ────────────────────────────────────────────
 class SeguimientoAveridasViewSet(viewsets.ModelViewSet):
@@ -790,6 +940,13 @@ class SeguimientoProveedorViewSet(viewsets.ModelViewSet):
 class DashboardStatsView(APIView):
     def get(self, request):
         qs    = Spare.objects.all()
+=======
+# ─── Dashboard ────────────────────────────────────────────────────────────────
+
+class DashboardStatsView(APIView):
+    def get(self, request):
+        qs = Spare.objects.all()
+>>>>>>> origin/main
         total = qs.count()
 
         def count_status(*terms):
@@ -837,7 +994,40 @@ class DashboardTimelineView(APIView):
         ])
 
 
+<<<<<<< HEAD
 # ─── Importación Spare CSV ────────────────────────────────────────────────────
+=======
+# ─── Importación ─────────────────────────────────────────────────────────────
+
+def safe_str(val):
+    try:
+        if pd.isna(val): return None
+    except Exception:
+        pass
+    # Convert float like 4033670.0 -> '4033670'
+    if isinstance(val, float):
+        if val == int(val):
+            s = str(int(val)).strip()
+        else:
+            s = str(val).strip()
+    elif isinstance(val, int):
+        s = str(val).strip()
+    else:
+        s = str(val).strip()
+        # Clean string '4033670.0' form
+        import re
+        s = re.sub(r'^(\d+)\.0$', r'\1', s)
+    return s if s else None
+
+def safe_date(val):
+    try:
+        if pd.isna(val) or val is None: return None
+        return pd.to_datetime(val).date()
+    except Exception:
+        return None
+
+
+>>>>>>> origin/main
 class ImportSpareCSVView(APIView):
     parser_classes = [MultiPartParser]
 
@@ -847,7 +1037,11 @@ class ImportSpareCSVView(APIView):
             return Response({'error': 'No se envió ningún archivo.'}, status=400)
 
         raw = file.read()
+<<<<<<< HEAD
         df  = None
+=======
+        df = None
+>>>>>>> origin/main
         for enc in ('utf-8', 'utf-8-sig', 'latin-1'):
             try:
                 df = pd.read_csv(io.BytesIO(raw), encoding=enc)
@@ -857,6 +1051,7 @@ class ImportSpareCSVView(APIView):
         if df is None:
             return Response({'error': 'No se pudo decodificar el archivo.'}, status=400)
 
+<<<<<<< HEAD
         sap_catalog   = {s.sap: s for s in SAPCatalog.objects.all()}
         pn_catalog    = {p.part_number: p for p in PartNumber.objects.all()}
         valid_centros = set(CentroAlmacen.objects.values_list('centro', 'almacen'))
@@ -877,6 +1072,41 @@ class ImportSpareCSVView(APIView):
                         centro_val = ''; almacen_val = ''
 
                 sap_obj    = sap_catalog.get(sap_val) if sap_val else None
+=======
+        # Pre-load catalogs into memory for fast lookup
+        sap_catalog = {
+            s.sap: s for s in SAPCatalog.objects.all()
+        }
+        pn_catalog = {
+            p.part_number: p for p in PartNumber.objects.all()
+        }
+        valid_centros = set(
+            CentroAlmacen.objects.values_list('centro', 'almacen')
+        )
+
+        created, skipped, errors = 0, 0, []
+
+        # Strip BOM from column names
+        df.columns = [col.lstrip('﻿').strip() for col in df.columns]
+
+        for i, row in df.iterrows():
+            row_num = i + 2  # 1-indexed + header
+            try:
+                sap_val    = safe_str(row.get('SAP') or row.get('sap')) or ''
+                pn_val     = safe_str(row.get('Part Number') or row.get('part_number')) or ''
+                centro_val = safe_str(row.get('Centro') or row.get('centro')) or ''
+                almacen_val= safe_str(row.get('Almacen') or row.get('Almacén') or row.get('almacen')) or ''
+
+                # ── Validate Centro/Almacén (only if both provided) ──────────
+                if centro_val and almacen_val:
+                    if (centro_val, almacen_val) not in valid_centros:
+                        # Allow import but clear invalid centro/almacen
+                        centro_val = ''
+                        almacen_val = ''
+
+                # ── Auto-fill from SAP catalog ───────────────────────────────
+                sap_obj = sap_catalog.get(sap_val) if sap_val else None
+>>>>>>> origin/main
                 sap_fields = {}
                 if sap_obj:
                     sap_fields = {
@@ -900,9 +1130,17 @@ class ImportSpareCSVView(APIView):
                         'texto_pedido':    getattr(sap_obj, 'texto_pedido',    None) or '',
                         'fuente':          getattr(sap_obj, 'fuente',          None) or '',
                     }
+<<<<<<< HEAD
                     sap_fields.pop('descripcion', None)
 
                 pn_obj        = pn_catalog.get(pn_val) if pn_val else None
+=======
+                    # descripcion handled separately
+                    sap_fields.pop('descripcion', None)
+
+                # ── Auto-fill Proveedor from PartNumber catalog ──────────────
+                pn_obj = pn_catalog.get(pn_val) if pn_val else None
+>>>>>>> origin/main
                 proveedor_val = safe_str(row.get('Proveedor') or row.get('proveedor')) or ''
                 if not proveedor_val and pn_obj:
                     proveedor_val = pn_obj.proveedor or ''
@@ -910,6 +1148,7 @@ class ImportSpareCSVView(APIView):
                 desc_val = safe_str(row.get('Descripcion') or row.get('descripcion'))
                 if not desc_val and sap_obj:
                     desc_val = getattr(sap_obj, 'texto_breve', '') or ''
+<<<<<<< HEAD
 
                 Spare.objects.create(
                     sap               =sap_val,
@@ -929,10 +1168,32 @@ class ImportSpareCSVView(APIView):
                     **sap_fields,
                 )
                 created += 1
+=======
+                Spare.objects.create(
+                    sap=sap_val,
+                    part_number=pn_val,
+                    proveedor=proveedor_val,
+                    serial_number=safe_str(row.get('Serial Number') or row.get('serial_number')),
+                    centro=centro_val,
+                    almacen=almacen_val,
+                    zona=safe_str(row.get('Zona') or row.get('zona')),
+                    estatus=safe_str(row.get('Estatus') or row.get('estatus')) or 'En Inventario',
+                    descripcion=desc_val,
+                    fecha_ingreso=safe_date(row.get('Fecha Ingreso') or row.get('fecha_ingreso')),
+                    fecha_averia=safe_date(row.get('Fecha Averia') or row.get('fecha_averia')),
+                    orden_compra=safe_str(row.get('Orden Compra') or row.get('orden_compra')),
+                    motivo_asignacion=safe_str(row.get('Motivo Asignacion') or row.get('motivo_asignacion')),
+                    valor_lote=safe_str(row.get('Valor Lote') or row.get('valor_lote')),
+                    **sap_fields,
+                )
+                created += 1
+
+>>>>>>> origin/main
             except Exception as e:
                 errors.append(f'Fila {row_num}: {str(e)}')
 
         return Response({
+<<<<<<< HEAD
             'imported': created, 'skipped': skipped,
             'errors': len(errors), 'error_details': errors[:10],
         })
@@ -940,6 +1201,18 @@ class ImportSpareCSVView(APIView):
 
 # ─── Importación Spare XLSX ───────────────────────────────────────────────────
 class ImportSpareXLSXView(APIView):
+=======
+            'imported': created,
+            'skipped':  skipped,
+            'errors':   len(errors),
+            'error_details': errors[:10],
+        })
+
+
+
+class ImportSpareXLSXView(APIView):
+    """Import spares from Excel (.xlsx) — mirrors ImportSpareCSVView logic."""
+>>>>>>> origin/main
     parser_classes = [MultiPartParser]
 
     def post(self, request):
@@ -951,10 +1224,18 @@ class ImportSpareXLSXView(APIView):
         except Exception as e:
             return Response({'error': f'No se pudo leer el archivo: {e}'}, status=400)
 
+<<<<<<< HEAD
         df.columns = [str(col).lstrip('\ufeff').strip() for col in df.columns]
 
         sap_catalog   = {s.sap: s for s in SAPCatalog.objects.all()}
         pn_catalog    = {p.part_number: p for p in PartNumber.objects.all()}
+=======
+        # Strip BOM / whitespace from column names
+        df.columns = [str(col).lstrip('\ufeff').strip() for col in df.columns]
+
+        sap_catalog  = { s.sap: s for s in SAPCatalog.objects.all() }
+        pn_catalog   = { p.part_number: p for p in PartNumber.objects.all() }
+>>>>>>> origin/main
         valid_centros = set(CentroAlmacen.objects.values_list('centro', 'almacen'))
 
         created, skipped, errors = 0, 0, []
@@ -995,9 +1276,16 @@ class ImportSpareXLSXView(APIView):
                         'texto_pedido':    getattr(sap_obj, 'texto_pedido',    None) or '',
                         'fuente':          getattr(sap_obj, 'fuente',          None) or '',
                     }
+<<<<<<< HEAD
                     sap_fields.pop('descripcion', None)
 
                 pn_obj        = pn_catalog.get(pn_val) if pn_val else None
+=======
+                    # descripcion handled separately - remove from sap_fields
+                    sap_fields.pop('descripcion', None)
+
+                pn_obj = pn_catalog.get(pn_val) if pn_val else None
+>>>>>>> origin/main
                 proveedor_val = safe_str(row.get('proveedor') or row.get('Proveedor')) or ''
                 if not proveedor_val and pn_obj:
                     proveedor_val = pn_obj.proveedor or ''
@@ -1007,6 +1295,7 @@ class ImportSpareXLSXView(APIView):
                     desc_val = getattr(sap_obj, 'texto_breve', '') or ''
 
                 Spare.objects.create(
+<<<<<<< HEAD
                     sap               =sap_val,
                     part_number       =pn_val,
                     proveedor         =proveedor_val,
@@ -1021,6 +1310,19 @@ class ImportSpareXLSXView(APIView):
                     orden_compra      =safe_str(row.get('orden_compra') or row.get('Orden Compra')),
                     motivo_asignacion =safe_str(row.get('motivo_asignacion')),
                     valor_lote        =safe_str(row.get('valor_lote')),
+=======
+                    sap=sap_val, part_number=pn_val, proveedor=proveedor_val,
+                    serial_number=safe_str(row.get('serial_number') or row.get('Serial Number')),
+                    centro=centro_val, almacen=almacen_val,
+                    zona=safe_str(row.get('zona') or row.get('Zona')),
+                    estatus=safe_str(row.get('estatus') or row.get('Estatus')) or 'En Inventario',
+                    descripcion=desc_val,
+                    fecha_ingreso=safe_date(row.get('fecha_ingreso') or row.get('Fecha Ingreso')),
+                    fecha_averia=safe_date(row.get('fecha_averia') or row.get('Fecha Averia')),
+                    orden_compra=safe_str(row.get('orden_compra') or row.get('Orden Compra')),
+                    motivo_asignacion=safe_str(row.get('motivo_asignacion')),
+                    valor_lote=safe_str(row.get('valor_lote')),
+>>>>>>> origin/main
                     **sap_fields,
                 )
                 created += 1
@@ -1032,8 +1334,11 @@ class ImportSpareXLSXView(APIView):
             'errors': len(errors), 'error_details': errors[:10],
         })
 
+<<<<<<< HEAD
 
 # ─── Importación SAP XLSX ─────────────────────────────────────────────────────
+=======
+>>>>>>> origin/main
 class ImportSAPXLSXView(APIView):
     parser_classes = [MultiPartParser]
 
@@ -1046,6 +1351,7 @@ class ImportSAPXLSXView(APIView):
         for _, row in df.iterrows():
             try:
                 SAPMaterial.objects.create(
+<<<<<<< HEAD
                     numero_serie  =safe_str(row.get('Número de serie')),
                     material      =safe_str(row.get('Material')) or '',
                     texto_breve   =safe_str(row.get('Texto breve de material')),
@@ -1060,9 +1366,28 @@ class ImportSAPXLSXView(APIView):
                     modificado_por=safe_str(row.get('Modificado por')),
                     creado_el     =safe_date(row.get('Creado el')),
                     equipo        =safe_str(row.get('Equipo')),
+=======
+                    numero_serie=safe_str(row.get('Número de serie')),
+                    material=safe_str(row.get('Material')) or '',
+                    texto_breve=safe_str(row.get('Texto breve de material')),
+                    centro=safe_str(row.get('Centro')),
+                    almacen=safe_str(row.get('Almacén')),
+                    status_sistema=safe_str(row.get('Status del sistema')),
+                    lote_stock=safe_str(row.get('Lote de stock')),
+                    tipo_stock=safe_str(row.get('Tp.stocks (contab.refer.)')),
+                    modificado_el=safe_date(row.get('Modificado el')),
+                    lote=safe_str(row.get('Lote')),
+                    proveedor=safe_str(row.get('Proveedor')),
+                    modificado_por=safe_str(row.get('Modificado por')),
+                    creado_el=safe_date(row.get('Creado el')),
+                    equipo=safe_str(row.get('Equipo')),
+>>>>>>> origin/main
                 )
                 created += 1
             except Exception:
                 pass
         return Response({'imported': created})
+<<<<<<< HEAD
     
+=======
+>>>>>>> origin/main
