@@ -1,0 +1,1362 @@
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import * as XLSX from 'xlsx'
+import { MapPin, Upload, Download, Search, RefreshCw, Plus, Trash2, Columns, Wrench, AlertTriangle } from 'lucide-react'
+
+// ─── APIs ─────────────────────────────────────────────────────────────────────
+const API_ASIGNADO   = '/api/spare/seguimiento'
+const API_AVERIADAS  = '/api/spare/seguimiento-averiadas'
+const API_UPGRADES   = '/api/spare/seguimiento-upgrades'
+const API_PROVEEDOR  = '/api/spare/seguimiento-proveedor'
+
+const getToken = () => localStorage.getItem('access_token')
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const STATUS_META = {
+  'Concluido':       { bg:'#dcfce7', color:'#15803d', dot:'#16a34a' },
+  'No se Utilizó':   { bg:'#fef9c3', color:'#854d0e', dot:'#ca8a04' },
+  'Pendiente Crear': { bg:'#fee2e2', color:'#991b1b', dot:'#dc2626' },
+  'Aprobado':        { bg:'#dbeafe', color:'#1e40af', dot:'#2563eb' },
+  'Pendiente':       { bg:'#fef9c3', color:'#854d0e', dot:'#ca8a04' },
+  'En Proceso':      { bg:'#dbeafe', color:'#1e40af', dot:'#2563eb' },
+  'Completado':      { bg:'#dcfce7', color:'#15803d', dot:'#16a34a' },
+  'Cancelado':       { bg:'#f3f4f6', color:'#6b7280', dot:'#9ca3af' },
+}
+
+const RED_COLOR = {
+  'IPRAN':'#7c3aed', 'ACCESO':'#2563eb', 'METRO':'#0891b2', 'CORE':'#dc2626',
+}
+
+function Badge({ status }) {
+  const m = STATUS_META[status] || { bg:'#f3f4f6', color:'#374151', dot:'#6b7280' }
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:5,
+      background:m.bg, color:m.color, fontSize:11, fontWeight:600,
+      padding:'3px 8px', borderRadius:20, whiteSpace:'nowrap' }}>
+      <span style={{ width:6, height:6, borderRadius:'50%', background:m.dot }} />
+      {status || '—'}
+    </span>
+  )
+}
+
+function RedBadge({ red }) {
+  const col = RED_COLOR[red] || '#6b7280'
+  return (
+    <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:4,
+      background: col + '18', color: col, letterSpacing:'.3px' }}>
+      {red}
+    </span>
+  )
+}
+
+// ─── Panel de importación reutilizable ────────────────────────────────────────
+function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
+  const [uploading, setUploading]   = useState(false)
+  const [result,    setResult]      = useState(null)
+
+  const uploadXLSX = async (file) => {
+    setUploading(true); setResult(null)
+    const fd = new FormData(); fd.append('file', file)
+    try {
+      const r = await fetch(`${api}/import_xlsx/`, {
+        method:'POST', headers:{ Authorization:`Bearer ${getToken()}` }, body:fd
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || 'Error')
+      setResult(d); onDone()
+    } catch(e) { alert('❌ ' + e.message) }
+    finally { setUploading(false) }
+  }
+
+  const downloadPlantilla = () => {
+    const ws = XLSX.utils.aoa_to_sheet([plantillaCols])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla')
+    XLSX.writeFile(wb, `plantilla_${plantillaName}.xlsx`)
+  }
+
+  return (
+    <div className="card p-4" style={{ marginBottom:16, border:'1px solid #c4b5fd40' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
+        marginBottom: result ? 12 : 0 }}>
+        <label style={{ display:'inline-flex', alignItems:'center', gap:8,
+          background:'#7c3aed', color:'#fff', padding:'7px 14px', borderRadius:8,
+          cursor:'pointer', fontSize:13, fontWeight:600, whiteSpace:'nowrap' }}>
+          <Upload size={14} />
+          {uploading ? 'Importando...' : 'Seleccionar XLSX'}
+          <input type="file" accept=".xlsx,.xls" style={{ display:'none' }}
+            onChange={e => e.target.files[0] && uploadXLSX(e.target.files[0])} />
+        </label>
+        <button onClick={downloadPlantilla} style={{
+          display:'inline-flex', alignItems:'center', gap:6,
+          padding:'7px 14px', borderRadius:8, border:'1.5px solid #e5e7eb',
+          background:'#fff', color:'#374151', fontSize:13, fontWeight:600, cursor:'pointer'
+        }}>
+          <Download size={14} /> Descargar Plantilla
+        </button>
+        <span style={{ fontSize:12, color:'#6b7280' }}>
+          ⚠️ El import <strong>reemplaza todos los registros</strong> existentes.
+        </span>
+      </div>
+      {result && (
+        <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0',
+          borderRadius:8, padding:'10px 14px', fontSize:13 }}>
+          <strong style={{ color:'#15803d' }}>✅ Importación completada</strong>
+          <span style={{ color:'#374151', marginLeft:12 }}>
+            {result.deleted} anteriores eliminados · {result.imported} nuevos importados
+            {result.skipped > 0 && ` · ${result.skipped} omitidos`}
+            {result.errors  > 0 && <span style={{ color:'#dc2626' }}> · {result.errors} errores</span>}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Modal genérico ───────────────────────────────────────────────────────────
+function GenericModal({ title, fields, item, onClose, onSave }) {
+  const [form, setForm] = useState(() => {
+    const init = {}
+    fields.forEach(f => { init[f.key] = item?.[f.key] || '' })
+    return init
+  })
+  const [saving, setSaving] = useState(false)
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const token  = getToken()
+      const method = item?.id ? 'PUT' : 'POST'
+      const url    = item?.id ? `${item._api}/${item.id}/` : `${item._api}/`
+
+      const payload = {}
+      Object.keys(form).forEach(k => {
+        const v = form[k]
+        payload[k] = (v === '' || v === undefined) ? null : v
+      })
+
+      const r = await fetch(url, {
+        method,
+        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify(payload)
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(JSON.stringify(data))
+      onSave()
+    } catch(e) { alert(e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)',
+      zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:720,
+        maxHeight:'90vh', overflow:'auto', boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ padding:'16px 24px', borderBottom:'1px solid #e5e7eb',
+          display:'flex', justifyContent:'space-between', alignItems:'center',
+          position:'sticky', top:0, background:'#fff', zIndex:1 }}>
+          <h3 style={{ margin:0, fontWeight:800, fontSize:16 }}>{title}</h3>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#6b7280', fontSize:20 }}>×</button>
+        </div>
+        <div style={{ padding:'20px 24px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 20px' }}>
+          {fields.map(f => (
+            <div key={f.key} style={{ marginBottom:14, gridColumn: f.span ? 'span 2' : undefined }}>
+              <label style={{ display:'block', fontSize:11, fontWeight:600, color:'#374151',
+                marginBottom:4, textTransform:'uppercase', letterSpacing:'.3px' }}>{f.label}</label>
+              {f.options ? (
+                <select value={form[f.key]} onChange={e => set(f.key, e.target.value)} className="input">
+                  <option value=''>—</option>
+                  {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              ) : (
+                <input type={f.type || 'text'} value={form[f.key]}
+                  onChange={e => set(f.key, e.target.value)} className="input" />
+              )}
+            </div>
+          ))}
+        </div>
+        <div style={{ padding:'0 24px 20px', display:'flex', justifyContent:'flex-end', gap:10 }}>
+          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Confirm Limpiar ──────────────────────────────────────────────────────────
+function ConfirmClearModal({ count, onClose, onConfirm }) {
+  const [loading, setLoading] = useState(false)
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)',
+      zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:'#fff', borderRadius:16, padding:32, maxWidth:400,
+        width:'90%', textAlign:'center', boxShadow:'0 24px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ width:52, height:52, borderRadius:'50%', background:'#fef2f2',
+          display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+          <Trash2 size={24} color="#ef4444" />
+        </div>
+        <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:700 }}>¿Limpiar todos los registros?</h3>
+        <p style={{ margin:'0 0 24px', color:'#6b7280', fontSize:14 }}>
+          Se eliminarán <strong>{count} registros</strong> permanentemente.
+        </p>
+        <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+          <button onClick={onClose} style={{ padding:'9px 20px', borderRadius:8,
+            border:'1.5px solid #e5e7eb', background:'#fff', fontSize:14, fontWeight:600, cursor:'pointer' }}>
+            Cancelar
+          </button>
+          <button onClick={async () => { setLoading(true); await onConfirm(); setLoading(false) }}
+            style={{ padding:'9px 20px', borderRadius:8, border:'none',
+              background:'#ef4444', fontSize:14, fontWeight:700, color:'#fff', cursor:'pointer' }}>
+            {loading ? 'Eliminando...' : 'Sí, limpiar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Columnas selector ────────────────────────────────────────────────────────
+function ColumnSelector({ allCols, visibleCols, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef()
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} style={{ position:'relative' }}>
+      <button onClick={() => setOpen(v => !v)} style={{
+        display:'inline-flex', alignItems:'center', gap:6,
+        padding:'7px 14px', borderRadius:8,
+        border:`1.5px solid ${open ? '#c4b5fd' : '#e5e7eb'}`,
+        background: open ? '#f5f3ff' : '#fff',
+        color: open ? '#7c3aed' : '#374151',
+        fontSize:13, fontWeight:600, cursor:'pointer'
+      }}>
+        <Columns size={14} /> Columnas
+      </button>
+      {open && (
+        <div style={{ position:'absolute', top:'calc(100% + 6px)', right:0, zIndex:200,
+          background:'#fff', borderRadius:10, boxShadow:'0 8px 24px rgba(0,0,0,.12)',
+          border:'1px solid #e5e7eb', padding:'8px 0', minWidth:210 }}>
+          <p style={{ margin:'0 0 4px', padding:'4px 14px', fontSize:10, fontWeight:700,
+            color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.5px' }}>Columnas visibles</p>
+          {allCols.map(col => (
+            <label key={col.key} style={{ display:'flex', alignItems:'center', gap:10,
+              padding:'6px 14px', cursor:'pointer', fontSize:13, color:'#374151' }}
+              onMouseEnter={e => e.currentTarget.style.background='#f9fafb'}
+              onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+              <input type="checkbox" checked={visibleCols.includes(col.key)}
+                onChange={() => {
+                  if (visibleCols.includes(col.key)) {
+                    if (visibleCols.length > 1) onChange(visibleCols.filter(k => k !== col.key))
+                  } else {
+                    onChange([...visibleCols, col.key])
+                  }
+                }}
+                style={{ accentColor:'#7c3aed', width:14, height:14 }} />
+              {col.label}
+            </label>
+          ))}
+          <div style={{ borderTop:'1px solid #f3f4f6', margin:'6px 0 2px' }} />
+          <button onClick={() => onChange(allCols.map(c => c.key))}
+            style={{ width:'100%', padding:'6px 14px', background:'none', border:'none',
+              fontSize:12, color:'#7c3aed', cursor:'pointer', textAlign:'left', fontWeight:600 }}>
+            Mostrar todas
+          </button>
+          <button onClick={() => onChange(allCols.filter(c => c.default).map(c => c.key))}
+            style={{ width:'100%', padding:'6px 14px', background:'none', border:'none',
+              fontSize:12, color:'#6b7280', cursor:'pointer', textAlign:'left' }}>
+            Restaurar por defecto
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PESTAÑA 1 — Seguimiento de Spare Asignado
+// ═══════════════════════════════════════════════════════════════════════════════
+const COLS_ASIGNADO = [
+  { key:'red',              label:'Red',                   default:true  },
+  { key:'proveedor',        label:'Proveedor',             default:true  },
+  { key:'sap',              label:'SAP',                   default:true  },
+  { key:'descripcion',      label:'Descripción',           default:true  },
+  { key:'cantidad_serie',   label:'Serie/Cant.',           default:true  },
+  { key:'lote',             label:'Lote',                  default:true  },
+  { key:'motivo_asignacion',label:'Motivo de Asignación',  default:false },
+  { key:'fecha_asignacion', label:'Fecha de Asignación',   default:true  },
+  { key:'site',             label:'Site',                  default:true  },
+  { key:'codigo_site',      label:'Cód. Site',             default:true  },
+  { key:'elemento_pep',     label:'Elemento PEP',          default:true  },
+  { key:'numero_pedido',    label:'Pedido',                default:true  },
+  { key:'folio',            label:'Folio',                 default:true  },
+  { key:'usuario_folio',    label:'Usuario Folio',         default:false },
+  { key:'status_folio',     label:'Status',                default:true  },
+  { key:'oym_encargado',    label:'OyM Encargado',         default:true  },
+  { key:'comentarios',      label:'Comentarios',           default:true  },
+]
+
+function TabAsignado() {
+  const [data,   setData]   = useState([])
+  const [loading,setLoading]= useState(true)
+  const [query,  setQuery]  = useState('')
+  const [dQ,     setDQ]     = useState('')
+  const [fStatus,setFS]     = useState('')
+  const [fRed,   setFR]     = useState('')
+  const [showUpload, setShowUpload] = useState(false)
+  const [showModal,  setShowModal]  = useState(false)
+  const [editItem,   setEditItem]   = useState(null)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [visibleCols, setVisibleCols] = useState(COLS_ASIGNADO.filter(c=>c.default).map(c=>c.key))
+  const [page, setPage] = useState(1)
+  const debRef = useRef(null)
+  const PER_PAGE = 50
+  const C = { primary:'#7c3aed', border:'#e5e7eb', muted:'#6b7280' }
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const rows = await fetch(`${API_ASIGNADO}/?page_size=10000`, {
+        headers:{ Authorization:`Bearer ${getToken()}` }
+      }).then(r=>r.json()).catch(()=>[])
+      setData(Array.isArray(rows) ? rows : (rows.results||[]))
+    } finally { setLoading(false) }
+  }, [])
+
+  useEffect(()=>{ load() },[load])
+
+  const filtered = useMemo(()=>{
+    const q = dQ.toLowerCase()
+    return data.filter(r=>{
+      const mQ = !q||[r.sap,r.descripcion,r.site,r.red,r.oym_encargado,r.folio,r.proveedor,r.lote]
+        .some(v=>String(v||'').toLowerCase().includes(q))
+      return mQ && (!fStatus||r.status_folio===fStatus) && (!fRed||r.red===fRed)
+    })
+  },[data,dQ,fStatus,fRed])
+
+  const pages = Math.ceil(filtered.length/PER_PAGE)
+  const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
+  const activeCols = COLS_ASIGNADO.filter(c=>visibleCols.includes(c.key))
+
+  const exportXLSX = () => {
+    const cols = COLS_ASIGNADO.map(c=>c.key)
+    const header = COLS_ASIGNADO.map(c=>c.label)
+    const rows = filtered.map(r=>cols.map(k=>r[k]||''))
+    const ws = XLSX.utils.aoa_to_sheet([header,...rows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb,ws,'Seguimiento')
+    XLSX.writeFile(wb,'seguimiento_asignado.xlsx')
+  }
+
+  const del = async (id) => {
+    if (!confirm('¿Eliminar?')) return
+    await fetch(`${API_ASIGNADO}/${id}/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
+    load()
+  }
+
+  const clearAll = async () => {
+    await fetch(`${API_ASIGNADO}/clear_all/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
+    setConfirmClear(false); load()
+  }
+
+  const MODAL_FIELDS = [
+    { key:'red',              label:'Red',              options:['IPRAN','ACCESO','METRO','CORE'] },
+    { key:'proveedor',        label:'Proveedor' },
+    { key:'sap',              label:'SAP' },
+    { key:'descripcion',      label:'Descripción',      span:true },
+    { key:'cantidad_serie',   label:'Cantidad/Serie' },
+    { key:'lote',             label:'Lote',             options:['VALORADO','NO VALORADO'] },
+    { key:'motivo_asignacion',label:'Motivo',           span:true },
+    { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
+    { key:'status_folio',     label:'Status',           options:['Concluido','No se Utilizó','Pendiente Crear','Aprobado'] },
+    { key:'site',             label:'Site' },
+    { key:'codigo_site',      label:'Código Site' },
+    { key:'elemento_pep',     label:'Elemento PEP' },
+    { key:'numero_pedido',    label:'Nº Pedido' },
+    { key:'folio',            label:'Folio' },
+    { key:'usuario_folio',    label:'Usuario Folio' },
+    { key:'oym_encargado',    label:'OyM Encargado' },
+    { key:'comentarios',      label:'Comentarios',      span:true },
+  ]
+
+  return (
+    <div style={{ paddingBottom:20 }}>
+      {/* Toolbar */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16, alignItems:'center' }}>
+        <button className="btn-ghost flex items-center gap-2" onClick={()=>setShowUpload(v=>!v)}>
+          <Upload size={14}/> Importar XLSX
+        </button>
+        <button className="btn-ghost flex items-center gap-2" onClick={exportXLSX}>
+          <Download size={14}/> Exportar Excel
+        </button>
+        <button className="btn-ghost flex items-center gap-2" onClick={load}>
+          <RefreshCw size={14}/> Actualizar
+        </button>
+        <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
+          style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
+            borderRadius:8, border:'1.5px solid #fecaca',
+            background: data.length===0?'#f9fafb':'#fff',
+            color: data.length===0?'#d1d5db':'#dc2626',
+            fontSize:13, fontWeight:600, cursor: data.length===0?'default':'pointer' }}>
+          <Trash2 size={14}/> Limpiar todo
+        </button>
+        <button className="btn-primary flex items-center gap-2"
+          onClick={()=>{ setEditItem(null); setShowModal(true) }}>
+          <Plus size={14}/> Nuevo
+        </button>
+      </div>
+
+      {showUpload && (
+        <ImportPanel api={API_ASIGNADO} onDone={()=>{ load() }}
+          plantillaName="seguimiento_asignado"
+          plantillaCols={['RED','PROVEEDOR','SAP','DESCRIPCION','CANTIDAD / NUMERO DE SERIE','LOTE',
+            'MOTIVO DE ASIGNACION','FECHA DE ASIGNACION','SITE','CODIGO DE SITE','ELEMENTO PEP',
+            'NUMERO DE PEDIDO','FOLIO','USUARIO FOLIO','STATUS FOLIO','OYM ENCARGADO','Comentarios']} />
+      )}
+
+      {/* KPIs */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:16 }}>
+        {[
+          ['Total',filtered.length,'#7c3aed'],
+          ['Concluido',filtered.filter(r=>r.status_folio==='Concluido').length,'#15803d'],
+          ['Aprobado',filtered.filter(r=>r.status_folio==='Aprobado').length,'#2563eb'],
+          ['No se Utilizó',filtered.filter(r=>r.status_folio==='No se Utilizó').length,'#ca8a04'],
+          ['Pendiente Crear',filtered.filter(r=>r.status_folio==='Pendiente Crear').length,'#dc2626'],
+        ].map(([l,v,c])=>(
+          <div key={l} className="card p-4" style={{ borderLeft:`4px solid ${c}`, cursor:'pointer' }}
+            onClick={()=>{ setFS(l==='Total'?'':l); setPage(1) }}>
+            <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>{l}</p>
+            <p style={{ fontSize:24, fontWeight:800, color:c, margin:0 }}>{v}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ position:'relative', flex:1, minWidth:220 }}>
+          <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:C.muted }}/>
+          <input className="input" style={{ paddingLeft:32 }}
+            placeholder="Buscar SAP, descripción, site, proveedor..."
+            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
+              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
+        </div>
+        <select className="input" style={{ width:160 }} value={fStatus} onChange={e=>{ setFS(e.target.value); setPage(1) }}>
+          <option value=''>Todos los status</option>
+          {['Concluido','No se Utilizó','Pendiente Crear','Aprobado'].map(s=>(
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select className="input" style={{ width:130 }} value={fRed} onChange={e=>{ setFR(e.target.value); setPage(1) }}>
+          <option value=''>Todas las redes</option>
+          {['IPRAN','ACCESO','METRO','CORE'].map(r=><option key={r} value={r}>{r}</option>)}
+        </select>
+        {(fStatus||fRed||query) && (
+          <button className="btn-ghost" style={{ fontSize:12 }}
+            onClick={()=>{ setFS(''); setFR(''); setQuery(''); setDQ(''); setPage(1) }}>
+            ✕ Limpiar
+          </button>
+        )}
+        <span style={{ fontSize:12, color:C.muted }}>{filtered.length} resultados</span>
+        <div style={{ marginLeft:'auto' }}>
+          <ColumnSelector allCols={COLS_ASIGNADO} visibleCols={visibleCols} onChange={setVisibleCols} />
+        </div>
+      </div>
+
+      {/* Tabla */}
+      <div className="card overflow-hidden">
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr style={{ background:'#f9fafb' }}>
+                {activeCols.map(col=>(
+                  <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
+                    fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
+                    whiteSpace:'nowrap', borderBottom:`1px solid ${C.border}` }}>{col.label}</th>
+                ))}
+                <th style={{ padding:'10px 12px', borderBottom:`1px solid ${C.border}` }}/>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:C.muted }}>Cargando...</td></tr>}
+              {!loading && shown.length===0 && (
+                <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:'#9ca3af' }}>
+                  {data.length===0 ? 'Sin datos — importa el Excel para comenzar.' : 'Sin resultados.'}
+                </td></tr>
+              )}
+              {shown.map((row,i)=>(
+                <tr key={row.id||i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fafafa' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#f5f3ff'}
+                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
+                  {activeCols.map(col=>{
+                    const v = row[col.key]
+                    if (col.key==='red') return <td key={col.key} style={{ padding:'8px 12px' }}><RedBadge red={v}/></td>
+                    if (col.key==='status_folio') return <td key={col.key} style={{ padding:'8px 12px' }}><Badge status={v}/></td>
+                    if (col.key==='lote') return <td key={col.key} style={{ padding:'8px 12px' }}>
+                      {v ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:4,
+                        background:v==='VALORADO'?'#dbeafe':'#f3f4f6', color:v==='VALORADO'?'#1e40af':'#6b7280' }}>{v}</span> : '—'}
+                    </td>
+                    if (col.key==='site') return <td key={col.key} style={{ padding:'8px 12px', fontWeight:600, whiteSpace:'nowrap' }}>
+                      {v ? <span style={{ display:'flex', alignItems:'center', gap:4 }}><MapPin size={11} style={{ color:C.primary }}/>{v}</span> : <span style={{ color:'#d1d5db' }}>—</span>}
+                    </td>
+                    if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:C.primary, whiteSpace:'nowrap' }}>{v}</td>
+                    if (col.key==='fecha_asignacion') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
+                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
+                  })}
+                  <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
+                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
+                      onClick={()=>{ setEditItem({...row, _api:API_ASIGNADO}); setShowModal(true) }}>✏️</button>
+                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
+                      onClick={()=>del(row.id)}>🗑</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {pages>1 && (
+          <div style={{ padding:'12px 16px', borderTop:`1px solid ${C.border}`,
+            display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <span style={{ fontSize:12, color:C.muted }}>Página {page} de {pages} · {filtered.length} registros</span>
+            <div style={{ display:'flex', gap:6 }}>
+              <button className="btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} disabled={page===1} onClick={()=>setPage(p=>p-1)}>← Anterior</button>
+              {Array.from({length:Math.min(pages,7)},(_,i)=>i+1).map(p=>(
+                <button key={p} style={{ padding:'4px 10px', fontSize:12, border:'none', cursor:'pointer',
+                  borderRadius:6, background:p===page?C.primary:'#f3f4f6',
+                  color:p===page?'#fff':'#374151', fontWeight:p===page?700:400 }}
+                  onClick={()=>setPage(p)}>{p}</button>
+              ))}
+              <button className="btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} disabled={page===pages} onClick={()=>setPage(p=>p+1)}>Siguiente →</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <GenericModal
+          title={editItem?.id ? 'Editar Seguimiento' : 'Nuevo Seguimiento'}
+          fields={MODAL_FIELDS}
+          item={editItem ? editItem : { _api: API_ASIGNADO }}
+          onClose={()=>setShowModal(false)}
+          onSave={()=>{ load(); setShowModal(false) }}
+        />
+      )}
+      {confirmClear && (
+        <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll} />
+      )}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PESTAÑA 2 — Seguimiento Piezas Averiadas
+// ═══════════════════════════════════════════════════════════════════════════════
+const COLS_AVERIADAS = [
+  { key:'region',                 label:'Región',          default:true  },
+  { key:'red',                    label:'Red',             default:true  },
+  { key:'proveedor',              label:'Proveedor',       default:true  },
+  { key:'equipo',                 label:'Equipo',          default:true  },
+  { key:'modelo',                 label:'Modelo',          default:true  },
+  { key:'part_number_averiado',   label:'PN Averiado',     default:true  },
+  { key:'description',            label:'Descripción',     default:true  },
+  { key:'serie_averiada',         label:'Serie Averiada',  default:true  },
+  { key:'sap',                    label:'SAP',             default:true  },
+  { key:'encargado_oym',          label:'Encargado OyM',   default:true  },
+  { key:'ingresado_almacen',      label:'Ingreso Almacén', default:false },
+  { key:'acta_ingreso',           label:'Acta Ingreso',    default:false },
+  { key:'status',                 label:'Status',          default:true  },
+  { key:'incidencia_oym',         label:'Incidencia OyM',  default:false },
+  { key:'fecha_cambio_retiro',    label:'Fecha Cambio',    default:true  },
+  { key:'fecha_correo_oym',       label:'Fecha Correo OyM',default:false },
+  { key:'fecha_correo_proveedor', label:'Fecha Correo Prov',default:false },
+  { key:'rma',                    label:'RMA',             default:true  },
+  { key:'ticket',                 label:'Ticket',          default:true  },
+  { key:'costo_usd',              label:'Costo US$',       default:true  },
+]
+
+function TabAveriadas() {
+  const [data,   setData]   = useState([])
+  const [loading,setLoading]= useState(true)
+  const [query,  setQuery]  = useState('')
+  const [dQ,     setDQ]     = useState('')
+  const [fStatus,setFS]     = useState('')
+  const [showUpload, setShowUpload] = useState(false)
+  const [showModal,  setShowModal]  = useState(false)
+  const [editItem,   setEditItem]   = useState(null)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [visibleCols, setVisibleCols] = useState(COLS_AVERIADAS.filter(c=>c.default).map(c=>c.key))
+  const [page, setPage] = useState(1)
+  const debRef = useRef(null)
+  const PER_PAGE = 50
+  const C = { primary:'#dc2626', border:'#e5e7eb', muted:'#6b7280' }
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const rows = await fetch(`${API_AVERIADAS}/?page_size=10000`, {
+        headers:{ Authorization:`Bearer ${getToken()}` }
+      }).then(r=>r.json()).catch(()=>[])
+      setData(Array.isArray(rows) ? rows : (rows.results||[]))
+    } finally { setLoading(false) }
+  }, [])
+
+  useEffect(()=>{ load() },[load])
+
+  const filtered = useMemo(()=>{
+    const q = dQ.toLowerCase()
+    return data.filter(r=>{
+      const mQ = !q||[r.red,r.proveedor,r.equipo,r.sap,r.serie_averiada,r.rma,r.ticket,r.status]
+        .some(v=>String(v||'').toLowerCase().includes(q))
+      return mQ && (!fStatus||r.status===fStatus)
+    })
+  },[data,dQ,fStatus])
+
+  const pages = Math.ceil(filtered.length/PER_PAGE)
+  const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
+  const activeCols = COLS_AVERIADAS.filter(c=>visibleCols.includes(c.key))
+
+  const exportXLSX = () => {
+    const cols = COLS_AVERIADAS.map(c=>c.key)
+    const header = COLS_AVERIADAS.map(c=>c.label)
+    const rows = filtered.map(r=>cols.map(k=>r[k]||''))
+    const ws = XLSX.utils.aoa_to_sheet([header,...rows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb,ws,'Averiadas')
+    XLSX.writeFile(wb,'seguimiento_averiadas.xlsx')
+  }
+
+  const del = async (id) => {
+    if (!confirm('¿Eliminar?')) return
+    await fetch(`${API_AVERIADAS}/${id}/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
+    load()
+  }
+
+  const clearAll = async () => {
+    await fetch(`${API_AVERIADAS}/clear_all/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
+    setConfirmClear(false); load()
+  }
+
+  const STATUSES = ['Pendiente','En Proceso','Completado','Cancelado']
+
+  const MODAL_FIELDS = [
+    { key:'region',                 label:'Región' },
+    { key:'red',                    label:'Red',            options:['IPRAN','ACCESO','METRO','CORE'] },
+    { key:'proveedor',              label:'Proveedor' },
+    { key:'equipo',                 label:'Equipo' },
+    { key:'modelo',                 label:'Modelo' },
+    { key:'part_number_averiado',   label:'PN Averiado' },
+    { key:'description',            label:'Descripción',    span:true },
+    { key:'serie_averiada',         label:'Serie Averiada' },
+    { key:'sap',                    label:'SAP' },
+    { key:'encargado_oym',          label:'Encargado OyM' },
+    { key:'ingresado_almacen',      label:'Ingreso Almacén' },
+    { key:'acta_ingreso',           label:'Acta Ingreso' },
+    { key:'status',                 label:'Status',         options:STATUSES },
+    { key:'incidencia_oym',         label:'Incidencia OyM' },
+    { key:'fecha_cambio_retiro',    label:'Fecha Cambio',   type:'date' },
+    { key:'fecha_correo_oym',       label:'Fecha Correo OyM', type:'date' },
+    { key:'fecha_correo_proveedor', label:'Fecha Correo Prov', type:'date' },
+    { key:'rma',                    label:'RMA' },
+    { key:'ticket',                 label:'Ticket' },
+    { key:'costo_usd',              label:'Costo US$',      type:'number' },
+  ]
+
+  const statCounts = STATUSES.reduce((acc,s)=>{ acc[s]=filtered.filter(r=>r.status===s).length; return acc },{})
+  const STAT_COLORS = { 'Pendiente':'#ca8a04','En Proceso':'#2563eb','Completado':'#15803d','Cancelado':'#6b7280' }
+
+  return (
+    <div style={{ paddingBottom:20 }}>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+        <button className="btn-ghost flex items-center gap-2" onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
+        <button className="btn-ghost flex items-center gap-2" onClick={exportXLSX}><Download size={14}/> Exportar Excel</button>
+        <button className="btn-ghost flex items-center gap-2" onClick={load}><RefreshCw size={14}/> Actualizar</button>
+        <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
+          style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
+            borderRadius:8, border:'1.5px solid #fecaca',
+            background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626',
+            fontSize:13, fontWeight:600, cursor:data.length===0?'default':'pointer' }}>
+          <Trash2 size={14}/> Limpiar todo
+        </button>
+        <button className="btn-primary flex items-center gap-2"
+          onClick={()=>{ setEditItem(null); setShowModal(true) }}>
+          <Plus size={14}/> Nuevo
+        </button>
+      </div>
+
+      {showUpload && (
+        <ImportPanel api={API_AVERIADAS} onDone={load}
+          plantillaName="seguimiento_averiadas"
+          plantillaCols={['REGION','RED','PROVEEDOR','EQUIPO','MODELO','PART NUMBER AVERIADO',
+            'DESCRIPTION','Serie Averiada','SAP','Encargado OyM','Ingresado al almacen CD VES',
+            'ACTA DE INGRESO','STATUS','INCIDENCIA OYM','Fecha de cambio/retiro',
+            'Fecha correo OYM','Fecha correo/recojo PROVEEDOR','RMA','TICKET','COSTO US$']} />
+      )}
+
+      {/* KPIs */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:16 }}>
+        <div className="card p-4" style={{ borderLeft:'4px solid #dc2626', cursor:'pointer' }}
+          onClick={()=>{ setFS(''); setPage(1) }}>
+          <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>Total</p>
+          <p style={{ fontSize:24, fontWeight:800, color:'#dc2626', margin:0 }}>{filtered.length}</p>
+        </div>
+        {STATUSES.map(s=>(
+          <div key={s} className="card p-4" style={{ borderLeft:`4px solid ${STAT_COLORS[s]}`, cursor:'pointer' }}
+            onClick={()=>{ setFS(s); setPage(1) }}>
+            <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>{s}</p>
+            <p style={{ fontSize:24, fontWeight:800, color:STAT_COLORS[s], margin:0 }}>{statCounts[s]||0}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ position:'relative', flex:1, minWidth:220 }}>
+          <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:C.muted }}/>
+          <input className="input" style={{ paddingLeft:32 }}
+            placeholder="Buscar equipo, serie, SAP, RMA..."
+            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
+              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
+        </div>
+        <select className="input" style={{ width:160 }} value={fStatus} onChange={e=>{ setFS(e.target.value); setPage(1) }}>
+          <option value=''>Todos los status</option>
+          {STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        {(fStatus||query) && (
+          <button className="btn-ghost" style={{ fontSize:12 }}
+            onClick={()=>{ setFS(''); setQuery(''); setDQ(''); setPage(1) }}>✕ Limpiar</button>
+        )}
+        <span style={{ fontSize:12, color:C.muted }}>{filtered.length} resultados</span>
+        <div style={{ marginLeft:'auto' }}>
+          <ColumnSelector allCols={COLS_AVERIADAS} visibleCols={visibleCols} onChange={setVisibleCols} />
+        </div>
+      </div>
+
+      {/* Tabla */}
+      <div className="card overflow-hidden">
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr style={{ background:'#f9fafb' }}>
+                {activeCols.map(col=>(
+                  <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
+                    fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
+                    whiteSpace:'nowrap', borderBottom:`1px solid ${C.border}` }}>{col.label}</th>
+                ))}
+                <th style={{ padding:'10px 12px', borderBottom:`1px solid ${C.border}` }}/>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:C.muted }}>Cargando...</td></tr>}
+              {!loading && shown.length===0 && (
+                <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:'#9ca3af' }}>
+                  {data.length===0 ? 'Sin datos — importa el Excel para comenzar.' : 'Sin resultados.'}
+                </td></tr>
+              )}
+              {shown.map((row,i)=>(
+                <tr key={row.id||i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fafafa' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#fff5f5'}
+                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
+                  {activeCols.map(col=>{
+                    const v = row[col.key]
+                    if (col.key==='red') return <td key={col.key} style={{ padding:'8px 12px' }}><RedBadge red={v}/></td>
+                    if (col.key==='status') return <td key={col.key} style={{ padding:'8px 12px' }}><Badge status={v}/></td>
+                    if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:'#dc2626', whiteSpace:'nowrap' }}>{v||'—'}</td>
+                    if (col.key==='costo_usd') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, fontWeight:600, color:'#059669', textAlign:'right' }}>{v?`$${Number(v).toLocaleString()}`:'—'}</td>
+                    if (col.key?.startsWith('fecha_')) return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
+                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
+                  })}
+                  <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
+                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
+                      onClick={()=>{ setEditItem({...row,_api:API_AVERIADAS}); setShowModal(true) }}>✏️</button>
+                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
+                      onClick={()=>del(row.id)}>🗑</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {pages>1 && (
+          <div style={{ padding:'12px 16px', borderTop:`1px solid ${C.border}`,
+            display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <span style={{ fontSize:12, color:C.muted }}>Página {page} de {pages} · {filtered.length} registros</span>
+            <div style={{ display:'flex', gap:6 }}>
+              <button className="btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} disabled={page===1} onClick={()=>setPage(p=>p-1)}>← Anterior</button>
+              {Array.from({length:Math.min(pages,7)},(_,i)=>i+1).map(p=>(
+                <button key={p} style={{ padding:'4px 10px', fontSize:12, border:'none', cursor:'pointer',
+                  borderRadius:6, background:p===page?'#dc2626':'#f3f4f6',
+                  color:p===page?'#fff':'#374151', fontWeight:p===page?700:400 }}
+                  onClick={()=>setPage(p)}>{p}</button>
+              ))}
+              <button className="btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} disabled={page===pages} onClick={()=>setPage(p=>p+1)}>Siguiente →</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <GenericModal
+          title={editItem?.id ? 'Editar Pieza Averiada' : 'Nueva Pieza Averiada'}
+          fields={MODAL_FIELDS}
+          item={editItem ? editItem : { _api: API_AVERIADAS }}
+          onClose={()=>setShowModal(false)}
+          onSave={()=>{ load(); setShowModal(false) }}
+        />
+      )}
+      {confirmClear && <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PESTAÑA 3 — Seguimiento Upgrade / Mantenimiento
+// ═══════════════════════════════════════════════════════════════════════════════
+const COLS_UPGRADES = [
+  { key:'region',           label:'Región',          default:true  },
+  { key:'proveedor',        label:'Proveedor',        default:true  },
+  { key:'part_number',      label:'Part Number',      default:true  },
+  { key:'sap',              label:'SAP',              default:true  },
+  { key:'descripcion',      label:'Descripción',      default:true  },
+  { key:'cantidad',         label:'Cantidad',         default:true  },
+  { key:'numero_serie',     label:'N° Serie',         default:true  },
+  { key:'fecha_asignacion', label:'Fecha Asignación', default:true  },
+  { key:'guia_remision',    label:'Guía Remisión',    default:true  },
+  { key:'folio',            label:'Folio',            default:true  },
+  { key:'numero_pedido',    label:'N° Pedido',        default:true  },
+  { key:'motivo_asignacion',label:'Motivo',           default:false },
+  { key:'seguimiento',      label:'Seguimiento',      default:true  },
+]
+
+function TabUpgrades() {
+  const [data,   setData]   = useState([])
+  const [loading,setLoading]= useState(true)
+  const [query,  setQuery]  = useState('')
+  const [dQ,     setDQ]     = useState('')
+  const [showUpload, setShowUpload] = useState(false)
+  const [showModal,  setShowModal]  = useState(false)
+  const [editItem,   setEditItem]   = useState(null)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [visibleCols, setVisibleCols] = useState(COLS_UPGRADES.filter(c=>c.default).map(c=>c.key))
+  const [page, setPage] = useState(1)
+  const debRef = useRef(null)
+  const PER_PAGE = 50
+  const C = { primary:'#0891b2', border:'#e5e7eb', muted:'#6b7280' }
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const rows = await fetch(`${API_UPGRADES}/?page_size=10000`, {
+        headers:{ Authorization:`Bearer ${getToken()}` }
+      }).then(r=>r.json()).catch(()=>[])
+      setData(Array.isArray(rows) ? rows : (rows.results||[]))
+    } finally { setLoading(false) }
+  }, [])
+
+  useEffect(()=>{ load() },[load])
+
+  const filtered = useMemo(()=>{
+    const q = dQ.toLowerCase()
+    return data.filter(r=>{
+      return !q||[r.proveedor,r.sap,r.part_number,r.numero_serie,r.folio,r.descripcion,r.region]
+        .some(v=>String(v||'').toLowerCase().includes(q))
+    })
+  },[data,dQ])
+
+  const pages = Math.ceil(filtered.length/PER_PAGE)
+  const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
+  const activeCols = COLS_UPGRADES.filter(c=>visibleCols.includes(c.key))
+
+  const exportXLSX = () => {
+    const cols = COLS_UPGRADES.map(c=>c.key)
+    const header = COLS_UPGRADES.map(c=>c.label)
+    const rows = filtered.map(r=>cols.map(k=>r[k]||''))
+    const ws = XLSX.utils.aoa_to_sheet([header,...rows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb,ws,'Upgrades')
+    XLSX.writeFile(wb,'seguimiento_upgrades.xlsx')
+  }
+
+  const del = async (id) => {
+    if (!confirm('¿Eliminar?')) return
+    await fetch(`${API_UPGRADES}/${id}/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
+    load()
+  }
+
+  const clearAll = async () => {
+    await fetch(`${API_UPGRADES}/clear_all/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
+    setConfirmClear(false); load()
+  }
+
+  const MODAL_FIELDS = [
+    { key:'region',           label:'Región' },
+    { key:'proveedor',        label:'Proveedor' },
+    { key:'part_number',      label:'Part Number' },
+    { key:'sap',              label:'SAP' },
+    { key:'descripcion',      label:'Descripción',    span:true },
+    { key:'cantidad',         label:'Cantidad' },
+    { key:'numero_serie',     label:'N° Serie' },
+    { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
+    { key:'guia_remision',    label:'Guía Remisión' },
+    { key:'folio',            label:'Folio' },
+    { key:'numero_pedido',    label:'N° Pedido' },
+    { key:'motivo_asignacion',label:'Motivo',          span:true },
+    { key:'seguimiento',      label:'Seguimiento',     span:true },
+  ]
+
+  // Stats por proveedor
+  const proveedores = [...new Set(data.map(r=>r.proveedor).filter(Boolean))].slice(0,4)
+
+  return (
+    <div style={{ paddingBottom:20 }}>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+        <button className="btn-ghost flex items-center gap-2" onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
+        <button className="btn-ghost flex items-center gap-2" onClick={exportXLSX}><Download size={14}/> Exportar Excel</button>
+        <button className="btn-ghost flex items-center gap-2" onClick={load}><RefreshCw size={14}/> Actualizar</button>
+        <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
+          style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
+            borderRadius:8, border:'1.5px solid #fecaca',
+            background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626',
+            fontSize:13, fontWeight:600, cursor:data.length===0?'default':'pointer' }}>
+          <Trash2 size={14}/> Limpiar todo
+        </button>
+        <button className="btn-primary flex items-center gap-2"
+          onClick={()=>{ setEditItem(null); setShowModal(true) }}>
+          <Plus size={14}/> Nuevo
+        </button>
+      </div>
+
+      {showUpload && (
+        <ImportPanel api={API_UPGRADES} onDone={load}
+          plantillaName="seguimiento_upgrades"
+          plantillaCols={['REGION','PROVEEDOR','PART NUMBER','SAP','DESCRIPCION',
+            'CANTIDAD','NUMERO DE SERIE','FECHA ASIGNACION','GUIA DE REMISION',
+            'FOLIO','N° DE PEDIDO','MOTIVO DE ASIGNACION','SEGUIMIENTO']} />
+      )}
+
+      {/* KPIs */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:16 }}>
+        <div className="card p-4" style={{ borderLeft:'4px solid #0891b2' }}>
+          <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>Total</p>
+          <p style={{ fontSize:24, fontWeight:800, color:'#0891b2', margin:0 }}>{filtered.length}</p>
+        </div>
+        {proveedores.map((prov,i)=>{
+          const colors = ['#7c3aed','#2563eb','#15803d','#ca8a04']
+          return (
+            <div key={prov} className="card p-4" style={{ borderLeft:`4px solid ${colors[i]}` }}>
+              <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prov}</p>
+              <p style={{ fontSize:24, fontWeight:800, color:colors[i], margin:0 }}>
+                {filtered.filter(r=>r.proveedor===prov).length}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ position:'relative', flex:1, minWidth:220 }}>
+          <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:C.muted }}/>
+          <input className="input" style={{ paddingLeft:32 }}
+            placeholder="Buscar SAP, part number, serie, folio..."
+            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
+              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
+        </div>
+        {query && (
+          <button className="btn-ghost" style={{ fontSize:12 }}
+            onClick={()=>{ setQuery(''); setDQ(''); setPage(1) }}>✕ Limpiar</button>
+        )}
+        <span style={{ fontSize:12, color:C.muted }}>{filtered.length} resultados</span>
+        <div style={{ marginLeft:'auto' }}>
+          <ColumnSelector allCols={COLS_UPGRADES} visibleCols={visibleCols} onChange={setVisibleCols} />
+        </div>
+      </div>
+
+      {/* Tabla */}
+      <div className="card overflow-hidden">
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr style={{ background:'#f9fafb' }}>
+                {activeCols.map(col=>(
+                  <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
+                    fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
+                    whiteSpace:'nowrap', borderBottom:`1px solid ${C.border}` }}>{col.label}</th>
+                ))}
+                <th style={{ padding:'10px 12px', borderBottom:`1px solid ${C.border}` }}/>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:C.muted }}>Cargando...</td></tr>}
+              {!loading && shown.length===0 && (
+                <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:'#9ca3af' }}>
+                  {data.length===0 ? 'Sin datos — importa el Excel para comenzar.' : 'Sin resultados.'}
+                </td></tr>
+              )}
+              {shown.map((row,i)=>(
+                <tr key={row.id||i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fafafa' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#f0fdfe'}
+                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
+                  {activeCols.map(col=>{
+                    const v = row[col.key]
+                    if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:'#0891b2', whiteSpace:'nowrap' }}>{v||'—'}</td>
+                    if (col.key==='fecha_asignacion') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
+                    if (col.key==='proveedor') return <td key={col.key} style={{ padding:'8px 12px' }}>
+                      {v ? <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:4, background:'#e0f2fe', color:'#0369a1' }}>{v}</span> : '—'}
+                    </td>
+                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
+                  })}
+                  <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
+                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
+                      onClick={()=>{ setEditItem({...row,_api:API_UPGRADES}); setShowModal(true) }}>✏️</button>
+                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
+                      onClick={()=>del(row.id)}>🗑</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {pages>1 && (
+          <div style={{ padding:'12px 16px', borderTop:`1px solid ${C.border}`,
+            display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <span style={{ fontSize:12, color:C.muted }}>Página {page} de {pages} · {filtered.length} registros</span>
+            <div style={{ display:'flex', gap:6 }}>
+              <button className="btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} disabled={page===1} onClick={()=>setPage(p=>p-1)}>← Anterior</button>
+              {Array.from({length:Math.min(pages,7)},(_,i)=>i+1).map(p=>(
+                <button key={p} style={{ padding:'4px 10px', fontSize:12, border:'none', cursor:'pointer',
+                  borderRadius:6, background:p===page?'#0891b2':'#f3f4f6',
+                  color:p===page?'#fff':'#374151', fontWeight:p===page?700:400 }}
+                  onClick={()=>setPage(p)}>{p}</button>
+              ))}
+              <button className="btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} disabled={page===pages} onClick={()=>setPage(p=>p+1)}>Siguiente →</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <GenericModal
+          title={editItem?.id ? 'Editar Upgrade/Mtto' : 'Nuevo Upgrade/Mtto'}
+          fields={MODAL_FIELDS}
+          item={editItem ? editItem : { _api: API_UPGRADES }}
+          onClose={()=>setShowModal(false)}
+          onSave={()=>{ load(); setShowModal(false) }}
+        />
+      )}
+      {confirmClear && <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PESTAÑA 4 — Seguimiento Spare Asignado a Proveedor
+// ═══════════════════════════════════════════════════════════════════════════════
+const COLS_PROVEEDOR = [
+  { key:'region',           label:'Región',             default:true  },
+  { key:'proveedor',        label:'Proveedor',           default:true  },
+  { key:'sap',              label:'SAP',                 default:true  },
+  { key:'part_number',      label:'Part Number',         default:true  },
+  { key:'descripcion',      label:'Descripción',         default:true  },
+  { key:'numero_serie',     label:'N° Serie',            default:true  },
+  { key:'lote',             label:'Lote',                default:true  },
+  { key:'centro',           label:'Centro',              default:false },
+  { key:'almacen',          label:'Almacén',             default:false },
+  { key:'motivo_asignacion',label:'Motivo',              default:false },
+  { key:'fecha_asignacion', label:'Fecha Asignación',    default:true  },
+  { key:'fecha_devolucion', label:'Fecha Devolución',    default:true  },
+  { key:'gr_devolucion',    label:'GR Devolución',       default:true  },
+  { key:'estado',           label:'Estado',              default:true  },
+  { key:'comentario',       label:'Comentario',          default:true  },
+]
+
+function TabProveedor() {
+  const [data,   setData]   = useState([])
+  const [loading,setLoading]= useState(true)
+  const [query,  setQuery]  = useState('')
+  const [dQ,     setDQ]     = useState('')
+  const [fEstado,setFE]     = useState('')
+  const [showUpload, setShowUpload] = useState(false)
+  const [showModal,  setShowModal]  = useState(false)
+  const [editItem,   setEditItem]   = useState(null)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [visibleCols, setVisibleCols] = useState(COLS_PROVEEDOR.filter(c=>c.default).map(c=>c.key))
+  const [page, setPage] = useState(1)
+  const debRef = useRef(null)
+  const PER_PAGE = 50
+  const C = { primary:'#7c3aed', border:'#e5e7eb', muted:'#6b7280' }
+
+  const ESTADOS = ['EN PROCESO','CERRADO','PENDIENTE']
+  const ESTADO_COLOR = { 'EN PROCESO':'#2563eb', 'CERRADO':'#15803d', 'PENDIENTE':'#ca8a04' }
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const rows = await fetch(`${API_PROVEEDOR}/?page_size=10000`, {
+        headers:{ Authorization:`Bearer ${getToken()}` }
+      }).then(r=>r.json()).catch(()=>[])
+      setData(Array.isArray(rows) ? rows : (rows.results||[]))
+    } finally { setLoading(false) }
+  }, [])
+
+  useEffect(()=>{ load() },[load])
+
+  const filtered = useMemo(()=>{
+    const q = dQ.toLowerCase()
+    return data.filter(r=>{
+      const mQ = !q||[r.proveedor,r.sap,r.part_number,r.numero_serie,r.descripcion,r.region,r.gr_devolucion]
+        .some(v=>String(v||'').toLowerCase().includes(q))
+      return mQ && (!fEstado||r.estado===fEstado)
+    })
+  },[data,dQ,fEstado])
+
+  const pages = Math.ceil(filtered.length/PER_PAGE)
+  const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
+  const activeCols = COLS_PROVEEDOR.filter(c=>visibleCols.includes(c.key))
+
+  const exportXLSX = () => {
+    const cols = COLS_PROVEEDOR.map(c=>c.key)
+    const header = COLS_PROVEEDOR.map(c=>c.label)
+    const rows = filtered.map(r=>cols.map(k=>r[k]||''))
+    const ws = XLSX.utils.aoa_to_sheet([header,...rows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb,ws,'Proveedor')
+    XLSX.writeFile(wb,'seguimiento_proveedor.xlsx')
+  }
+
+  const del = async (id) => {
+    if (!confirm('¿Eliminar?')) return
+    await fetch(`${API_PROVEEDOR}/${id}/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
+    load()
+  }
+
+  const clearAll = async () => {
+    await fetch(`${API_PROVEEDOR}/clear_all/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
+    setConfirmClear(false); load()
+  }
+
+  const MODAL_FIELDS = [
+    { key:'region',           label:'Región' },
+    { key:'proveedor',        label:'Proveedor' },
+    { key:'sap',              label:'SAP' },
+    { key:'part_number',      label:'Part Number' },
+    { key:'descripcion',      label:'Descripción',      span:true },
+    { key:'numero_serie',     label:'N° Serie' },
+    { key:'lote',             label:'Lote',             options:['VALORADO','NO VALORADO'] },
+    { key:'centro',           label:'Centro' },
+    { key:'almacen',          label:'Almacén' },
+    { key:'motivo_asignacion',label:'Motivo',           span:true },
+    { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
+    { key:'fecha_devolucion', label:'Fecha Devolución', type:'date' },
+    { key:'gr_devolucion',    label:'GR Devolución' },
+    { key:'estado',           label:'Estado',           options:ESTADOS },
+    { key:'comentario',       label:'Comentario',       span:true },
+  ]
+
+  const estadoCounts = ESTADOS.reduce((acc,e)=>{ acc[e]=filtered.filter(r=>r.estado===e).length; return acc },{})
+
+  return (
+    <div style={{ paddingBottom:20 }}>
+      {/* Toolbar */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
+        <button className="btn-ghost flex items-center gap-2" onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
+        <button className="btn-ghost flex items-center gap-2" onClick={exportXLSX}><Download size={14}/> Exportar Excel</button>
+        <button className="btn-ghost flex items-center gap-2" onClick={load}><RefreshCw size={14}/> Actualizar</button>
+        <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
+          style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
+            borderRadius:8, border:'1.5px solid #fecaca',
+            background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626',
+            fontSize:13, fontWeight:600, cursor:data.length===0?'default':'pointer' }}>
+          <Trash2 size={14}/> Limpiar todo
+        </button>
+        <button className="btn-primary flex items-center gap-2"
+          onClick={()=>{ setEditItem(null); setShowModal(true) }}>
+          <Plus size={14}/> Nuevo
+        </button>
+      </div>
+
+      {showUpload && (
+        <ImportPanel api={API_PROVEEDOR} onDone={load}
+          plantillaName="seguimiento_proveedor"
+          plantillaCols={['REGION','PROVEEDOR','SAP','PART-NUMBER','DESCRIPCIÓN',
+            'Numero de Serie','LOTE','CENTRO','ALMACÉN','Motivo de Asignacion',
+            'Fecha de asignacion','Fecha  devolucion al Almacen','GR-Devolucion ',
+            'ESTADO','COMENTARIO']} />
+      )}
+
+      {/* KPIs */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:16 }}>
+        <div className="card p-4" style={{ borderLeft:'4px solid #7c3aed', cursor:'pointer' }}
+          onClick={()=>{ setFE(''); setPage(1) }}>
+          <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>Total</p>
+          <p style={{ fontSize:24, fontWeight:800, color:'#7c3aed', margin:0 }}>{filtered.length}</p>
+        </div>
+        {ESTADOS.map(e=>(
+          <div key={e} className="card p-4" style={{ borderLeft:`4px solid ${ESTADO_COLOR[e]}`, cursor:'pointer' }}
+            onClick={()=>{ setFE(e); setPage(1) }}>
+            <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>{e}</p>
+            <p style={{ fontSize:24, fontWeight:800, color:ESTADO_COLOR[e], margin:0 }}>{estadoCounts[e]||0}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
+        <div style={{ position:'relative', flex:1, minWidth:220 }}>
+          <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:C.muted }}/>
+          <input className="input" style={{ paddingLeft:32 }}
+            placeholder="Buscar SAP, part number, serie, proveedor..."
+            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
+              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
+        </div>
+        <select className="input" style={{ width:150 }} value={fEstado} onChange={e=>{ setFE(e.target.value); setPage(1) }}>
+          <option value=''>Todos los estados</option>
+          {ESTADOS.map(e=><option key={e} value={e}>{e}</option>)}
+        </select>
+        {(fEstado||query) && (
+          <button className="btn-ghost" style={{ fontSize:12 }}
+            onClick={()=>{ setFE(''); setQuery(''); setDQ(''); setPage(1) }}>✕ Limpiar</button>
+        )}
+        <span style={{ fontSize:12, color:C.muted }}>{filtered.length} resultados</span>
+        <div style={{ marginLeft:'auto' }}>
+          <ColumnSelector allCols={COLS_PROVEEDOR} visibleCols={visibleCols} onChange={setVisibleCols} />
+        </div>
+      </div>
+
+      {/* Tabla */}
+      <div className="card overflow-hidden">
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr style={{ background:'#f9fafb' }}>
+                {activeCols.map(col=>(
+                  <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
+                    fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
+                    whiteSpace:'nowrap', borderBottom:`1px solid ${C.border}` }}>{col.label}</th>
+                ))}
+                <th style={{ padding:'10px 12px', borderBottom:`1px solid ${C.border}` }}/>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:C.muted }}>Cargando...</td></tr>}
+              {!loading && shown.length===0 && (
+                <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:'#9ca3af' }}>
+                  {data.length===0 ? 'Sin datos — importa el Excel para comenzar.' : 'Sin resultados.'}
+                </td></tr>
+              )}
+              {shown.map((row,i)=>(
+                <tr key={row.id||i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fafafa' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#f5f3ff'}
+                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
+                  {activeCols.map(col=>{
+                    const v = row[col.key]
+                    if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:C.primary, whiteSpace:'nowrap' }}>{v||'—'}</td>
+                    if (col.key==='estado') return <td key={col.key} style={{ padding:'8px 12px' }}>
+                      {v ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:4,
+                        background: ESTADO_COLOR[v]+'18', color: ESTADO_COLOR[v]||'#6b7280' }}>{v}</span> : '—'}
+                    </td>
+                    if (col.key==='lote') return <td key={col.key} style={{ padding:'8px 12px' }}>
+                      {v ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:4,
+                        background:v==='VALORADO'?'#dbeafe':'#f3f4f6', color:v==='VALORADO'?'#1e40af':'#6b7280' }}>{v}</span> : '—'}
+                    </td>
+                    if (col.key?.startsWith('fecha_')) return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
+                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
+                  })}
+                  <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
+                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
+                      onClick={()=>{ setEditItem({...row,_api:API_PROVEEDOR}); setShowModal(true) }}>✏️</button>
+                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
+                      onClick={()=>del(row.id)}>🗑</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {pages>1 && (
+          <div style={{ padding:'12px 16px', borderTop:`1px solid ${C.border}`,
+            display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <span style={{ fontSize:12, color:C.muted }}>Página {page} de {pages} · {filtered.length} registros</span>
+            <div style={{ display:'flex', gap:6 }}>
+              <button className="btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} disabled={page===1} onClick={()=>setPage(p=>p-1)}>← Anterior</button>
+              {Array.from({length:Math.min(pages,7)},(_,i)=>i+1).map(p=>(
+                <button key={p} style={{ padding:'4px 10px', fontSize:12, border:'none', cursor:'pointer',
+                  borderRadius:6, background:p===page?C.primary:'#f3f4f6',
+                  color:p===page?'#fff':'#374151', fontWeight:p===page?700:400 }}
+                  onClick={()=>setPage(p)}>{p}</button>
+              ))}
+              <button className="btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} disabled={page===pages} onClick={()=>setPage(p=>p+1)}>Siguiente →</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <GenericModal
+          title={editItem?.id ? 'Editar Spare Proveedor' : 'Nuevo Spare Proveedor'}
+          fields={MODAL_FIELDS}
+          item={editItem ? editItem : { _api: API_PROVEEDOR }}
+          onClose={()=>setShowModal(false)}
+          onSave={()=>{ load(); setShowModal(false) }}
+        />
+      )}
+      {confirmClear && <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PÁGINA PRINCIPAL
+// ═══════════════════════════════════════════════════════════════════════════════
+export default function SeguimientoPage() {
+  const [tab, setTab] = useState('asignado')
+
+  const TABS = [
+    { key:'asignado',  label:'Seguimiento de Spare Asignado',          icon:<MapPin size={14}/> },
+    { key:'averiadas', label:'Seguimiento Piezas Averiadas',            icon:<AlertTriangle size={14}/> },
+    { key:'upgrades',  label:'Spare Upgrade/Mantenimiento',             icon:<Wrench size={14}/> },
+    { key:'proveedor', label:'Spare Asignado a Proveedor',              icon:<Upload size={14}/> },
+  ]
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ marginBottom:20 }}>
+        <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#1f2937' }}>Seguimiento</h1>
+        <p style={{ fontSize:13, color:'#6b7280', margin:0 }}>
+          Gestión de spares asignados, piezas averiadas y upgrades/mantenimientos
+        </p>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:'flex', borderBottom:'1px solid #e5e7eb', marginBottom:20 }}>
+        {TABS.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            display:'flex', alignItems:'center', gap:6,
+            padding:'10px 20px', background:'none', border:'none',
+            borderBottom:`2px solid ${tab===t.key ? '#7c3aed' : 'transparent'}`,
+            fontSize:13, fontWeight: tab===t.key ? 600 : 400,
+            color: tab===t.key ? '#7c3aed' : '#6b7280',
+            cursor:'pointer', fontFamily:'inherit', marginBottom:-1,
+            whiteSpace:'nowrap'
+          }}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab==='asignado'  && <TabAsignado />}
+      {tab==='averiadas' && <TabAveriadas />}
+      {tab==='upgrades'  && <TabUpgrades />}
+      {tab==='proveedor' && <TabProveedor />}
+    </div>
+  )
+}
