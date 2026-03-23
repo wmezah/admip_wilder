@@ -13,25 +13,17 @@ import logging
 from datetime import timedelta
 from django.utils import timezone
 from collections import defaultdict
-<<<<<<< HEAD
 from asgiref.sync import sync_to_async
 import asyncio
-=======
->>>>>>> origin/main
 
 # ── Setup Django para usar ORM ────────────────────────────────
 BASE_DIR = Path(__file__).parent
 sys.path.insert(0, str(BASE_DIR))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
-<<<<<<< HEAD
 os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'  # Allow sync ORM in Dash async context
 
 import django
 os.environ['DJANGO_ALLOW_ASYNC_UNSAFE'] = 'true'
-=======
-
-import django
->>>>>>> origin/main
 django.setup()
 
 # ── Imports post-setup ────────────────────────────────────────
@@ -71,7 +63,6 @@ CARD_STYLE = {
 
 
 # ═══════════════════════════════════════════════════════════════
-<<<<<<< HEAD
 #  HELPERS DE DATOS — wrapped for Dash 4 async compatibility
 # ═══════════════════════════════════════════════════════════════
 import django.db
@@ -81,10 +72,6 @@ def _run_sync(fn, *args, **kwargs):
     return fn(*args, **kwargs)
 
 
-=======
-#  HELPERS DE DATOS
-# ═══════════════════════════════════════════════════════════════
->>>>>>> origin/main
 def get_cpu_summary(hours=24, prefix=''):
     since = timezone.now() - timedelta(hours=hours)
     qs = NCEPMData.objects.filter(pm_code='PM_IG45046_5', collection_time__gte=since)
@@ -336,11 +323,7 @@ def render_tab(tab):
     prevent_initial_call=False,
 )
 def update_cpu(n, hours, prefix):
-<<<<<<< HEAD
     df = _run_sync(get_cpu_summary, hours=hours or 24, prefix=prefix or '')
-=======
-    df = get_cpu_summary(hours=hours or 24, prefix=prefix or '')
->>>>>>> origin/main
     now_str = f"Actualizado: {timezone.now().strftime('%H:%M:%S')}"
 
     if df.empty:
@@ -436,11 +419,7 @@ def update_cpu(n, hours, prefix):
     prevent_initial_call=False,
 )
 def update_series(device, hours):
-<<<<<<< HEAD
     df = _run_sync(get_cpu_series, device=device or '', hours=hours or 24)
-=======
-    df = get_cpu_series(device=device or '', hours=hours or 24)
->>>>>>> origin/main
 
     if df.empty or device == '':
         fig = go.Figure()
@@ -482,11 +461,7 @@ def update_series(device, hours):
 
 # ── Alerts tab ────────────────────────────────────────────────
 def alerts_layout():
-<<<<<<< HEAD
     df = _run_sync(get_cpu_summary, hours=24)
-=======
-    df = get_cpu_summary(hours=24)
->>>>>>> origin/main
     if df.empty:
         return html.Div('Sin datos de alertas.')
     alerts = df[(df['CPU Avg Medio'] >= CPU_AVG_THRESHOLD) |
@@ -520,11 +495,7 @@ def alerts_layout():
 
 # ── Devices tab ───────────────────────────────────────────────
 def devices_layout():
-<<<<<<< HEAD
     devs = _run_sync(get_devices)
-=======
-    devs = get_devices()
->>>>>>> origin/main
     if not devs:
         return html.Div('Sin equipos registrados aún.', style=CARD_STYLE)
     df = pd.DataFrame(devs)
@@ -543,11 +514,7 @@ def devices_layout():
 
 # ── Log tab ───────────────────────────────────────────────────
 def log_layout():
-<<<<<<< HEAD
     logs = _run_sync(get_log, 100)
-=======
-    logs = get_log(100)
->>>>>>> origin/main
     if not logs:
         return html.Div('Sin registros de recolección.', style=CARD_STYLE)
     df = pd.DataFrame(logs)

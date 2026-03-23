@@ -1,10 +1,5 @@
 from rest_framework import serializers
-<<<<<<< HEAD
 from .models import Spare, SAPCatalog, CentroAlmacen, SAPMaterial, PartNumber, RMA, StockSAP, SeguimientoSpare, Seguimiento, SeguimientoAveriadas, SeguimientoUpgrades, SeguimientoProveedor
-=======
-from .models import Spare, SAPCatalog, CentroAlmacen, SAPMaterial, PartNumber, RMA, StockSAP, SeguimientoSpare, Seguimiento
-
->>>>>>> origin/main
 
 class SpareSerializer(serializers.ModelSerializer):
     proveedor = serializers.CharField(max_length=100, allow_blank=True, required=False, allow_null=True)
@@ -86,7 +81,6 @@ class SeguimientoSpareSerializer(serializers.ModelSerializer):
     class Meta:
         model = SeguimientoSpare
         fields = '__all__'
-<<<<<<< HEAD
 class SeguimientoAveridasSerializer(serializers.ModelSerializer):
     class Meta:
         model  = SeguimientoAveriadas
@@ -105,5 +99,3 @@ class SeguimientoProveedorSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-=======
->>>>>>> origin/main
