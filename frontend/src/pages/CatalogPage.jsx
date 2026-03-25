@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, Plus, FileUp, Edit2, Trash2, X, Check, Upload } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import {
   getSAPCatalog, createSAPItem, updateSAPItem, deleteSAPItem, bulkImportSAP,
   getCentroAlmacen, createCentroAlm, updateCentroAlm, deleteCentroAlm,
@@ -39,36 +40,44 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
   const [result, setResult]   = useState(null)
   const fileRef               = useRef()
 
-  const parseCSV = (text) => {
-    const lines = text.replace(/\r/g,'').split('\n').filter(l=>l.trim())
-    if (lines.length < 2) { setError('El archivo debe tener encabezado y al menos una fila'); return }
-    const headers = lines[0].split(',').map(h=>h.replace(/"/g,'').trim().toLowerCase())
-    const parsed = []
-    for (let i=1;i<lines.length;i++) {
-      const vals = lines[i].match(/(".*?"|[^,]+|(?<=,)(?=,)|^(?=,)|(?<=,)$)/g) || []
-      const obj = {}
-      columns.forEach(col => {
-        const idx = headers.findIndex(h => h===col.key.toLowerCase() || h===col.label.toLowerCase())
-        obj[col.key] = idx>=0 ? (vals[idx]||'').replace(/^"|"$/g,'').trim() : ''
-      })
-      parsed.push(obj)
+  const parseXLSX = (file) => {
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'binary' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const raw = XLSX.utils.sheet_to_json(ws, { defval: '' })
+        if (raw.length === 0) { setError('El archivo está vacío o no tiene datos'); return }
+        const parsed = raw.map(row => {
+          const obj = {}
+          columns.forEach(col => {
+            const key = Object.keys(row).find(k =>
+              k.toLowerCase() === col.key.toLowerCase() ||
+              k.toLowerCase() === col.label.toLowerCase()
+            )
+            obj[col.key] = key ? String(row[key]).trim() : ''
+          })
+          return obj
+        })
+        setRows(parsed); setError('')
+      } catch(e) { setError('No se pudo leer el archivo: ' + e.message) }
     }
-    setRows(parsed); setError('')
+    reader.readAsBinaryString(file)
   }
 
   const handleFile = (e) => {
     const file = e.target.files[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => parseCSV(ev.target.result)
-    reader.readAsText(file, 'UTF-8')
+    setRows([]); setError('')
+    parseXLSX(file)
   }
 
   const downloadTemplate = () => {
-    const csv = columns.map(c=>c.label).join(',') + '\n'
-    const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'})
-    const a = document.createElement('a'); a.href=URL.createObjectURL(blob)
-    a.download=`plantilla_${title.replace(/ /g,'_').toLowerCase()}.csv`; a.click()
+    const header = columns.map(c => c.label)
+    const ws = XLSX.utils.aoa_to_sheet([header])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla')
+    XLSX.writeFile(wb, `plantilla_${title.replace(/ /g,'_').toLowerCase()}.xlsx`)
   }
 
   const handleSave = async () => {
@@ -113,7 +122,7 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
               <div style={{background:'#f5f3ff',borderRadius:8,padding:'10px 14px',
                 marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
-                  <p style={{margin:0,fontSize:12,fontWeight:600,color:'#7c3aed'}}>📋 Plantilla CSV</p>
+                  <p style={{margin:0,fontSize:12,fontWeight:600,color:'#7c3aed'}}>📋 Plantilla Excel</p>
                   <p style={{margin:'2px 0 0',fontSize:11,color:'#6b7280'}}>
                     Columnas: {columns.map(c=>c.label+(c.required?' *':'')).join(', ')}
                   </p>
@@ -132,9 +141,9 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
                 onMouseEnter={e=>e.currentTarget.style.borderColor='#7c3aed'}
                 onMouseLeave={e=>e.currentTarget.style.borderColor='#d8b4fe'}>
                 <FileUp size={24} color="#a78bfa" style={{margin:'0 auto 8px'}}/>
-                <p style={{margin:0,fontSize:13,fontWeight:600,color:'#7c3aed'}}>Seleccionar archivo CSV</p>
+                <p style={{margin:0,fontSize:13,fontWeight:600,color:'#7c3aed'}}>Seleccionar archivo Excel (.xlsx)</p>
                 <p style={{margin:'4px 0 0',fontSize:11,color:'#9ca3af'}}>Haz clic para buscar</p>
-                <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}} onChange={handleFile}/>
+                <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={handleFile}/>
               </div>
 
               {error && (
