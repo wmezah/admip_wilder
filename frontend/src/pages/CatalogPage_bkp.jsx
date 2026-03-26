@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, Plus, FileUp, Edit2, Trash2, X, Check, Upload } from 'lucide-react'
 import * as XLSX from 'xlsx'
@@ -800,64 +800,28 @@ function PartNumbersTab() {
 
 // ── Stock SAP Logon Tab ────────────────────────────────────────────────────────
 function StockSAPTab() {
-  const [allItems, setAllItems]   = useState([])
-  const [loading,  setLoading]    = useState(true)
+  const [items, setItems]         = useState([])
+  const [count, setCount]         = useState(0)
+  const [page, setPage]           = useState(1)
+  const [search, setSearch]       = useState('')
+  const [loading, setLoading]     = useState(true)
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
-  const [page, setPage]           = useState(1)
-
-  // Filtros por columna
-  const [fMaterial,  setFMaterial]  = useState('')
-  const [fDesc,      setFDesc]      = useState('')
-  const [fLote,      setFLote]      = useState('')
-  const [fCentro,    setFCentro]    = useState('')
-  const [fAlmacen,   setFAlmacen]   = useState('')
-  const [fUM,        setFUM]        = useState('')
-
   const PAGE_SIZE = 50
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
-    setAllItems([])
-    getStockSAP({ page_size: 10000 })
+    getStockSAP({ page, page_size: PAGE_SIZE, search: search || undefined })
       .then(r => {
         const d = r.data
-        setAllItems(Array.isArray(d) ? d : (d.results || []))
+        if (Array.isArray(d)) { setItems(d); setCount(d.length) }
+        else { setItems(d.results || []); setCount(d.count || 0) }
       })
-      .catch(() => setAllItems([]))
+      .catch(() => setItems([]))
       .finally(() => setLoading(false))
-  }
+  }, [page, search])
 
-  useEffect(() => { load() }, [])
-
-  // Opciones únicas para dropdowns
-  const loteOpts   = useMemo(() => [...new Set(allItems.map(r=>r.lote).filter(Boolean))].sort(), [allItems])
-  const centroOpts = useMemo(() => [...new Set(allItems.map(r=>r.centro).filter(Boolean))].sort(), [allItems])
-  const almacenOpts = useMemo(() => {
-    const base = fCentro ? allItems.filter(r=>r.centro===fCentro) : allItems
-    return [...new Set(base.map(r=>r.almacen).filter(Boolean))].sort()
-  }, [allItems, fCentro])
-  const umOpts = useMemo(() => [...new Set(allItems.map(r=>r.unidad_medida).filter(Boolean))].sort(), [allItems])
-
-  // Filtrado client-side
-  const filtered = useMemo(() => allItems.filter(r => {
-    if (fMaterial && !String(r.material||'').toLowerCase().includes(fMaterial.toLowerCase())) return false
-    if (fDesc && !String(r.descripcion||'').toLowerCase().includes(fDesc.toLowerCase())) return false
-    if (fLote    && r.lote !== fLote) return false
-    if (fCentro  && r.centro !== fCentro) return false
-    if (fAlmacen && r.almacen !== fAlmacen) return false
-    if (fUM      && r.unidad_medida !== fUM) return false
-    return true
-  }), [allItems, fMaterial, fDesc, fLote, fCentro, fAlmacen, fUM])
-
-  const hasFilters = fMaterial || fDesc || fLote || fCentro || fAlmacen || fUM
-  const pages = Math.ceil(filtered.length / PAGE_SIZE) || 1
-  const shown  = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
-
-  const clearFilters = () => {
-    setFMaterial(''); setFDesc(''); setFLote(''); setFCentro(''); setFAlmacen(''); setFUM('')
-    setPage(1)
-  }
+  useEffect(() => { load() }, [load])
 
   const handleImport = async (file) => {
     setImporting(true); setImportResult(null)
@@ -871,42 +835,35 @@ function StockSAPTab() {
     await clearStockSAP(); load()
   }
 
-  const COLS = [
-    { key:'material',      label:'Material',     mono:true, color:'#7c3aed' },
-    { key:'descripcion',   label:'Descripción',  wide:true },
-    { key:'stock',         label:'Stock',        num:true  },
-    { key:'lote',          label:'Lote'                    },
-    { key:'centro',        label:'Centro',       mono:true },
-    { key:'almacen',       label:'Almacén',      mono:true },
-    { key:'unidad_medida', label:'UM'                      },
-  ]
+  const pages = Math.ceil(count / PAGE_SIZE) || 1
 
-  const inputSt = {
-    width:'100%', border:'0.5px solid #e5e7eb', borderRadius:4,
-    padding:'3px 6px', fontSize:10, background:'#fff',
-    color:'#374151', outline:'none', marginTop:4
-  }
-  const selSt = { ...inputSt, cursor:'pointer' }
+  const COLS = [
+    { key:'material',      label:'Material',     mono:true,  color:'#7c3aed' },
+    { key:'descripcion',   label:'Descripción',  wide:true  },
+    { key:'stock',         label:'Stock',        num:true   },
+    { key:'lote',          label:'Lote'                     },
+    { key:'centro',        label:'Centro',       mono:true  },
+    { key:'almacen',       label:'Almacén',      mono:true  },
+    { key:'unidad_medida', label:'UM'                       },
+  ]
 
   return (
     <div>
       {/* Toolbar */}
       <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
-        <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>
-          {filtered.length.toLocaleString()} / {allItems.length.toLocaleString()} registros
-        </span>
-        {hasFilters && (
-          <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4 }}
-            onClick={clearFilters}>
-            <X size={12}/> Limpiar filtros
-          </button>
-        )}
-        <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}>
+        <div style={{ position:'relative', flex:1, minWidth:200 }}>
+          <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }}/>
+          <input className="input" style={{ paddingLeft:30, fontSize:13 }}
+            placeholder="Buscar material, descripción, centro…"
+            value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+        </div>
+        <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{count.toLocaleString()} registros</span>
+        <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
           <Upload size={14}/> {importing ? 'Importando…' : 'Importar Excel SAP Logon'}
           <input type="file" accept=".xlsx,.xls" style={{ display:'none' }}
             onChange={e => { if (e.target.files[0]) handleImport(e.target.files[0]); e.target.value='' }} />
         </label>
-        {allItems.length > 0 && (
+        {items.length > 0 && (
           <button className="btn-ghost" style={{ fontSize:13, color:'#dc2626', display:'flex', alignItems:'center', gap:5 }}
             onClick={handleClear}>
             <Trash2 size={13}/> Limpiar todo
@@ -930,78 +887,39 @@ function StockSAPTab() {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
               <tr style={{ background:'#f9fafb', borderBottom:'1px solid #e5e7eb' }}>
-                {/* Material */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:120 }}>
-                  Material
-                  <input style={inputSt} placeholder="Filtrar…" value={fMaterial}
-                    onChange={e=>{ setFMaterial(e.target.value); setPage(1) }} />
-                </th>
-                {/* Descripción */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:200 }}>
-                  Descripción
-                  <input style={inputSt} placeholder="Filtrar…" value={fDesc}
-                    onChange={e=>{ setFDesc(e.target.value); setPage(1) }} />
-                </th>
-                {/* Stock */}
-                <th style={{ padding:'8px 12px', textAlign:'right', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:70 }}>
-                  Stock
-                </th>
-                {/* Lote */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:120 }}>
-                  Lote
-                  <select style={selSt} value={fLote} onChange={e=>{ setFLote(e.target.value); setPage(1) }}>
-                    <option value=''>Todos</option>
-                    {loteOpts.map(l=><option key={l} value={l}>{l}</option>)}
-                  </select>
-                </th>
-                {/* Centro */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:100 }}>
-                  Centro
-                  <select style={selSt} value={fCentro} onChange={e=>{ setFCentro(e.target.value); setFAlmacen(''); setPage(1) }}>
-                    <option value=''>Todos</option>
-                    {centroOpts.map(c=><option key={c} value={c}>{c}</option>)}
-                  </select>
-                </th>
-                {/* Almacén */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:100 }}>
-                  Almacén
-                  <select style={selSt} value={fAlmacen} onChange={e=>{ setFAlmacen(e.target.value); setPage(1) }}>
-                    <option value=''>Todos</option>
-                    {almacenOpts.map(a=><option key={a} value={a}>{a}</option>)}
-                  </select>
-                </th>
-                {/* UM */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:70 }}>
-                  UM
-                  <select style={selSt} value={fUM} onChange={e=>{ setFUM(e.target.value); setPage(1) }}>
-                    <option value=''>Todos</option>
-                    {umOpts.map(u=><option key={u} value={u}>{u}</option>)}
-                  </select>
-                </th>
+                {COLS.map(col => (
+                  <th key={col.key} style={{ padding:'10px 14px', textAlign: col.num ? 'right' : 'left',
+                    fontSize:10, fontWeight:600, color:'#6b7280',
+                    textTransform:'uppercase', letterSpacing:'.5px', whiteSpace:'nowrap' }}>
+                    {col.label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {loading && <tr><td colSpan={COLS.length} style={{ textAlign:'center', padding:30, color:'#6b7280' }}>Cargando…</td></tr>}
-              {!loading && shown.length === 0 && (
+              {!loading && items.length === 0 && (
                 <tr><td colSpan={COLS.length} style={{ textAlign:'center', padding:30, color:'#9ca3af', fontSize:12 }}>
-                  {allItems.length === 0 ? 'Sin registros — importa un archivo Excel SAP Logon.' : 'Sin resultados con los filtros aplicados.'}
+                  Sin registros — importa un archivo Excel SAP Logon.
                 </td></tr>
               )}
-              {!loading && shown.map((row) => (
+              {!loading && items.map((row, i) => (
                 <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6' }}
                   onMouseEnter={e => e.currentTarget.style.background='#fafafa'}
                   onMouseLeave={e => e.currentTarget.style.background=''}>
                   {COLS.map(col => (
                     <td key={col.key} style={{
-                      padding:'9px 12px',
+                      padding:'9px 14px',
                       textAlign: col.num ? 'right' : 'left',
                       fontFamily: col.mono ? 'monospace' : 'inherit',
                       color: col.color || (col.num ? '#059669' : '#374151'),
-                      fontWeight: col.key==='material' ? 700 : col.num ? 600 : 400,
+                      fontWeight: col.key === 'material' ? 700 : col.num ? 600 : 400,
                       maxWidth: col.wide ? 260 : undefined,
                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'
                     }}>
-                      {col.key==='stock' ? Number(row[col.key]).toLocaleString() : (row[col.key] && row[col.key] !== '(en blanco)') ? row[col.key] : '—'}
+                      {col.key === 'stock'
+                        ? Number(row[col.key]).toLocaleString()
+                        : row[col.key] || '—'}
                     </td>
                   ))}
                 </tr>
@@ -1012,7 +930,7 @@ function StockSAPTab() {
         {pages > 1 && (
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
             padding:'10px 14px', borderTop:'1px solid #e5e7eb' }}>
-            <span style={{ fontSize:12, color:'#6b7280' }}>Página {page} de {pages} · {filtered.length.toLocaleString()} registros</span>
+            <span style={{ fontSize:12, color:'#6b7280' }}>Página {page} de {pages} · {count.toLocaleString()} registros</span>
             <div style={{ display:'flex', gap:6 }}>
               <button className="btn-ghost" style={{ padding:'4px 10px', fontSize:11 }}
                 disabled={page===1} onClick={() => setPage(p=>p-1)}>‹ Anterior</button>

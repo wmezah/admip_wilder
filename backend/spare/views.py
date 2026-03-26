@@ -279,7 +279,7 @@ class StockSAPViewSet(viewsets.ModelViewSet):
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['material', 'descripcion', 'lote', 'centro', 'almacen']
     ordering_fields = ['material', 'stock', 'centro', 'almacen']
-    pagination_class = PageNumberPagination
+    pagination_class = FlexPagePagination
 
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
     def import_xlsx(self, request):
