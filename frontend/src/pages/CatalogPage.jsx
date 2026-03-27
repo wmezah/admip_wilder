@@ -402,9 +402,10 @@ function CentrosTab() {
   const [items, setItems]     = useState([])
   const [loading, setLoading] = useState(true)
   const [editId, setEditId]   = useState(null)
-  const [editRow, setEditRow] = useState({ centro:'', almacen:'' })
+  const [editRow, setEditRow] = useState({ centro:'', almacen:'', denom_almacen:'' })
   const [centro, setCentro]   = useState('')
   const [almacen, setAlmacen] = useState('')
+  const [denom, setDenom]     = useState('')
   const [adding, setAdding]   = useState(false)
   const [addMsg, setAddMsg]   = useState(null)
   const [showBulk, setShowBulk] = useState(false)
@@ -428,8 +429,8 @@ function CentrosTab() {
     if (!c || !a) { setAddMsg({ type:'err', text:'Completa Centro y Almacén' }); return }
     setAdding(true)
     try {
-      await createCentroAlm({ centro: c, almacen: a })
-      setCentro(''); setAlmacen('')
+      await createCentroAlm({ centro: c, almacen: a, denom_almacen: denom.trim() || null })
+      setCentro(''); setAlmacen(''); setDenom('')
       setAddMsg({ type:'ok', text:`✓ ${c} / ${a} añadido` })
       load()
     } catch(e) {
@@ -454,16 +455,22 @@ function CentrosTab() {
       <div className="card p-4 mb-4">
         <p style={{ fontSize:12, fontWeight:600, color:'#374151', marginBottom:10 }}>Nuevo Centro / Almacén</p>
         <div style={{ display:'flex', gap:10, alignItems:'flex-end', flexWrap:'wrap' }}>
-          <div style={{ flex:1, minWidth:120 }}>
+          <div style={{ flex:1, minWidth:100 }}>
             <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>Centro</label>
             <input className="input" placeholder="P008" value={centro}
               onChange={e => { setCentro(e.target.value); setAddMsg(null) }}
               onKeyDown={e => e.key==='Enter' && handleAdd()} />
           </div>
-          <div style={{ flex:1, minWidth:120 }}>
+          <div style={{ flex:1, minWidth:100 }}>
             <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>Almacén</label>
             <input className="input" placeholder="U000" value={almacen}
               onChange={e => { setAlmacen(e.target.value); setAddMsg(null) }}
+              onKeyDown={e => e.key==='Enter' && handleAdd()} />
+          </div>
+          <div style={{ flex:2, minWidth:180 }}>
+            <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>Denom. Almacén</label>
+            <input className="input" placeholder="Descripción del almacén" value={denom}
+              onChange={e => { setDenom(e.target.value); setAddMsg(null) }}
               onKeyDown={e => e.key==='Enter' && handleAdd()} />
           </div>
           <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}
@@ -493,15 +500,16 @@ function CentrosTab() {
               <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', width:40 }}>#</th>
               <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>Centro</th>
               <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>Almacén</th>
+              <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>Denom. Almacén</th>
               <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', width:90 }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td colSpan={4} style={{ textAlign:'center', padding:'30px', color:'#6b7280' }}>Cargando…</td></tr>
+              <tr><td colSpan={5} style={{ textAlign:'center', padding:'30px', color:'#6b7280' }}>Cargando…</td></tr>
             )}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={4} style={{ textAlign:'center', padding:'30px', color:'#9ca3af', fontSize:12 }}>
+              <tr><td colSpan={5} style={{ textAlign:'center', padding:'30px', color:'#9ca3af', fontSize:12 }}>
                 Sin registros aún. Usa el formulario de arriba para añadir.
               </td></tr>
             )}
@@ -521,6 +529,10 @@ function CentrosTab() {
                         onChange={e => setEditRow(r => ({...r, almacen:e.target.value}))} />
                     </td>
                     <td style={{ padding:'6px 10px' }}>
+                      <input className="input" value={editRow.denom_almacen||''}
+                        onChange={e => setEditRow(r => ({...r, denom_almacen:e.target.value}))} />
+                    </td>
+                    <td style={{ padding:'6px 10px' }}>
                       <div style={{ display:'flex', gap:4 }}>
                         <button className="btn-primary" style={{ padding:'4px 10px' }} onClick={handleSaveEdit}><Check size={12}/></button>
                         <button className="btn-ghost"   style={{ padding:'4px 8px'  }} onClick={() => setEditId(null)}><X size={12}/></button>
@@ -531,9 +543,10 @@ function CentrosTab() {
                   <>
                     <td style={{ padding:'10px 14px', fontWeight:700, fontFamily:'monospace', color:'#7c3aed', fontSize:14 }}>{row.centro}</td>
                     <td style={{ padding:'10px 14px', fontFamily:'monospace', fontSize:14 }}>{row.almacen}</td>
+                    <td style={{ padding:'10px 14px', fontSize:12, color:'#6b7280' }}>{row.denom_almacen || '—'}</td>
                     <td style={{ padding:'10px 14px' }}>
                       <div style={{ display:'flex', gap:4 }}>
-                        <button onClick={() => { setEditId(row.id); setEditRow({ centro:row.centro, almacen:row.almacen }) }}
+                        <button onClick={() => { setEditId(row.id); setEditRow({ centro:row.centro, almacen:row.almacen, denom_almacen:row.denom_almacen||'' }) }}
                           style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
                           onMouseEnter={e => e.currentTarget.style.color='#7c3aed'}
                           onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={14}/></button>
@@ -554,8 +567,9 @@ function CentrosTab() {
         <BulkImportModal
           title="Centros / Almacenes"
           columns={[
-            {key:'centro',  label:'Centro',  required:true},
-            {key:'almacen', label:'Almacen', required:true},
+            {key:'centro',        label:'Centro',         required:true},
+            {key:'almacen',       label:'Almacen',        required:true},
+            {key:'denom_almacen', label:'Denom Almacen',  required:false},
           ]}
           onImport={async (rows) => {
             const results = []
@@ -585,39 +599,49 @@ const PROVEEDOR_STYLE = {
 
 function PartNumbersTab() {
   const [items, setItems]       = useState([])
+  const [count, setCount]       = useState(0)
+  const [page, setPage]         = useState(1)
   const [loading, setLoading]   = useState(true)
   const [editId, setEditId]     = useState(null)
-  const [editRow, setEditRow]   = useState({ part_number:'', proveedor:'', descripcion:'' })
-  const [pn, setPn]             = useState('')
-  const [prov, setProv]         = useState('')
-  const [sap, setSap]           = useState('')
-  const [desc, setDesc]         = useState('')
+  const [editRow, setEditRow]   = useState({})
+  const [form, setForm]         = useState({ proveedor:'', modelo_equipo:'', tipo:'', sap:'', part_number:'', descripcion:'', comentarios:'' })
   const [adding, setAdding]     = useState(false)
+  const [showAdd, setShowAdd]   = useState(false)
   const [msg, setMsg]           = useState(null)
   const [search, setSearch]     = useState('')
   const [showBulk, setShowBulk] = useState(false)
+  const PAGE_SIZE = 50
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
-    getPartNumbers(search ? { search } : {})
-      .then(r => { const d = r.data; setItems(Array.isArray(d) ? d : (d.results || [])) })
+    getPartNumbers({ page, page_size: PAGE_SIZE, search: search || undefined })
+      .then(r => {
+        const d = r.data
+        setItems(Array.isArray(d) ? d : (d.results || []))
+        setCount(Array.isArray(d) ? d.length : (d.count || 0))
+      })
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [search])
+  }, [page, search])
+
+  useEffect(() => { load() }, [load])
+
+  const setF = (k, v) => setForm(f => ({...f, [k]: v}))
 
   const handleAdd = async () => {
     setMsg(null)
-    if (!pn.trim() || !prov) { setMsg({ type:'err', text:'Part Number y Proveedor son requeridos' }); return }
+    if (!form.part_number.trim() || !form.proveedor.trim()) {
+      setMsg({ type:'err', text:'Part Number y Proveedor son requeridos' }); return
+    }
     setAdding(true)
     try {
-      await createPartNumber({ part_number: pn.trim(), proveedor: prov, sap: sap.trim(), descripcion: desc.trim() })
-      setPn(''); setProv(''); setSap(''); setDesc('')
-      setMsg({ type:'ok', text:`✓ ${pn.trim()} (${prov}) añadido` })
+      await createPartNumber(form)
+      setForm({ proveedor:'', modelo_equipo:'', tipo:'', sap:'', part_number:'', descripcion:'', comentarios:'' })
+      setShowAdd(false)
+      setMsg({ type:'ok', text:`✓ ${form.part_number} añadido` })
       load()
     } catch(e) {
-      const d = e.response?.data
-      setMsg({ type:'err', text: d ? JSON.stringify(d) : e.message })
+      setMsg({ type:'err', text: JSON.stringify(e.response?.data || e.message) })
     } finally { setAdding(false) }
   }
 
@@ -627,160 +651,171 @@ function PartNumbersTab() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este Part Number?')) return
+    if (!confirm('¿Eliminar este registro?')) return
     try { await deletePartNumber(id); load() }
     catch(e) { alert('Error al eliminar') }
   }
 
+  const COLS = [
+    { key:'proveedor',     label:'Proveedor' },
+    { key:'modelo_equipo', label:'Modelo de Equipo' },
+    { key:'tipo',          label:'Tipo' },
+    { key:'sap',           label:'SAP' },
+    { key:'part_number',   label:'Part Number' },
+    { key:'descripcion',   label:'Descripción' },
+    { key:'comentarios',   label:'Comentarios' },
+  ]
+
   return (
-    <div style={{ maxWidth:700 }}>
-      {/* Add form */}
-      <div className="card p-4 mb-4">
-        <p style={{ fontSize:12, fontWeight:600, color:'#374151', marginBottom:10 }}>Nuevo Part Number</p>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 120px 160px 1fr auto', gap:10, alignItems:'flex-end' }}>
-          <div>
-            <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>Part Number *</label>
-            <input className="input" placeholder="Ej: 03057657" value={pn}
-              onChange={e => { setPn(e.target.value); setMsg(null) }}
-              onKeyDown={e => e.key==='Enter' && handleAdd()} />
-          </div>
-          <div>
-            <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>SAP</label>
-            <input className="input" placeholder="Ej: 1001728" value={sap}
-              onChange={e => { setSap(e.target.value); setMsg(null) }}
-              onKeyDown={e => e.key==='Enter' && handleAdd()} />
-          </div>
-          <div>
-            <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>Proveedor *</label>
-            <input className="input" placeholder="Ej: Huawei, ZTE, ALCATEL…" value={prov}
-              onChange={e => { setProv(e.target.value); setMsg(null) }}
-              onKeyDown={e => e.key==='Enter' && handleAdd()} />
-          </div>
-          <div>
-            <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>Descripción (opcional)</label>
-            <input className="input" placeholder="Descripción del componente" value={desc}
-              onChange={e => setDesc(e.target.value)}
-              onKeyDown={e => e.key==='Enter' && handleAdd()} />
-          </div>
-          <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}
-            onClick={()=>setShowBulk(true)}>
-            <Upload size={14}/> Importar Excel
-          </button>
-          <button className="btn-primary" style={{ display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}
-            onClick={handleAdd} disabled={adding}>
-            <Plus size={14}/> {adding ? 'Guardando…' : 'Añadir'}
-          </button>
+    <div>
+      {/* Toolbar */}
+      <div style={{ display:'flex', gap:10, marginBottom:14, alignItems:'center', flexWrap:'wrap' }}>
+        <div style={{ position:'relative', flex:1, minWidth:200 }}>
+          <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }}/>
+          <input className="input" style={{ paddingLeft:30, fontSize:13 }} placeholder="Buscar part number, proveedor, SAP…"
+            value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
         </div>
-        {msg && (
-          <p style={{ marginTop:8, fontSize:12,
-            color: msg.type==='ok' ? '#16a34a' : '#dc2626',
-            background: msg.type==='ok' ? '#f0fdf4' : '#fef2f2',
-            padding:'6px 10px', borderRadius:6,
-            border: `1px solid ${msg.type==='ok' ? '#bbf7d0' : '#fecaca'}` }}>
-            {msg.text}
-          </p>
-        )}
+        <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{count.toLocaleString()} registros</span>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setShowBulk(true)}>
+          <Upload size={14}/> Importar Excel
+        </button>
+        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setShowAdd(v=>!v)}>
+          <Plus size={14}/> Añadir
+        </button>
       </div>
 
-      {/* Search + list */}
-      <div className="card overflow-hidden">
-        <div style={{ padding:'10px 14px', borderBottom:'1px solid #e5e7eb', display:'flex', gap:10 }}>
-          <div style={{ position:'relative', flex:1 }}>
-            <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }}/>
-            <input className="input" style={{ paddingLeft:30, fontSize:12 }} placeholder="Buscar part number, proveedor…"
-              value={search} onChange={e => setSearch(e.target.value)} />
+      {/* Add form */}
+      {showAdd && (
+        <div className="card p-4 mb-4">
+          <p style={{ fontSize:12, fontWeight:600, color:'#374151', marginBottom:12 }}>Nuevo Registro</p>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+            {COLS.map(col => (
+              <div key={col.key}>
+                <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>{col.label}</label>
+                <input className="input" value={form[col.key]} placeholder={col.label}
+                  onChange={e => setF(col.key, e.target.value)} />
+              </div>
+            ))}
           </div>
-          <span style={{ fontSize:12, color:'#6b7280', alignSelf:'center', whiteSpace:'nowrap' }}>
-            {items.length} registros
-          </span>
+          <div style={{ display:'flex', gap:8, marginTop:12, justifyContent:'flex-end' }}>
+            <button className="btn-ghost" onClick={()=>{ setShowAdd(false); setMsg(null) }}>Cancelar</button>
+            <button className="btn-primary" onClick={handleAdd} disabled={adding}>
+              {adding ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+          {msg && (
+            <p style={{ marginTop:8, fontSize:12,
+              color: msg.type==='ok' ? '#16a34a' : '#dc2626',
+              background: msg.type==='ok' ? '#f0fdf4' : '#fef2f2',
+              padding:'6px 10px', borderRadius:6,
+              border: `1px solid ${msg.type==='ok' ? '#bbf7d0' : '#fecaca'}` }}>
+              {msg.text}
+            </p>
+          )}
         </div>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-          <thead>
-            <tr style={{ background:'#f9fafb', borderBottom:'1px solid #e5e7eb' }}>
-              {['#','SAP','Part Number','Proveedor','Descripción','Acciones'].map(h => (
-                <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontSize:10,
-                  fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr><td colSpan={6} style={{ textAlign:'center', padding:'30px', color:'#6b7280' }}>Cargando…</td></tr>
-            )}
-            {!loading && items.length === 0 && (
-              <tr><td colSpan={6} style={{ textAlign:'center', padding:'30px', color:'#9ca3af', fontSize:12 }}>
-                Sin registros. Añade el primero arriba.
-              </td></tr>
-            )}
-            {!loading && items.map((row, i) => (
-              <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6' }}
-                onMouseEnter={e => e.currentTarget.style.background='#fafafa'}
-                onMouseLeave={e => e.currentTarget.style.background=''}>
-                <td style={{ padding:'10px 14px', color:'#9ca3af', fontSize:11 }}>{i+1}</td>
-                {editId === row.id ? (
-                  <>
-                    <td style={{ padding:'6px 10px' }}>
-                      <input className="input" value={editRow.sap || ''}
-                        onChange={e => setEditRow(r => ({...r, sap: e.target.value}))} />
+      )}
+
+      {/* Table */}
+      <div className="card overflow-hidden">
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr style={{ background:'#f9fafb', borderBottom:'1px solid #e5e7eb' }}>
+                {COLS.map(col => (
+                  <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
+                    fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', whiteSpace:'nowrap' }}>
+                    {col.label}
+                  </th>
+                ))}
+                <th style={{ padding:'10px 12px', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase' }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading && <tr><td colSpan={8} style={{ textAlign:'center', padding:30, color:'#6b7280' }}>Cargando…</td></tr>}
+              {!loading && items.length === 0 && (
+                <tr><td colSpan={8} style={{ textAlign:'center', padding:30, color:'#9ca3af', fontSize:12 }}>
+                  Sin registros. Usa Añadir o Importar Excel.
+                </td></tr>
+              )}
+              {!loading && items.map(row => (
+                <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#fafafa'}
+                  onMouseLeave={e => e.currentTarget.style.background=''}>
+                  {COLS.map(col => (
+                    <td key={col.key} style={{ padding:'9px 12px', fontSize:12,
+                      fontFamily: col.key==='sap'||col.key==='part_number' ? 'monospace' : 'inherit',
+                      color: col.key==='part_number' ? '#7c3aed' : col.key==='sap' ? '#6b7280' : '#374151',
+                      fontWeight: col.key==='part_number' ? 700 : 400,
+                      maxWidth: col.key==='descripcion'||col.key==='comentarios' ? 180 : undefined,
+                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                      title={row[col.key]||''}>
+                      {editId === row.id ? (
+                        <input className="input" style={{ fontSize:11 }} value={editRow[col.key]||''}
+                          onChange={e => setEditRow(r => ({...r, [col.key]: e.target.value}))} />
+                      ) : (
+                        col.key==='proveedor' ? (
+                          <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:600,
+                            background: PROVEEDOR_STYLE[row.proveedor]?.bg || '#f3f4f6',
+                            color: PROVEEDOR_STYLE[row.proveedor]?.color || '#6b7280' }}>
+                            {row[col.key] || '—'}
+                          </span>
+                        ) : row[col.key] || '—'
+                      )}
                     </td>
-                    <td style={{ padding:'6px 10px' }}>
-                      <input className="input" value={editRow.part_number}
-                        onChange={e => setEditRow(r => ({...r, part_number: e.target.value}))} />
-                    </td>
-                    <td style={{ padding:'6px 10px' }}>
-                      <input className="input" value={editRow.proveedor}
-                        onChange={e => setEditRow(r => ({...r, proveedor: e.target.value}))} />
-                    </td>
-                    <td style={{ padding:'6px 10px' }}>
-                      <input className="input" value={editRow.descripcion || ''}
-                        onChange={e => setEditRow(r => ({...r, descripcion: e.target.value}))} />
-                    </td>
-                    <td style={{ padding:'6px 10px' }}>
+                  ))}
+                  <td style={{ padding:'9px 12px', whiteSpace:'nowrap' }}>
+                    {editId === row.id ? (
                       <div style={{ display:'flex', gap:4 }}>
                         <button className="btn-primary" style={{ padding:'4px 10px' }} onClick={handleSaveEdit}><Check size={12}/></button>
-                        <button className="btn-ghost"   style={{ padding:'4px 8px'  }} onClick={() => setEditId(null)}><X size={12}/></button>
+                        <button className="btn-ghost" style={{ padding:'4px 8px' }} onClick={() => setEditId(null)}><X size={12}/></button>
                       </div>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td style={{ padding:'10px 14px', fontFamily:'monospace', fontSize:12, color:'#6b7280' }}>{row.sap || '—'}</td>
-                    <td style={{ padding:'10px 14px', fontWeight:700, fontFamily:'monospace', color:'#7c3aed', fontSize:13 }}>{row.part_number}</td>
-                    <td style={{ padding:'10px 14px' }}>
-                      <span style={{ padding:'3px 10px', borderRadius:12, fontSize:11, fontWeight:600,
-                        background: PROVEEDOR_STYLE[row.proveedor]?.bg || '#f3f4f6',
-                        color:      PROVEEDOR_STYLE[row.proveedor]?.color || '#6b7280' }}>
-                        {row.proveedor}
-                      </span>
-                    </td>
-                    <td style={{ padding:'10px 14px', fontSize:12, color:'#6b7280' }}>{row.descripcion || '—'}</td>
-                    <td style={{ padding:'10px 14px' }}>
+                    ) : (
                       <div style={{ display:'flex', gap:4 }}>
-                        <button onClick={() => { setEditId(row.id); setEditRow({ sap:row.sap||'', part_number:row.part_number, proveedor:row.proveedor, descripcion:row.descripcion||'' }) }}
+                        <button onClick={() => { setEditId(row.id); setEditRow({...row}) }}
                           style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
                           onMouseEnter={e => e.currentTarget.style.color='#7c3aed'}
-                          onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={14}/></button>
+                          onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
                         <button onClick={() => handleDelete(row.id)}
                           style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
                           onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
-                          onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={14}/></button>
+                          onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>
                       </div>
-                    </td>
-                  </>
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {Math.ceil(count/PAGE_SIZE) > 1 && (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'10px 14px', borderTop:'1px solid #e5e7eb' }}>
+            <span style={{ fontSize:12, color:'#6b7280' }}>
+              Página {page} de {Math.ceil(count/PAGE_SIZE)} · {count.toLocaleString()} registros
+            </span>
+            <div style={{ display:'flex', gap:6 }}>
+              <button className="btn-ghost" style={{ padding:'4px 10px', fontSize:11 }}
+                disabled={page===1} onClick={() => setPage(p=>p-1)}>‹ Anterior</button>
+              <button className="btn-ghost" style={{ padding:'4px 10px', fontSize:11 }}
+                disabled={page>=Math.ceil(count/PAGE_SIZE)} onClick={() => setPage(p=>p+1)}>Siguiente ›</button>
+            </div>
+          </div>
+        )}
       </div>
+
       {showBulk && (
         <BulkImportModal
-          title="Part Numbers"
+          title="Código SAP IP"
           columns={[
-            {key:'part_number', label:'Part Number', required:true},
-            {key:'sap',         label:'SAP',         required:false},
-            {key:'proveedor',   label:'Proveedor',   required:true},
-            {key:'descripcion', label:'Descripcion', required:false},
+            {key:'proveedor',     label:'Proveedor',        required:true},
+            {key:'modelo_equipo', label:'Modelo de Equipo', required:false},
+            {key:'tipo',          label:'Tipo',             required:false},
+            {key:'sap',           label:'SAP',              required:false},
+            {key:'part_number',   label:'Part Number',      required:true},
+            {key:'descripcion',   label:'Descripcion',      required:false},
+            {key:'comentarios',   label:'Comentarios',      required:false},
           ]}
           onImport={async (rows) => {
             const results = []
@@ -1036,7 +1071,7 @@ export default function CatalogPage() {
         <p className="text-sm mt-0.5" style={{ color:'#6b7280' }}>Gestión del catálogo SAP y tabla de Centros / Almacenes</p>
       </div>
       <div style={{ display:'flex', borderBottom:'1px solid #e5e7eb' }}>
-        {[['sap','Catálogo SAP'],['centros','Centros / Almacenes'],['partnumbers','Part Numbers'],['stock','Stock SAP Logon']].map(([k,l]) => (
+        {[['sap','Maestro de Materiales'],['centros','Centros / Almacenes'],['partnumbers','Código SAP IP'],['stock','Stock SAP Logon']].map(([k,l]) => (
           <button key={k} onClick={() => setTab(k)} style={{
             padding:'8px 20px', background:'none', border:'none',
             borderBottom:`2px solid ${tab===k ? '#7c3aed' : 'transparent'}`,
