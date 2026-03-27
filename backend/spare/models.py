@@ -100,6 +100,7 @@ class SAPCatalog(models.Model):
 class CentroAlmacen(models.Model):
     centro  = models.CharField(max_length=50)
     almacen = models.CharField(max_length=50)
+    denom_almacen = models.CharField(max_length=200, blank=True, null=True)  # ← NUEVO
 
     class Meta:
         db_table        = 'centro_almacen'
@@ -114,10 +115,13 @@ class CentroAlmacen(models.Model):
 
 # ─── Part Number ──────────────────────────────────────────────────────────────
 class PartNumber(models.Model):
+    proveedor   = models.CharField(max_length=100)
+    modelo_equipo = models.CharField(max_length=200, blank=True, null=True)  # ← NUEVO
+    tipo          = models.CharField(max_length=100, blank=True, null=True)  # ← NUEVO
     sap         = models.CharField(max_length=100, blank=True, null=True)
     part_number = models.CharField(max_length=200, unique=True)
-    proveedor   = models.CharField(max_length=100)
     descripcion = models.CharField(max_length=300, blank=True, null=True)
+    comentarios   = models.TextField(blank=True, null=True)                  # ← NUEVO
 
     class Meta:
         db_table        = 'part_number'

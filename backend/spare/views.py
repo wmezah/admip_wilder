@@ -230,9 +230,9 @@ class CentroAlmacenViewSet(viewsets.ModelViewSet):
 class PartNumberViewSet(viewsets.ModelViewSet):
     queryset         = PartNumber.objects.all()
     serializer_class = PartNumberSerializer
-    pagination_class = None
+    pagination_class = FlexPagePagination
     filter_backends  = [SearchFilter]
-    search_fields    = ['part_number', 'proveedor', 'descripcion']
+    search_fields = ['part_number', 'proveedor', 'descripcion', 'modelo_equipo', 'tipo', 'sap']
 
     @action(detail=False, methods=['get'], url_path='by-proveedor')
     def by_proveedor(self, request):
