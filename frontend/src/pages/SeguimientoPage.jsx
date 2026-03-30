@@ -113,15 +113,66 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
 }
 
 // ─── Modal genérico ───────────────────────────────────────────────────────────
-function GenericModal({ title, fields, item, onClose, onSave }) {
+function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withCentroAlmacen }) {
   const [form, setForm] = useState(() => {
     const init = {}
     fields.forEach(f => { init[f.key] = item?.[f.key] || '' })
     return init
   })
   const [saving, setSaving] = useState(false)
+  const [sapLoading, setSapLoading] = useState(false)
+  const sapTimer = useRef(null)
+  const [centros, setCentros] = useState([])
+  const [almacenes, setAlmacenes] = useState([])
+
+  useEffect(() => {
+    if (!withCentroAlmacen) return
+    fetch('/api/spare/centros/centros/', { headers: { Authorization: `Bearer ${getToken()}` } })
+      .then(r => r.json()).then(d => setCentros(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [withCentroAlmacen])
+
+  useEffect(() => {
+    if (!withCentroAlmacen || !form.centro) { setAlmacenes([]); return }
+    fetch(`/api/spare/centros/by-centro/?centro=${encodeURIComponent(form.centro)}`, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+    }).then(r => r.json()).then(d => {
+      if (!Array.isArray(d)) { setAlmacenes([]); return }
+      // Normalizar: soporta tanto strings como objetos {almacen, denom_almacen}
+      const normalized = d.map(item =>
+        typeof item === 'string'
+          ? { almacen: item, denom_almacen: null }
+          : item
+      )
+      setAlmacenes(normalized)
+    }).catch(() => {})
+  }, [withCentroAlmacen, form.centro])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSapChange = (v) => {
+    set('sap', v)
+    if (!onSapLookup) return
+    clearTimeout(sapTimer.current)
+    if (v.trim().length < 3) return
+    sapTimer.current = setTimeout(async () => {
+      setSapLoading(true)
+      try {
+        const result = await onSapLookup(v.trim())
+        if (result) {
+          setForm(f => ({
+            ...f,
+            proveedor:            result.proveedor             || f.proveedor,
+            part_number:          result.part_number           || f.part_number,
+            descripcion:          result.descripcion           || f.descripcion,
+            description:          result.descripcion           || f.description,
+            equipo:               result.modelo_equipo         || f.equipo,
+            modelo:               result.modelo_equipo         || f.modelo,
+            part_number_averiado: result.part_number           || f.part_number_averiado,
+          }))
+        }
+      } finally { setSapLoading(false) }
+    }, 500)
+  }
 
   const save = async () => {
     setSaving(true)
@@ -169,6 +220,31 @@ function GenericModal({ title, fields, item, onClose, onSave }) {
                 <select value={form[f.key]} onChange={e => set(f.key, e.target.value)} className="input">
                   <option value=''>—</option>
                   {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              ) : f.key === 'sap' && onSapLookup ? (
+                <div style={{ position:'relative' }}>
+                  <input type="text" value={form[f.key]}
+                    onChange={e => handleSapChange(e.target.value)} className="input"
+                    placeholder="Ingresa SAP para autocompletar..." />
+                  {sapLoading && (
+                    <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
+                      fontSize:11, color:'#7c3aed', pointerEvents:'none' }}>🔍 Buscando...</span>
+                  )}
+                </div>
+              ) : f.key === 'centro' && withCentroAlmacen ? (
+                <select value={form.centro} onChange={e => { set('centro', e.target.value); set('almacen', '') }} className="input">
+                  <option value=''>— Seleccionar Centro —</option>
+                  {centros.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              ) : f.key === 'almacen' && withCentroAlmacen ? (
+                <select value={form.almacen} onChange={e => set('almacen', e.target.value)} className="input"
+                  disabled={!form.centro}>
+                  <option value=''>— Seleccionar Almacén —</option>
+                  {almacenes.map(a => (
+                    <option key={a.almacen} value={a.almacen}>
+                      {a.almacen}{a.denom_almacen ? ` — ${a.denom_almacen}` : ''}
+                    </option>
+                  ))}
                 </select>
               ) : (
                 <input type={f.type || 'text'} value={form[f.key]}
@@ -369,6 +445,16 @@ function TabAsignado() {
     setConfirmClear(false); load()
   }
 
+  const sapLookup = async (sap) => {
+    try {
+      const r = await fetch(`/api/spare/part-numbers/lookup-by-sap/?sap=${encodeURIComponent(sap)}`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      })
+      if (!r.ok) return null
+      return await r.json()
+    } catch { return null }
+  }
+
   const MODAL_FIELDS = [
     { key:'red',              label:'Red',              options:['IPRAN','ACCESO','METRO','CORE'] },
     { key:'proveedor',        label:'Proveedor' },
@@ -548,6 +634,7 @@ function TabAsignado() {
           item={editItem ? editItem : { _api: API_ASIGNADO }}
           onClose={()=>setShowModal(false)}
           onSave={()=>{ load(); setShowModal(false) }}
+          onSapLookup={sapLookup}
         />
       )}
       {confirmClear && (
@@ -566,7 +653,7 @@ const COLS_AVERIADAS = [
   { key:'proveedor',              label:'Proveedor',       default:true  },
   { key:'equipo',                 label:'Equipo',          default:true  },
   { key:'modelo',                 label:'Modelo',          default:true  },
-  { key:'part_number_averiado',   label:'PN Averiado',     default:true  },
+  { key:'part_number_averiado',   label:'Part Number Averiado', default:true  },
   { key:'description',            label:'Descripción',     default:true  },
   { key:'serie_averiada',         label:'Serie Averiada',  default:true  },
   { key:'sap',                    label:'SAP',             default:true  },
@@ -645,6 +732,16 @@ function TabAveriadas() {
     setConfirmClear(false); load()
   }
 
+  const sapLookup = async (sap) => {
+    try {
+      const r = await fetch(`/api/spare/part-numbers/lookup-by-sap/?sap=${encodeURIComponent(sap)}`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      })
+      if (!r.ok) return null
+      return await r.json()
+    } catch { return null }
+  }
+
   const STATUSES = ['Pendiente','En Proceso','Completado','Cancelado']
 
   const MODAL_FIELDS = [
@@ -653,7 +750,7 @@ function TabAveriadas() {
     { key:'proveedor',              label:'Proveedor' },
     { key:'equipo',                 label:'Equipo' },
     { key:'modelo',                 label:'Modelo' },
-    { key:'part_number_averiado',   label:'PN Averiado' },
+    { key:'part_number_averiado',   label:'Part Number Averiado' },
     { key:'description',            label:'Descripción',    span:true },
     { key:'serie_averiada',         label:'Serie Averiada' },
     { key:'sap',                    label:'SAP' },
@@ -810,6 +907,7 @@ function TabAveriadas() {
           item={editItem ? editItem : { _api: API_AVERIADAS }}
           onClose={()=>setShowModal(false)}
           onSave={()=>{ load(); setShowModal(false) }}
+          onSapLookup={sapLookup}
         />
       )}
       {confirmClear && <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>}
@@ -894,6 +992,16 @@ function TabUpgrades() {
   const clearAll = async () => {
     await fetch(`${API_UPGRADES}/clear_all/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
     setConfirmClear(false); load()
+  }
+
+  const sapLookup = async (sap) => {
+    try {
+      const r = await fetch(`/api/spare/part-numbers/lookup-by-sap/?sap=${encodeURIComponent(sap)}`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      })
+      if (!r.ok) return null
+      return await r.json()
+    } catch { return null }
   }
 
   const MODAL_FIELDS = [
@@ -1050,6 +1158,7 @@ function TabUpgrades() {
           item={editItem ? editItem : { _api: API_UPGRADES }}
           onClose={()=>setShowModal(false)}
           onSave={()=>{ load(); setShowModal(false) }}
+          onSapLookup={sapLookup}
         />
       )}
       {confirmClear && <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>}
@@ -1141,6 +1250,16 @@ function TabProveedor() {
   const clearAll = async () => {
     await fetch(`${API_PROVEEDOR}/clear_all/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
     setConfirmClear(false); load()
+  }
+
+  const sapLookup = async (sap) => {
+    try {
+      const r = await fetch(`/api/spare/part-numbers/lookup-by-sap/?sap=${encodeURIComponent(sap)}`, {
+        headers: { Authorization: `Bearer ${getToken()}` }
+      })
+      if (!r.ok) return null
+      return await r.json()
+    } catch { return null }
   }
 
   const MODAL_FIELDS = [
@@ -1306,6 +1425,8 @@ function TabProveedor() {
           item={editItem ? editItem : { _api: API_PROVEEDOR }}
           onClose={()=>setShowModal(false)}
           onSave={()=>{ load(); setShowModal(false) }}
+          onSapLookup={sapLookup}
+          withCentroAlmacen={true}
         />
       )}
       {confirmClear && <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>}

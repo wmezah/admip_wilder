@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx'
 import { createPortal } from 'react-dom'
 import {
   Search, Filter, Download, Plus, Edit2, Trash2, X,
-  ChevronLeft, ChevronRight, CheckCircle, Upload, FileUp
+  ChevronLeft, ChevronRight, CheckCircle, Upload, FileUp, Columns
 } from 'lucide-react'
 import {
   getSpares, deleteSpare, getFilterOptions, exportCSV,
@@ -143,39 +143,22 @@ function SpareDetailModal({ spare, onClose, onEdit }) {
 
 // ── SpareImportModal ──────────────────────────────────────────────────────────
 const SPARE_IMPORT_COLS = [
-  { key:'sap',              label:'sap' },
-  { key:'orden_compra',     label:'orden_compra' },
-  { key:'descripcion',      label:'descripcion' },
-  { key:'serial_number',    label:'serial_number' },
-  { key:'tipo',             label:'tipo' },
-  { key:'modelo',           label:'modelo' },
-  { key:'tipo_material',    label:'tipo_material' },
-  { key:'grupo_art',        label:'grupo_art' },
-  { key:'descrip_gpo_art',  label:'descrip_gpo_art' },
-  { key:'cat_valoracion',   label:'cat_valoracion' },
-  { key:'unidad_medida',    label:'unidad_medida' },
-  { key:'creado_el_sap',    label:'creado_el_sap' },
-  { key:'creado_por_sap',   label:'creado_por_sap' },
-  { key:'sujeto_lote',      label:'sujeto_lote' },
-  { key:'etiqueta',         label:'etiqueta' },
-  { key:'cod_naciones',     label:'cod_naciones' },
-  { key:'grupo_art_ext',    label:'grupo_art_ext' },
-  { key:'cod_subcat',       label:'cod_subcat' },
-  { key:'desc_subcat',      label:'desc_subcat' },
-  { key:'perfil_numserie',  label:'perfil_numserie' },
-  { key:'marcado_borrar',   label:'marcado_borrar' },
-  { key:'texto_pedido',     label:'texto_pedido' },
-  { key:'fuente',           label:'fuente' },
-  { key:'part_number',      label:'part_number' },
-  { key:'proveedor',        label:'proveedor' },
-  { key:'centro',           label:'centro' },
-  { key:'almacen',          label:'almacen' },
-  { key:'zona',             label:'zona' },
-  { key:'fecha_averia',     label:'fecha_averia' },
-  { key:'fecha_ingreso',    label:'fecha_ingreso' },
-  { key:'valor_lote',       label:'valor_lote' },
-  { key:'motivo_asignacion',label:'motivo_asignacion' },
-  { key:'estatus',          label:'estatus' },
+  { key:'sap',              label:'SAP' },
+  { key:'part_number',      label:'Part Number' },
+  { key:'tipo',             label:'Tipo' },
+  { key:'modelo',           label:'Modelo' },
+  { key:'proveedor',        label:'Proveedor' },
+  { key:'descripcion',      label:'Descripcion' },
+  { key:'serial_number',    label:'Serial Number' },
+  { key:'orden_compra',     label:'Orden Compra' },
+  { key:'centro',           label:'Centro' },
+  { key:'almacen',          label:'Almacen' },
+  { key:'zona',             label:'Zona' },
+  { key:'fecha_ingreso',    label:'Fecha Ingreso' },
+  { key:'fecha_asignacion', label:'Fecha Asignacion' },
+  { key:'valor_lote',       label:'Valor Lote' },
+  { key:'motivo_asignacion',label:'Motivo Asignacion' },
+  { key:'estatus',          label:'Estatus' },
 ]
 
 function SpareImportModal({ onClose, onDone }) {
@@ -207,7 +190,7 @@ function SpareImportModal({ onClose, onDone }) {
           const val = row[col.key] ?? row[col.label] ??
             row[col.key.toLowerCase()] ?? row[col.label.toLowerCase()] ?? ''
           const raw = cleanVal(val)
-          if (['fecha_averia','fecha_ingreso','creado_el_sap'].includes(col.key) && !raw) return
+          if (['fecha_ingreso','fecha_asignacion'].includes(col.key) && !raw) return
           if (raw && raw !== 'undefined') obj[col.key] = raw
         })
         return obj
@@ -239,7 +222,11 @@ function SpareImportModal({ onClose, onDone }) {
       const xlsxBlob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
       const formData = new FormData()
       formData.append('file', xlsxBlob, 'import.xlsx')
-      const res = await fetch('/api/spare/import/xlsx-spare/', { method:'POST', body: formData })
+      const res = await fetch('/api/spare/import/xlsx-spare/', {
+        method: 'POST',
+        body: formData,
+        headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+      })
       const data = await res.json()
       console.log('[Import result]', data)
       if (!res.ok) throw new Error(data.error || JSON.stringify(data))
@@ -381,17 +368,9 @@ const ESTATUS_LIST = [
 ]
 
 const EMPTY = {
-  sap:'', orden_compra:'', descripcion:'', serial_number:'', part_number:'', proveedor:'',
-  // auto SAP
-  tipo:'', modelo:'', tipo_material:'', grupo_art:'', descrip_gpo_art:'',
-  cat_valoracion:'', unidad_medida:'', creado_el_sap:'', creado_por_sap:'',
-  sujeto_lote:'', etiqueta:'', cod_naciones:'', grupo_art_ext:'',
-  cod_subcat:'', desc_subcat:'', perfil_numserie:'', marcado_borrar:'',
-  texto_pedido:'', fuente:'',
-  // manual
-  centro:'', almacen:'', zona:'',
-  fecha_averia:'', fecha_ingreso:'',
-  valor_lote:'', motivo_asignacion:'', estatus:'',
+  sap:'', part_number:'', tipo:'', modelo:'', proveedor:'', descripcion:'',
+  serial_number:'', orden_compra:'', centro:'', almacen:'', zona:'',
+  fecha_ingreso:'', fecha_asignacion:'', valor_lote:'', motivo_asignacion:'', estatus:'',
 }
 
 // ── SAP Autocomplete hook ─────────────────────────────────────────────────────
@@ -469,209 +448,123 @@ const cleanNum = (v) => {
 
 // ── SpareModal ────────────────────────────────────────────────────────────────
 // Uses refs for simple text/date inputs → zero re-renders on keystroke
-function SpareModal({ spare, onClose, onSaved, sapCatalog }) {
+function SpareModal({ spare, onClose, onSaved }) {
   const init = spare ? { ...spare } : { ...EMPTY }
 
-  // Only reactive state: SAP autocomplete + Centro/Almacén dropdowns + SAP auto-fields
-  const [saving, setSaving]     = useState(false)
-  const [sapMatch, setSapMatch] = useState(null)
-  const [centros, setCentros]   = useState([])
-  const [almacenes, setAlmacenes] = useState([])
-  const [centro, setCentro]     = useState(init.centro || '')
-  const [almacen, setAlmacen]   = useState(init.almacen || '')
+  const [saving, setSaving]       = useState(false)
+  const [sapLoading, setSapLoading] = useState(false)
+  const [centro, setCentro]       = useState(init.centro || '')
+  const [almacen, setAlmacen]     = useState(init.almacen || '')
   const [estatus, setEstatus]     = useState(init.estatus || '')
-  const [proveedor, setProveedor] = useState(init.proveedor || '')
-  const [partNumbers, setPartNumbers] = useState([])
-  const [selProveedor, setSelProveedor] = useState(init.proveedor || '')
-  const [selPartNumber, setSelPartNumber] = useState(init.part_number || '')
-  const selProveedorRef = useRef(init.proveedor || '')
-  const selPartNumberRef = useRef(init.part_number || '')
-  const _setSelProveedor = (v) => { selProveedorRef.current = v; setSelProveedor(v) }
-  const _setSelPartNumber = (v) => { selPartNumberRef.current = v; setSelPartNumber(v) }
-  const [pnSugg, setPnSugg] = useState([])
+  const [centros, setCentros]     = useState([])
+  const [almacenes, setAlmacenes] = useState([])
+  const sapTimer                  = useRef(null)
+
+  // Auto fields (react state — re-render on SAP lookup)
   const [autoFields, setAutoFields] = useState({
-    sap: cleanNum(init.sap) || '', tipo: init.tipo || '', modelo: init.modelo || '',
-    tipo_material: init.tipo_material || '', grupo_art: init.grupo_art || '',
-    descrip_gpo_art: init.descrip_gpo_art || '', cat_valoracion: init.cat_valoracion || '',
-    unidad_medida: init.unidad_medida || '', creado_el_sap: init.creado_el_sap || '',
-    creado_por_sap: init.creado_por_sap || '', sujeto_lote: init.sujeto_lote || '',
-    etiqueta: init.etiqueta || '', cod_naciones: init.cod_naciones || '',
-    grupo_art_ext: init.grupo_art_ext || '', cod_subcat: init.cod_subcat || '',
-    desc_subcat: init.desc_subcat || '', perfil_numserie: init.perfil_numserie || '',
-    marcado_borrar: init.marcado_borrar || '', texto_pedido: init.texto_pedido || '',
-    fuente: init.fuente || '',
+    sap:         init.sap         || '',
+    part_number: init.part_number || '',
+    tipo:        init.tipo        || '',
+    modelo:      init.modelo      || '',
+    proveedor:   init.proveedor   || '',
+    descripcion: init.descripcion || '',
   })
 
-  // Refs for simple fields (no re-render on type)
+  // Uncontrolled fields (refs — no re-render on type)
   const refs = {
-    zona:               useRef(null),
-    serial_number:      useRef(null),
-    part_number:        useRef(null),
-    fecha_averia:       useRef(null),
-    fecha_ingreso:      useRef(null),
-    valor_lote:         useRef(null),
-    orden_compra:       useRef(null),
-    descripcion:        useRef(null),
-    motivo_asignacion:  useRef(null),
+    serial_number:    useRef(null),
+    orden_compra:     useRef(null),
+    zona:             useRef(null),
+    fecha_ingreso:    useRef(null),
+    fecha_asignacion: useRef(null),
+    valor_lote:       useRef(null),
+    motivo_asignacion:useRef(null),
   }
 
-  const { query, setQuery, suggestions, setSuggestions, searching, search } = useSAPSearch(sapCatalog)
-
-  useEffect(() => { getCentros().then(r => setCentros(r.data)).catch(()=>{}) }, [])
-  useEffect(() => { getPartNumbers().then(r => { const d=r.data; setPartNumbers(Array.isArray(d)?d:(d.results||[])) }).catch(()=>{}) }, [])
-  // When proveedor changes, reset part_number and filter list
-  const filteredPNs = selProveedor ? partNumbers.filter(p => p.proveedor === selProveedor) : []
   useEffect(() => {
-    if (centro) getAlmacenes(centro).then(r => setAlmacenes(r.data)).catch(()=>{})
+    getCentros().then(r => setCentros(r.data || [])).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (centro) getAlmacenes(centro).then(r => setAlmacenes(r.data || [])).catch(() => {})
     else setAlmacenes([])
   }, [centro])
-  useEffect(() => { if (spare?.sap) setQuery(cleanNum(spare.sap)) }, [spare])
 
-  // On edit: always fetch SAP catalog data to fill fields
-  useEffect(() => {
-    if (!spare?.sap) return
-    getSAPLookup(cleanNum(spare.sap)).then(res => {
-      const row = res.data
-      console.log('[SAP Lookup]', row)
-      if (!row?.sap) return
-      setAutoFields({
-        sap: cleanNum(row.sap),
-        tipo:            row.denom_tpmt   || row.tipo            || '',
-        modelo:          row.texto_breve  || row.modelo          || '',
-        tipo_material:   row.tipo_material   || '',
-        grupo_art:       row.grupo_art       || '',
-        descrip_gpo_art: row.descrip_gpo_art || '',
-        cat_valoracion:  row.cat_valoracion  || '',
-        unidad_medida:   row.unidad_medida   || '',
-        creado_el_sap:   row.creado_el       || '',
-        creado_por_sap:  row.creado_por      || '',
-        sujeto_lote:     row.sujeto_lote     || '',
-        etiqueta:        row.etiqueta        || '',
-        cod_naciones:    row.cod_naciones    || '',
-        grupo_art_ext:   row.grupo_art_ext   || '',
-        cod_subcat:      row.cod_subcat      || '',
-        desc_subcat:     row.desc_subcat     || '',
-        perfil_numserie: row.perfil_numserie || '',
-        marcado_borrar:  row.marcado_borrar  || '',
-        texto_pedido:    row.texto_pedido    || '',
-        fuente:          row.fuente          || '',
-      })
-      // Also lookup Part Number + Proveedor by SAP
-      lookupPartNumberBySAP(row.sap).then(pnRes => {
-        console.log('[PN Lookup by SAP]', row.sap, pnRes.data)
-        if (pnRes.data?.part_number) {
-          _setSelProveedor(pnRes.data.proveedor || '')
-          _setSelPartNumber(pnRes.data.part_number)
+  const handleSapChange = (val) => {
+    setAutoFields(f => ({ ...f, sap: val }))
+    clearTimeout(sapTimer.current)
+    if (val.trim().length < 3) return
+    sapTimer.current = setTimeout(async () => {
+      setSapLoading(true)
+      try {
+        const res = await lookupPartNumberBySAP(val.trim())
+        const data = res.data
+        if (data) {
+          setAutoFields(f => ({
+            ...f,
+            part_number: data.part_number || f.part_number,
+            tipo:        data.tipo        || f.tipo,
+            modelo:      data.modelo_equipo || f.modelo,
+            proveedor:   data.proveedor   || f.proveedor,
+            descripcion: data.descripcion || f.descripcion,
+          }))
         }
-      }).catch(err => console.log('[PN Lookup error]', err))
-    }).catch(() => {})
-  }, [spare])
-
-  const applyMatch = (row) => {
-    // Support both camelCase (sap_catalog.json) and snake_case (API)
-    const g = (snake, camel) => row[snake] || row[camel] || ''
-    const af = {
-      sap: cleanNum(row.sap),
-      tipo:            g('denom_tpmt',      'denomTPMT'),
-      modelo:          g('texto_breve',     'textoBreve'),
-      tipo_material:   g('tipo_material',   'tipoMaterial'),
-      grupo_art:       g('grupo_art',       'grupoArt'),
-      descrip_gpo_art: g('descrip_gpo_art', 'descripGpoArt'),
-      cat_valoracion:  g('cat_valoracion',  'catValoracion'),
-      unidad_medida:   g('unidad_medida',   'unidadMedida'),
-      creado_el_sap:   g('creado_el',       'creadoEl'),
-      creado_por_sap:  g('creado_por',      'creadoPor'),
-      sujeto_lote:     g('sujeto_lote',     'sujetoLote'),
-      etiqueta:        g('etiqueta',        'etiqueta'),
-      cod_naciones:    g('cod_naciones',    'codNaciones'),
-      grupo_art_ext:   g('grupo_art_ext',   'grupoArtExt'),
-      cod_subcat:      g('cod_subcat',      'codSubcat'),
-      desc_subcat:     g('desc_subcat',     'descSubcat'),
-      perfil_numserie: g('perfil_numserie', 'perfilNumserie'),
-      marcado_borrar:  g('marcado_borrar',  'marcadoBorrar'),
-      texto_pedido:    g('texto_pedido',    'textoPedido'),
-      fuente:          g('fuente',          'fuente'),
-    }
-    setAutoFields(af)
-    setSapMatch(row)
-    setQuery(row.sap)
-    setSuggestions([])
-
-    // Auto-fill Part Number + Proveedor: try local array first, then backend
-    const pnLocal = partNumbers.find(p => p.sap === row.sap)
-    if (pnLocal) {
-      _setSelProveedor(pnLocal.proveedor)
-      _setSelPartNumber(pnLocal.part_number)
-    } else {
-      lookupPartNumberBySAP(row.sap).then(res => {
-        if (res.data?.part_number) {
-          _setSelProveedor(res.data.proveedor || '')
-          _setSelPartNumber(res.data.part_number)
-        }
-      }).catch(() => {})
-    }
+      } finally { setSapLoading(false) }
+    }, 500)
   }
 
-  // Collect all field values from refs + state on save
   const handleSave = async () => {
-    const sap = autoFields.sap || refs.sap_manual?.current?.value || ''
+    if (!autoFields.sap.trim()) { alert('El SAP es requerido'); return }
+    setSaving(true)
     const payload = {
       ...autoFields,
-      sap,
       centro, almacen, estatus,
-      proveedor:         selProveedorRef.current || '',
-      part_number:       selPartNumberRef.current || '',
-      zona:              refs.zona.current?.value              || '',
       serial_number:     refs.serial_number.current?.value     || '',
-      fecha_averia:      refs.fecha_averia.current?.value      || null,
-      fecha_ingreso:     refs.fecha_ingreso.current?.value     || null,
-      valor_lote:        refs.valor_lote.current?.value        || '',
       orden_compra:      refs.orden_compra.current?.value      || '',
-      descripcion:       refs.descripcion.current?.value       || '',
+      zona:              refs.zona.current?.value              || '',
+      fecha_ingreso:     refs.fecha_ingreso.current?.value     || null,
+      fecha_asignacion:  refs.fecha_asignacion.current?.value  || null,
+      valor_lote:        refs.valor_lote.current?.value        || '',
       motivo_asignacion: refs.motivo_asignacion.current?.value || '',
     }
-    // Clean empty date fields
-    if (!payload.fecha_averia)  delete payload.fecha_averia
-    if (!payload.fecha_ingreso) delete payload.fecha_ingreso
-    setSaving(true)
+    if (!payload.fecha_ingreso)    delete payload.fecha_ingreso
+    if (!payload.fecha_asignacion) delete payload.fecha_asignacion
     try {
-      const res = spare ? await updateSpare(spare.id, payload) : await createSpare(payload)
+      spare ? await updateSpare(spare.id, payload) : await createSpare(payload)
       onSaved(); onClose()
     } catch(e) {
-      const errData = e.response?.data
-      const errMsg = errData
-        ? Object.entries(errData).map(([k,v]) => `${k}: ${Array.isArray(v)?v.join(', '):v}`).join('\n')
-        : e.message
-      alert('Error al guardar:\n' + errMsg)
+      const d = e.response?.data
+      alert('Error: ' + (d ? Object.entries(d).map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(', '):v}`).join('\n') : e.message))
     } finally { setSaving(false) }
   }
 
-  // Uncontrolled field (uses ref, no re-render on type)
-  const F = ({ label, k, type='text', full, rows }) => (
+  const F = ({ label, k, type='text', full }) => (
     <div style={ full ? { gridColumn:'1/-1' } : {} }>
       <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>{label}</label>
-      {rows
-        ? <textarea ref={refs[k]} className="input" rows={rows} style={{ resize:'none' }}
-            defaultValue={init[k] || ''} />
-        : <input ref={refs[k]} type={type} className="input"
-            defaultValue={init[k] || ''} />
-      }
+      <input ref={refs[k]} type={type} className="input" defaultValue={init[k] || ''} />
     </div>
   )
 
-  // Read-only auto-filled field
-  const AutoF = ({ label, k }) => (
+  const AF = ({ label, k }) => (
     <div>
       <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>
         {label}
-        <span style={{ marginLeft:5, fontSize:9, padding:'1px 6px', borderRadius:10,
-          background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0', fontWeight:700 }}>AUTO SAP</span>
+        {autoFields[k] && <span style={{ marginLeft:5, fontSize:9, padding:'1px 6px', borderRadius:10,
+          background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0', fontWeight:700 }}>AUTO</span>}
       </label>
-      <input className="input" readOnly value={autoFields[k] || ''}
-        style={{ background: autoFields[k] ? '#f0fdf4' : '#f9fafb',
+      <input className="input" value={autoFields[k] || ''}
+        onChange={e => setAutoFields(f => ({...f, [k]: e.target.value}))}
+        style={{ background: autoFields[k] ? '#f0fdf4' : undefined,
           borderColor: autoFields[k] ? '#bbf7d0' : undefined,
-          color: autoFields[k] ? '#166534' : '#9ca3af', cursor:'default' }} />
+          color: autoFields[k] ? '#166534' : undefined }} />
     </div>
+  )
+
+  const Section = ({ title }) => (
+    <p style={{ fontSize:10, fontWeight:700, color:'#6b7280', letterSpacing:'0.08em',
+      textTransform:'uppercase', margin:'18px 0 10px', paddingBottom:6, borderBottom:'1px solid #f3f4f6' }}>
+      {title}
+    </p>
   )
 
   return (
@@ -683,195 +576,72 @@ function SpareModal({ spare, onClose, onSaved, sapCatalog }) {
         {/* Header */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
           padding:'18px 24px', borderBottom:'1px solid #e5e7eb' }}>
-          <h2 style={{ fontFamily:"'Syne',sans-serif", fontWeight:700, fontSize:17 }}>
+          <h2 style={{ fontWeight:700, fontSize:17, margin:0 }}>
             {spare ? 'Editar Equipo' : 'Nuevo Equipo'}
           </h2>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#6b7280', padding:4 }}>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#6b7280' }}>
             <X size={18} />
           </button>
         </div>
 
         <div style={{ padding:'20px 24px' }}>
 
-          {/* ── SAP Search ── */}
-          <p style={{ fontSize:10, fontWeight:700, color:'#6b7280', letterSpacing:'0.08em',
-            textTransform:'uppercase', marginBottom:10, paddingBottom:6, borderBottom:'1px solid #f3f4f6' }}>
-            Búsqueda SAP
-          </p>
-          <div style={{ marginBottom:18, position:'relative' }}>
-            <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>
-              Código SAP / Nombre del equipo
-            </label>
-            <input className="input" placeholder="Escribe el código SAP o nombre del equipo…"
-              value={query} autoComplete="off"
-              onChange={e => {
-                const val = e.target.value
-                search(val)
-                setSapMatch(null)
-                setAutoFields(af => ({...af, sap: cleanNum(val)}))
-              }}
-              onBlur={async e => {
-                const val = e.target.value.trim()
-                if (!val) return
-                // Try local catalog first (O(log n))
-                const exact = sapCatalog.find(r => r.sap === val)
-                if (exact) { applyMatch(exact); return }
-                // Fallback: query backend SAP catalog DB
-                try {
-                  const res = await getSAPLookup(val)
-                  if (res.data?.sap) applyMatch(res.data)
-                } catch(_) {}
-              }}
-            />
-            {(suggestions.length > 0 || searching) && (
-              <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:200,
-                background:'#fff', border:'1px solid #e5e7eb', borderRadius:10,
-                boxShadow:'0 8px 24px rgba(0,0,0,0.12)', maxHeight:220, overflowY:'auto' }}>
-                {searching
-                  ? <div style={{ padding:'12px 14px', fontSize:12, color:'#6b7280' }}>Buscando…</div>
-                  : <>
-                    <div style={{ display:'grid', gridTemplateColumns:'100px 1fr 1fr', gap:8,
-                      padding:'6px 14px', background:'#f9fafb', borderBottom:'1px solid #e5e7eb',
-                      fontSize:10, letterSpacing:'1px', textTransform:'uppercase', color:'#9ca3af' }}>
-                      <span>SAP</span><span>Denominación</span><span>Texto Breve</span>
-                    </div>
-                    {suggestions.map(s => (
-                      <div key={s.sap} onClick={() => applyMatch(s)}
-                        style={{ display:'grid', gridTemplateColumns:'100px 1fr 1fr', gap:8,
-                          padding:'9px 14px', cursor:'pointer', borderBottom:'1px solid #f3f4f6', fontSize:12 }}
-                        onMouseEnter={e => e.currentTarget.style.background='#f5f3ff'}
-                        onMouseLeave={e => e.currentTarget.style.background='transparent'}>
-                        <span style={{ fontWeight:700, color:'#7c3aed' }}>{cleanNum(s.sap)}</span>
-                        <span style={{ color:'#6b7280', fontSize:11 }}>{s.denomTPMT || s.denom_tpmt || ''}</span>
-                        <span style={{ color:'#374151', fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.textoBreve || s.texto_breve || ''}</span>
-                      </div>
-                    ))}
-                  </>
-                }
-              </div>
-            )}
-            {!searching && query.length >= 2 && suggestions.length === 0 && !sapMatch && (
-              <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:200,
-                background:'#fff', border:'1px solid #e5e7eb', borderRadius:10,
-                padding:'12px 14px', fontSize:12, color:'#9ca3af', boxShadow:'0 8px 24px rgba(0,0,0,0.1)' }}>
-                Sin coincidencias para "{query}"
-              </div>
-            )}
-            {sapMatch && (
-              <div style={{ marginTop:5, fontSize:12, color:'#16a34a', display:'flex', alignItems:'center', gap:4 }}>
-                <CheckCircle size={13} /> Coincidencia encontrada — campos SAP completados automáticamente
-              </div>
-            )}
+          {/* SAP + autofill */}
+          <Section title="Código SAP IP" />
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:4 }}>
+            <div style={{ position:'relative' }}>
+              <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>
+                SAP <span style={{ color:'#dc2626' }}>*</span>
+              </label>
+              <input className="input" value={autoFields.sap}
+                onChange={e => handleSapChange(e.target.value)}
+                placeholder="Ingresa SAP para autocompletar..." />
+              {sapLoading && <span style={{ position:'absolute', right:10, top:32,
+                fontSize:11, color:'#7c3aed' }}>🔍 Buscando...</span>}
+            </div>
+            <AF label="Part Number" k="part_number" />
+            <AF label="Tipo"        k="tipo" />
+            <AF label="Modelo"      k="modelo" />
+            <AF label="Proveedor"   k="proveedor" />
+            <AF label="Descripción" k="descripcion" />
           </div>
 
-          {/* ── Auto SAP fields ── */}
-          <p style={{ fontSize:10, fontWeight:700, color:'#6b7280', letterSpacing:'0.08em',
-            textTransform:'uppercase', marginBottom:10, paddingBottom:6, borderBottom:'1px solid #f3f4f6' }}>
-            Datos del Material (auto SAP)
-          </p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:18 }}>
-            <AutoF label="Material (SAP)"       k="sap" />
-            <AutoF label="Texto Breve"          k="modelo" />
-            <AutoF label="Denominación TPMT"    k="tipo" />
-            <AutoF label="Tipo Material"        k="tipo_material" />
-            <AutoF label="Grupo Artículos"      k="grupo_art" />
-            <AutoF label="Descrip. Gpo. Art."   k="descrip_gpo_art" />
-            <AutoF label="Categoría Valoración" k="cat_valoracion" />
-            <AutoF label="Unidad Medida"        k="unidad_medida" />
-            <AutoF label="Creado El"            k="creado_el_sap" />
-            <AutoF label="Creado Por"           k="creado_por_sap" />
-            <AutoF label="Sujeto a Lote"        k="sujeto_lote" />
-            <AutoF label="Etiqueta"             k="etiqueta" />
-            <AutoF label="Cód. Naciones Unidas" k="cod_naciones" />
-            <AutoF label="Grupo Art. Externo"   k="grupo_art_ext" />
-            <AutoF label="Cód. Subcategoría"    k="cod_subcat" />
-            <AutoF label="Desc. Subcategoría"   k="desc_subcat" />
-            <AutoF label="Perfil Numserie"      k="perfil_numserie" />
-            <AutoF label="Marcado Borrar"       k="marcado_borrar" />
-            <AutoF label="Texto Pedido Compras" k="texto_pedido" />
-          </div>
-
-          {/* ── Ubicación ── */}
-          <p style={{ fontSize:10, fontWeight:700, color:'#6b7280', letterSpacing:'0.08em',
-            textTransform:'uppercase', marginBottom:10, paddingBottom:6, borderBottom:'1px solid #f3f4f6' }}>
-            Ubicación
-          </p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:18 }}>
+          {/* Ubicación */}
+          <Section title="Ubicación" />
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
             <div>
               <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>Centro</label>
-              <select className="input" value={centro}
-                onChange={e => { setCentro(e.target.value); setAlmacen('') }}>
+              <select className="input" value={centro} onChange={e => { setCentro(e.target.value); setAlmacen('') }}>
                 <option value="">— seleccionar —</option>
                 {centros.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>Almacén</label>
-              <select className="input" value={almacen} onChange={e => setAlmacen(e.target.value)}
-                disabled={!centro} style={{ opacity: centro ? 1 : 0.4 }}>
+              <select className="input" value={almacen} onChange={e => setAlmacen(e.target.value)} disabled={!centro}>
                 <option value="">— seleccionar —</option>
                 {almacenes.map(a => <option key={a} value={a}>{a}</option>)}
               </select>
             </div>
-            <F label="Zona"          k="zona" />
-            <div>
-              <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>Proveedor</label>
-              <input className="input" placeholder="Ej: HUAWEI, ZTE…" value={selProveedor}
-                onChange={e => { setSelProveedor(e.target.value); setSelPartNumber('') }} />
-            </div>
-            <div>
-              <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>Part Number</label>
-              <div style={{ position:'relative' }}>
-                <input className="input" placeholder="Buscar o escribir part number…"
-                  value={selPartNumber} autoComplete="off"
-                  onChange={e => {
-                    setSelPartNumber(e.target.value)
-                    setPnSugg(partNumbers.filter(p =>
-                      p.part_number.toLowerCase().includes(e.target.value.toLowerCase())
-                    ).slice(0, 8))
-                  }}
-                  onBlur={() => setTimeout(() => setPnSugg([]), 150)}
-                />
-                {pnSugg.length > 0 && (
-                  <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:300,
-                    background:'#fff', border:'1px solid #e5e7eb', borderRadius:8,
-                    boxShadow:'0 6px 20px rgba(0,0,0,0.1)', maxHeight:180, overflowY:'auto' }}>
-                    {pnSugg.map(p => (
-                      <div key={p.id} onMouseDown={() => { _setSelPartNumber(p.part_number); _setSelProveedor(p.proveedor); setPnSugg([]) }}
-                        style={{ padding:'8px 12px', cursor:'pointer', fontSize:12,
-                          display:'flex', justifyContent:'space-between', borderBottom:'1px solid #f3f4f6' }}
-                        onMouseEnter={e => e.currentTarget.style.background='#f5f3ff'}
-                        onMouseLeave={e => e.currentTarget.style.background=''}>
-                        <span style={{ fontWeight:700, color:'#7c3aed', fontFamily:'monospace' }}>{p.part_number}</span>
-                        <span style={{ fontSize:11, color:'#6b7280' }}>{p.proveedor}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            <F label="Serial Number" k="serial_number" />
+            <F label="Zona" k="zona" />
           </div>
 
-          {/* ── Datos de Ingreso ── */}
-          <p style={{ fontSize:10, fontWeight:700, color:'#6b7280', letterSpacing:'0.08em',
-            textTransform:'uppercase', marginBottom:10, paddingBottom:6, borderBottom:'1px solid #f3f4f6' }}>
-            Datos de Ingreso
-          </p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:18 }}>
-            <F label="Fecha Avería"   k="fecha_averia"  type="date" />
-            <F label="Fecha Ingreso"  k="fecha_ingreso" type="date" />
-            <F label="Valor Lote"     k="valor_lote" />
-            <F label="Orden de Compra" k="orden_compra" />
-            <F label="Descripción"    k="descripcion"   rows={2} full />
-            <F label="Motivo Asignación" k="motivo_asignacion" full />
-            <div style={{ gridColumn:'1/-1' }}>
+          {/* Datos */}
+          <Section title="Datos del Equipo" />
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+            <F label="Serial Number"    k="serial_number" />
+            <F label="Orden de Compra"  k="orden_compra" />
+            <F label="Valor Lote"       k="valor_lote" />
+            <F label="Fecha Ingreso"    k="fecha_ingreso"    type="date" />
+            <F label="Fecha Asignación" k="fecha_asignacion" type="date" />
+            <div>
               <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>Estatus</label>
               <select className="input" value={estatus} onChange={e => setEstatus(e.target.value)}>
                 <option value="">— seleccionar —</option>
                 {ESTATUS_LIST.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
+            <F label="Motivo Asignación" k="motivo_asignacion" full />
           </div>
         </div>
 
@@ -884,6 +654,86 @@ function SpareModal({ spare, onClose, onSaved, sapCatalog }) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Columnas disponibles ─────────────────────────────────────────────────────
+const ALL_COLS = [
+  { key:'sap',              label:'SAP',               default:true  },
+  { key:'modelo',           label:'Modelo',             default:true  },
+  { key:'part_number',      label:'Part Number',        default:true  },
+  { key:'proveedor',        label:'Proveedor',          default:true  },
+  { key:'serial_number',    label:'Serial',             default:true  },
+  { key:'tipo',             label:'Tipo',               default:true  },
+  { key:'centro',           label:'Centro',             default:true  },
+  { key:'almacen',          label:'Almacén',            default:true  },
+  { key:'estatus',          label:'Estatus',            default:true  },
+  { key:'descripcion',      label:'Descripción',        default:false },
+  { key:'orden_compra',     label:'Orden Compra',       default:false },
+  { key:'zona',             label:'Zona',               default:false },
+  { key:'fecha_ingreso',    label:'Fecha Ingreso',      default:false },
+  { key:'fecha_asignacion', label:'Fecha Asignación',   default:false },
+  { key:'valor_lote',       label:'Valor Lote',         default:false },
+  { key:'motivo_asignacion',label:'Motivo Asignación',  default:false },
+]
+
+function ColumnSelector({ visibleCols, onChange }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef()
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+  return (
+    <div ref={ref} style={{ position:'relative' }}>
+      <button onClick={() => setOpen(v => !v)} style={{
+        display:'inline-flex', alignItems:'center', gap:6,
+        padding:'7px 14px', borderRadius:8,
+        border:`1.5px solid ${open ? '#c4b5fd' : '#e5e7eb'}`,
+        background: open ? '#f5f3ff' : '#fff',
+        color: open ? '#7c3aed' : '#374151',
+        fontSize:13, fontWeight:600, cursor:'pointer'
+      }}>
+        <Columns size={14}/> Columnas
+      </button>
+      {open && (
+        <div style={{ position:'absolute', top:'calc(100% + 6px)', right:0, zIndex:200,
+          background:'#fff', borderRadius:10, boxShadow:'0 8px 24px rgba(0,0,0,.12)',
+          border:'1px solid #e5e7eb', padding:'8px 0', minWidth:210 }}>
+          <p style={{ margin:'0 0 4px', padding:'4px 14px', fontSize:10, fontWeight:700,
+            color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.5px' }}>Columnas visibles</p>
+          {ALL_COLS.map(col => (
+            <label key={col.key} style={{ display:'flex', alignItems:'center', gap:10,
+              padding:'6px 14px', cursor:'pointer', fontSize:13, color:'#374151' }}
+              onMouseEnter={e => e.currentTarget.style.background='#f9fafb'}
+              onMouseLeave={e => e.currentTarget.style.background='transparent'}>
+              <input type="checkbox" checked={visibleCols.includes(col.key)}
+                onChange={() => {
+                  if (visibleCols.includes(col.key)) {
+                    if (visibleCols.length > 1) onChange(visibleCols.filter(k => k !== col.key))
+                  } else {
+                    onChange([...visibleCols, col.key])
+                  }
+                }}
+                style={{ accentColor:'#7c3aed', width:14, height:14 }} />
+              {col.label}
+            </label>
+          ))}
+          <div style={{ borderTop:'1px solid #f3f4f6', margin:'6px 0 2px' }}/>
+          <button onClick={() => onChange(ALL_COLS.map(c => c.key))}
+            style={{ width:'100%', padding:'6px 14px', background:'none', border:'none',
+              fontSize:12, color:'#7c3aed', cursor:'pointer', textAlign:'left', fontWeight:600 }}>
+            Mostrar todas
+          </button>
+          <button onClick={() => onChange(ALL_COLS.filter(c => c.default).map(c => c.key))}
+            style={{ width:'100%', padding:'6px 14px', background:'none', border:'none',
+              fontSize:12, color:'#6b7280', cursor:'pointer', textAlign:'left' }}>
+            Restaurar por defecto
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -905,6 +755,7 @@ export default function SpareList() {
   const [viewSpare, setViewSpare]   = useState(null)
   const [deleting, setDeleting] = useState(null)
   const [sapCatalog, setSapCatalog] = useState([])
+  const [visibleCols, setVisibleCols] = useState(ALL_COLS.filter(c=>c.default).map(c=>c.key))
 
   // Load SAP catalog from public JSON (fast, no DB round-trip for search)
   useEffect(() => {
@@ -941,7 +792,7 @@ export default function SpareList() {
       const data = r.data.results || []
       const cols = ['id','sap','descripcion','serial_number','part_number','proveedor',
         'centro','almacen','zona','estatus','tipo','modelo','unidad_medida',
-        'fecha_ingreso','fecha_averia','orden_compra','motivo_asignacion','valor_lote']
+        'fecha_ingreso','fecha_asignacion','orden_compra','motivo_asignacion','valor_lote']
       const header = cols
       const fmtCell = (k, v) => {
         if (v === null || v === undefined) return ''
@@ -993,6 +844,7 @@ export default function SpareList() {
           <button className="btn-ghost flex items-center gap-2" onClick={() => setShowImport(true)}>
             <Upload size={15} /> Importar
           </button>
+          <ColumnSelector visibleCols={visibleCols} onChange={setVisibleCols} />
           <button className="btn-primary flex items-center gap-2" onClick={() => setModal('new')}>
             <Plus size={15} /> Nuevo
           </button>
@@ -1024,47 +876,66 @@ export default function SpareList() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ borderBottom:'1px solid #e5e7eb', background:'#f9fafb' }}>
-                {['SAP','Descripción / Texto Breve','Part Number','Proveedor','Serial','Tipo','Centro','Almacén','Estatus','Acciones'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide"
-                    style={{ color:'#6b7280' }}>{h}</th>
+                {ALL_COLS.filter(c => visibleCols.includes(c.key)).map(col => (
+                  <th key={col.key} className="px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide"
+                    style={{ color:'#6b7280', whiteSpace:'nowrap' }}>{col.label}</th>
                 ))}
+                <th className="px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide" style={{ color:'#6b7280' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={10} className="text-center py-12" style={{ color:'#6b7280' }}>Cargando…</td></tr>
+                <tr><td colSpan={visibleCols.length+1} className="text-center py-12" style={{ color:'#6b7280' }}>Cargando…</td></tr>
               ) : spares.length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-12" style={{ color:'#6b7280' }}>Sin resultados</td></tr>
+                <tr><td colSpan={visibleCols.length+1} className="text-center py-12" style={{ color:'#6b7280' }}>Sin resultados</td></tr>
               ) : spares.map((s, i) => (
                 <tr key={s.id} style={{ borderBottom:'1px solid #f3f4f6',
                   background: i%2===0 ? 'transparent' : 'rgba(249,250,251,0.6)' }}>
-                  <td className="px-4 py-3 font-mono text-xs font-bold"
-                    style={{ color:'#7c3aed', cursor:'pointer', textDecoration:'underline',
-                      textDecorationStyle:'dotted', textUnderlineOffset:3 }}
-                    onClick={() => setViewSpare(s)}
-                    title="Ver detalle">{cleanNum(s.sap)}</td>
-                  <td className="px-4 py-3 max-w-xs" style={{ color:'#111827' }}>
-                    <div style={{ fontWeight:500, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:220 }}
-                      title={s.modelo}>{s.modelo || s.descripcion || '—'}</div>
-                    {s.descripcion && s.modelo && (
-                      <div style={{ fontSize:11, color:'#9ca3af', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:220 }}
-                        title={s.descripcion}>{s.descripcion}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-xs" style={{ color:'#374151', fontWeight:500 }}>{s.part_number || '—'}</td>
-                  <td className="px-4 py-3 text-xs">
-                    {s.proveedor
-                      ? <span style={{ padding:'2px 8px', borderRadius:10, fontSize:11, fontWeight:600,
-                          background: s.proveedor==='Huawei' ? '#eff6ff' : s.proveedor==='ZTE' ? '#f0fdf4' : s.proveedor==='ALCATEL' ? '#fef3c7' : '#f3f4f6',
-                          color:      s.proveedor==='Huawei' ? '#1d4ed8' : s.proveedor==='ZTE' ? '#15803d' : s.proveedor==='ALCATEL' ? '#b45309' : '#6b7280',
-                        }}>{s.proveedor}</span>
-                      : <span style={{ color:'#9ca3af' }}>—</span>}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs" style={{ color:'#6b7280' }}>{s.serial_number || '—'}</td>
-                  <td className="px-4 py-3 text-xs" style={{ color:'#6b7280' }}>{s.tipo || '—'}</td>
-                  <td className="px-4 py-3 text-xs font-mono font-bold" style={{ color:'#374151' }}>{s.centro || '—'}</td>
-                  <td className="px-4 py-3 text-xs font-mono" style={{ color:'#6b7280' }}>{s.almacen || '—'}</td>
-                  <td className="px-4 py-3"><StatusBadge estatus={s.estatus} /></td>
+                  {ALL_COLS.filter(c => visibleCols.includes(c.key)).map(col => {
+                    const v = s[col.key]
+                    if (col.key === 'sap') return (
+                      <td key={col.key} className="px-4 py-3 font-mono text-xs font-bold"
+                        style={{ color:'#7c3aed', cursor:'pointer', textDecoration:'underline',
+                          textDecorationStyle:'dotted', textUnderlineOffset:3 }}
+                        onClick={() => setViewSpare(s)}>{cleanNum(v)}</td>
+                    )
+                    if (col.key === 'modelo') return (
+                      <td key={col.key} className="px-4 py-3 max-w-xs" style={{ color:'#111827' }}>
+                        <div style={{ fontWeight:500, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:220 }}
+                          title={v}>{v || s.descripcion || '—'}</div>
+                        {s.descripcion && v && (
+                          <div style={{ fontSize:11, color:'#9ca3af', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:220 }}
+                            title={s.descripcion}>{s.descripcion}</div>
+                        )}
+                      </td>
+                    )
+                    if (col.key === 'proveedor') return (
+                      <td key={col.key} className="px-4 py-3 text-xs">
+                        {v ? <span style={{ padding:'2px 8px', borderRadius:10, fontSize:11, fontWeight:600,
+                          background: v==='HUAWEI'||v==='Huawei' ? '#eff6ff' : v==='ZTE' ? '#f0fdf4' : v==='ALCATEL' ? '#fef3c7' : '#f3f4f6',
+                          color:      v==='HUAWEI'||v==='Huawei' ? '#1d4ed8' : v==='ZTE' ? '#15803d' : v==='ALCATEL' ? '#b45309' : '#6b7280',
+                        }}>{v}</span> : <span style={{ color:'#9ca3af' }}>—</span>}
+                      </td>
+                    )
+                    if (col.key === 'estatus') return (
+                      <td key={col.key} className="px-4 py-3"><StatusBadge estatus={v} /></td>
+                    )
+                    if (col.key?.startsWith('fecha_')) return (
+                      <td key={col.key} className="px-4 py-3 text-xs" style={{ color:'#6b7280', whiteSpace:'nowrap' }}>
+                        {v ? String(v).substring(0,10) : '—'}
+                      </td>
+                    )
+                    if (col.key === 'centro') return (
+                      <td key={col.key} className="px-4 py-3 text-xs font-mono font-bold" style={{ color:'#374151' }}>{v || '—'}</td>
+                    )
+                    if (col.key === 'serial_number' || col.key === 'almacen') return (
+                      <td key={col.key} className="px-4 py-3 font-mono text-xs" style={{ color:'#6b7280' }}>{v || '—'}</td>
+                    )
+                    return (
+                      <td key={col.key} className="px-4 py-3 text-xs" style={{ color:'#374151', whiteSpace:'nowrap',
+                        maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v || '—'}</td>
+                    )
+                  })}
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
                       <button onClick={() => setModal(s)} className="p-1.5 rounded hover:opacity-70" style={{ color:'#7c3aed' }}>
@@ -1124,7 +995,6 @@ export default function SpareList() {
           spare={modal === 'new' ? null : modal}
           onClose={() => setModal(null)}
           onSaved={load}
-          sapCatalog={sapCatalog}
         />,
         document.body
       )}

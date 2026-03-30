@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, CartesianGrid
+  PieChart, Pie, Cell, LineChart, Line, CartesianGrid, Legend
 } from 'recharts'
 import { getDashboardStats, getDashboardTimeline } from '../services/api'
 import { Package, CheckCircle, XCircle, Clock, AlertTriangle, TrendingUp, ArrowRight } from 'lucide-react'
@@ -80,6 +80,25 @@ export default function Dashboard() {
 
   const tipoData = stats
     ? Object.entries(stats.by_tipo).map(([name, value]) => ({ name: name.slice(0, 15), value }))
+    : []
+  // sapData: [{name:'SAP', Operativo:3, Asignado:1, ...}, ...]
+  const sapStatuses = stats?.by_sap
+    ? [...new Set(Object.values(stats.by_sap).flatMap(d => Object.keys(d)))]
+    : []
+  const sapData = stats?.by_sap
+    ? Object.entries(stats.by_sap).map(([sap, breakdown]) => ({
+        name: sap.slice(0, 15),
+        ...breakdown
+      }))
+    : []
+  const ocStatuses = stats?.by_oc
+    ? [...new Set(Object.values(stats.by_oc).flatMap(d => Object.keys(d)))]
+    : []
+  const ocData = stats?.by_oc
+    ? Object.entries(stats.by_oc).map(([oc, breakdown]) => ({
+        name: oc.slice(0, 20),
+        ...breakdown
+      }))
     : []
 
   if (loading) return (
@@ -214,6 +233,57 @@ export default function Dashboard() {
                 </div>
               </ComponentCard>
             ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Por SAP y OC ── */}
+      {(sapData.length > 0 || ocData.length > 0) && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 14 }}>
+            Distribución y tendencias
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 36 }}>
+            {sapData.length > 0 && (
+              <div className="card" style={{ padding: '20px 20px 14px' }}>
+                <p style={{ fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Top SAP</p>
+                <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12 }}>Cantidad por estatus</p>
+                <ResponsiveContainer width="100%" height={Math.max(214, sapData.length * 40)}>
+                  <BarChart data={sapData} layout="vertical" margin={{ left: 0, right: 8 }}>
+                    <XAxis type="number" tick={{ fontSize: 10.5, fill: '#9ca3af' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" width={82}
+                      tick={{ fontSize: 10.5, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {sapStatuses.map((est, i) => (
+                      <Bar key={est} dataKey={est} stackId="a"
+                        radius={i === sapStatuses.length - 1 ? [0,4,4,0] : [0,0,0,0]}
+                        fill={PALETTE[i % PALETTE.length]} opacity={0.85} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {ocData.length > 0 && (
+              <div className="card" style={{ padding: '20px 20px 14px' }}>
+                <p style={{ fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Top Orden de Compra</p>
+                <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12 }}>Cantidad por estatus</p>
+                <ResponsiveContainer width="100%" height={Math.max(214, ocData.length * 40)}>
+                  <BarChart data={ocData} layout="vertical" margin={{ left: 0, right: 8 }}>
+                    <XAxis type="number" tick={{ fontSize: 10.5, fill: '#9ca3af' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <YAxis type="category" dataKey="name" width={82}
+                      tick={{ fontSize: 10.5, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+                    <Tooltip />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {ocStatuses.map((est, i) => (
+                      <Bar key={est} dataKey={est} stackId="a"
+                        radius={i === ocStatuses.length - 1 ? [0,4,4,0] : [0,0,0,0]}
+                        fill={PALETTE[i % PALETTE.length]} opacity={0.85} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
         </>
       )}

@@ -216,7 +216,7 @@ class CentroAlmacenViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='by-centro')
     def by_centro(self, request):
         centro = request.query_params.get('centro', '').strip()
-        qs = CentroAlmacen.objects.filter(centro=centro).values_list('almacen', flat=True)
+        qs = CentroAlmacen.objects.filter(centro=centro).values_list('almacen', flat=True).order_by('almacen')
         return Response(list(qs))
 
     @action(detail=False, methods=['get'], url_path='centros')
@@ -259,6 +259,11 @@ class PartNumberViewSet(viewsets.ModelViewSet):
             return Response(PartNumberSerializer(obj).data)
         except PartNumber.DoesNotExist:
             return Response(None)
+
+    @action(detail=False, methods=['delete'], url_path='clear_all')
+    def clear_all(self, request):
+        count, _ = PartNumber.objects.all().delete()
+        return Response({'deleted': count})
 
 
 # ─── RMA ViewSet ──────────────────────────────────────────────────────────────
@@ -404,6 +409,11 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
                     skipped += 1
                     continue
 
+                lookup = {k: kwargs.get(k) for k in ('sap', 'folio', 'fecha_asignacion')}
+                if any(v for v in lookup.values()):
+                    if Seguimiento.objects.filter(**{k: v for k, v in lookup.items() if v}).exists():
+                        skipped += 1
+                        continue
                 Seguimiento.objects.create(**kwargs)
                 created += 1
             except Exception as e:
@@ -589,6 +599,11 @@ class SeguimientoAveridasViewSet(viewsets.ModelViewSet):
                     skipped += 1
                     continue
 
+                lookup = {k: kwargs.get(k) for k in ('sap', 'serie_averiada')}
+                if any(v for v in lookup.values()):
+                    if SeguimientoAveriadas.objects.filter(**{k: v for k, v in lookup.items() if v}).exists():
+                        skipped += 1
+                        continue
                 SeguimientoAveriadas.objects.create(**kwargs)
                 created += 1
             except Exception as e:
@@ -676,6 +691,11 @@ class SeguimientoUpgradesViewSet(viewsets.ModelViewSet):
                     skipped += 1
                     continue
 
+                lookup = {k: kwargs.get(k) for k in ('sap', 'numero_serie', 'fecha_asignacion')}
+                if any(v for v in lookup.values()):
+                    if SeguimientoUpgrades.objects.filter(**{k: v for k, v in lookup.items() if v}).exists():
+                        skipped += 1
+                        continue
                 SeguimientoUpgrades.objects.create(**kwargs)
                 created += 1
             except Exception as e:
@@ -762,6 +782,11 @@ class SeguimientoProveedorViewSet(viewsets.ModelViewSet):
                     skipped += 1
                     continue
 
+                lookup = {k: kwargs.get(k) for k in ('sap', 'numero_serie', 'fecha_asignacion')}
+                if any(v for v in lookup.values()):
+                    if SeguimientoProveedor.objects.filter(**{k: v for k, v in lookup.items() if v}).exists():
+                        skipped += 1
+                        continue
                 SeguimientoProveedor.objects.create(**kwargs)
                 created += 1
             except Exception as e:
@@ -808,6 +833,32 @@ class DashboardStatsView(APIView):
             .values('centro').annotate(c=Count('id'))
             .values_list('centro', 'c')
         )
+        # by_sap: desglose por estatus para cada SAP
+        sap_rows = (
+            qs.exclude(sap__isnull=True).exclude(sap='')
+            .values('sap', 'estatus').annotate(c=Count('id'))
+            .order_by('sap', 'estatus')
+        )
+        by_sap = {}
+        for row in sap_rows:
+            sap = row['sap']
+            est = row['estatus'] or 'Sin estatus'
+            if sap not in by_sap:
+                by_sap[sap] = {}
+            by_sap[sap][est] = row['c']
+        # by_oc: desglose por estatus para cada OC
+        oc_rows = (
+            qs.exclude(orden_compra__isnull=True).exclude(orden_compra='')
+            .values('orden_compra', 'estatus').annotate(c=Count('id'))
+            .order_by('orden_compra', 'estatus')
+        )
+        by_oc = {}
+        for row in oc_rows:
+            oc  = row['orden_compra']
+            est = row['estatus'] or 'Sin estatus'
+            if oc not in by_oc:
+                by_oc[oc] = {}
+            by_oc[oc][est] = row['c']
         data = {
             'total':     total,
             'operativo': count_status('operativo'),
@@ -818,6 +869,8 @@ class DashboardStatsView(APIView):
             'baja':      count_status('baja'),
             'by_tipo':   by_tipo,
             'by_centro': by_centro,
+            'by_sap':    by_sap,
+            'by_oc':     by_oc,
         }
         return Response(DashboardStatsSerializer(data).data)
 
@@ -878,29 +931,6 @@ class ImportSpareCSVView(APIView):
 
                 sap_obj    = sap_catalog.get(sap_val) if sap_val else None
                 sap_fields = {}
-                if sap_obj:
-                    sap_fields = {
-                        'tipo':            getattr(sap_obj, 'denom_tpmt',      None) or '',
-                        'modelo':          getattr(sap_obj, 'texto_breve',     None) or '',
-                        'tipo_material':   getattr(sap_obj, 'tipo_material',   None) or '',
-                        'grupo_art':       getattr(sap_obj, 'grupo_art',       None) or '',
-                        'descrip_gpo_art': getattr(sap_obj, 'descrip_gpo_art', None) or '',
-                        'cat_valoracion':  getattr(sap_obj, 'cat_valoracion',  None) or '',
-                        'unidad_medida':   getattr(sap_obj, 'unidad_medida',   None) or '',
-                        'creado_el_sap':   getattr(sap_obj, 'creado_el',       None) or '',
-                        'creado_por_sap':  getattr(sap_obj, 'creado_por',      None) or '',
-                        'sujeto_lote':     getattr(sap_obj, 'sujeto_lote',     None) or '',
-                        'etiqueta':        getattr(sap_obj, 'etiqueta',        None) or '',
-                        'cod_naciones':    getattr(sap_obj, 'cod_naciones',    None) or '',
-                        'grupo_art_ext':   getattr(sap_obj, 'grupo_art_ext',   None) or '',
-                        'cod_subcat':      getattr(sap_obj, 'cod_subcat',      None) or '',
-                        'desc_subcat':     getattr(sap_obj, 'desc_subcat',     None) or '',
-                        'perfil_numserie': getattr(sap_obj, 'perfil_numserie', None) or '',
-                        'marcado_borrar':  getattr(sap_obj, 'marcado_borrar',  None) or '',
-                        'texto_pedido':    getattr(sap_obj, 'texto_pedido',    None) or '',
-                        'fuente':          getattr(sap_obj, 'fuente',          None) or '',
-                    }
-                    sap_fields.pop('descripcion', None)
 
                 pn_obj        = pn_catalog.get(pn_val) if pn_val else None
                 proveedor_val = safe_str(row.get('Proveedor') or row.get('proveedor')) or ''
@@ -1009,19 +1039,20 @@ class ImportSpareXLSXView(APIView):
                 Spare.objects.create(
                     sap               =sap_val,
                     part_number       =pn_val,
+                    tipo              =safe_str(row.get('tipo') or row.get('Tipo')),
+                    modelo            =safe_str(row.get('modelo') or row.get('Modelo')),
                     proveedor         =proveedor_val,
+                    descripcion       =desc_val,
                     serial_number     =safe_str(row.get('serial_number') or row.get('Serial Number')),
+                    orden_compra      =safe_str(row.get('orden_compra') or row.get('Orden Compra')),
                     centro            =centro_val,
                     almacen           =almacen_val,
                     zona              =safe_str(row.get('zona') or row.get('Zona')),
-                    estatus           =safe_str(row.get('estatus') or row.get('Estatus')) or 'En Inventario',
-                    descripcion       =desc_val,
                     fecha_ingreso     =safe_date(row.get('fecha_ingreso') or row.get('Fecha Ingreso')),
-                    fecha_averia      =safe_date(row.get('fecha_averia') or row.get('Fecha Averia')),
-                    orden_compra      =safe_str(row.get('orden_compra') or row.get('Orden Compra')),
-                    motivo_asignacion =safe_str(row.get('motivo_asignacion')),
-                    valor_lote        =safe_str(row.get('valor_lote')),
-                    **sap_fields,
+                    fecha_asignacion  =safe_date(row.get('fecha_asignacion') or row.get('Fecha Asignacion')),
+                    valor_lote        =safe_str(row.get('valor_lote') or row.get('Valor Lote')),
+                    motivo_asignacion =safe_str(row.get('motivo_asignacion') or row.get('Motivo Asignacion')),
+                    estatus           =safe_str(row.get('estatus') or row.get('Estatus')) or 'Operativo',
                 )
                 created += 1
             except Exception as e:

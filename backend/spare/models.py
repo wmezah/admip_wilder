@@ -2,50 +2,19 @@ from django.db import models
 
 
 class Spare(models.Model):
-    ESTATUS_CHOICES = [
-        ('Spare Operativo', 'Spare Operativo'),
-        ('Spare Utilizado', 'Spare Utilizado'),
-        ('Spare Asignado',  'Spare Asignado'),
-        ('PENDIENTE',       'Pendiente'),
-        ('REVISION',        'Revisión'),
-        ('BAJA',            'Baja'),
-    ]
-
     sap                = models.CharField(max_length=100, db_index=True)
-    orden_compra       = models.CharField(max_length=200, blank=True, null=True)
-    descripcion        = models.TextField(blank=True, null=True)
-    serial_number      = models.CharField(max_length=200, blank=True, null=True, db_index=True)
-
-    # Auto desde catálogo SAP
+    part_number        = models.CharField(max_length=200, blank=True, null=True)
     tipo               = models.CharField(max_length=200, blank=True, null=True)
     modelo             = models.CharField(max_length=500, blank=True, null=True)
-    tipo_material      = models.CharField(max_length=100, blank=True, null=True)
-    grupo_art          = models.CharField(max_length=100, blank=True, null=True)
-    descrip_gpo_art    = models.CharField(max_length=200, blank=True, null=True)
-    cat_valoracion     = models.CharField(max_length=100, blank=True, null=True)
-    unidad_medida      = models.CharField(max_length=50,  blank=True, null=True)
-    creado_el_sap      = models.CharField(max_length=50,  blank=True, null=True)
-    creado_por_sap     = models.CharField(max_length=100, blank=True, null=True)
-    sujeto_lote        = models.CharField(max_length=10,  blank=True, null=True)
-    etiqueta           = models.CharField(max_length=100, blank=True, null=True)
-    cod_naciones       = models.CharField(max_length=100, blank=True, null=True)
-    grupo_art_ext      = models.CharField(max_length=100, blank=True, null=True)
-    cod_subcat         = models.CharField(max_length=100, blank=True, null=True)
-    desc_subcat        = models.CharField(max_length=200, blank=True, null=True)
-    perfil_numserie    = models.CharField(max_length=100, blank=True, null=True)
-    marcado_borrar     = models.CharField(max_length=10,  blank=True, null=True)
-    texto_pedido       = models.CharField(max_length=300, blank=True, null=True)
-    fuente             = models.CharField(max_length=100, blank=True, null=True)
-
-    # Campos manuales
-    part_number        = models.CharField(max_length=200, blank=True, null=True)
     proveedor          = models.CharField(max_length=100, blank=True, null=True)
-
+    descripcion        = models.TextField(blank=True, null=True)
+    serial_number      = models.CharField(max_length=200, blank=True, null=True, db_index=True)
+    orden_compra       = models.CharField(max_length=200, blank=True, null=True)
     centro             = models.CharField(max_length=50,  blank=True, null=True, db_index=True)
     almacen            = models.CharField(max_length=50,  blank=True, null=True)
     zona               = models.CharField(max_length=100, blank=True, null=True)
-    fecha_averia       = models.DateField(blank=True, null=True)
     fecha_ingreso      = models.DateField(blank=True, null=True)
+    fecha_asignacion   = models.DateField(blank=True, null=True)
     valor_lote         = models.CharField(max_length=100, blank=True, null=True)
     motivo_asignacion  = models.CharField(max_length=300, blank=True, null=True)
     estatus            = models.CharField(max_length=100, blank=True, null=True, db_index=True)

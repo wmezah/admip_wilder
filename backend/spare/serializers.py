@@ -13,10 +13,9 @@ class SpareListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Spare
         fields = [
-            'id', 'sap', 'descripcion', 'serial_number',
-            'tipo', 'modelo', 'centro', 'almacen', 'zona',
-            'part_number', 'proveedor',
-            'fecha_ingreso', 'estatus',
+            'id', 'sap', 'part_number', 'tipo', 'modelo', 'proveedor', 'descripcion',
+            'serial_number', 'orden_compra', 'centro', 'almacen', 'zona',
+            'fecha_ingreso', 'fecha_asignacion', 'valor_lote', 'motivo_asignacion', 'estatus',
         ]
 
 
@@ -48,6 +47,8 @@ class DashboardStatsSerializer(serializers.Serializer):
     baja      = serializers.IntegerField()
     by_tipo   = serializers.DictField(child=serializers.IntegerField())
     by_centro = serializers.DictField(child=serializers.IntegerField())
+    by_sap    = serializers.DictField(child=serializers.DictField(child=serializers.IntegerField()))
+    by_oc     = serializers.DictField(child=serializers.DictField(child=serializers.IntegerField()))
 
 
 class PartNumberSerializer(serializers.ModelSerializer):

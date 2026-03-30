@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { Search, Plus, FileUp, Edit2, Trash2, X, Check, Upload } from 'lucide-react'
+import { Search, Plus, FileUp, Edit2, Trash2, X, Check, Upload, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import {
   getSAPCatalog, createSAPItem, updateSAPItem, deleteSAPItem, bulkImportSAP,
@@ -48,12 +48,15 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
         const ws = wb.Sheets[wb.SheetNames[0]]
         const raw = XLSX.utils.sheet_to_json(ws, { defval: '' })
         if (raw.length === 0) { setError('El archivo está vacío o no tiene datos'); return }
+        const normalize = s => String(s).trim().toLowerCase()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+          .replace(/[\s_\-]+/g, ' ')
         const parsed = raw.map(row => {
           const obj = {}
           columns.forEach(col => {
             const key = Object.keys(row).find(k =>
-              k.toLowerCase() === col.key.toLowerCase() ||
-              k.toLowerCase() === col.label.toLowerCase()
+              normalize(k) === normalize(col.key) ||
+              normalize(k) === normalize(col.label)
             )
             obj[col.key] = key ? String(row[key]).trim() : ''
           })
@@ -656,6 +659,27 @@ function PartNumbersTab() {
     catch(e) { alert('Error al eliminar') }
   }
 
+  const exportXLSX = () => {
+    const header = COLS.map(c => c.label)
+    const rows = items.map(r => COLS.map(c => r[c.key] || ''))
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Código SAP IP')
+    XLSX.writeFile(wb, 'codigo_sap_ip.xlsx')
+  }
+
+  const handleDeleteAll = async () => {
+    if (!confirm(`¿Eliminar todos los ${count.toLocaleString()} registros? Esta acción no se puede deshacer.`)) return
+    try {
+      const token = localStorage.getItem('access_token')
+      await fetch('/api/spare/part-numbers/clear_all/', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      load()
+    } catch(e) { alert('Error al eliminar') }
+  }
+
   const COLS = [
     { key:'proveedor',     label:'Proveedor' },
     { key:'modelo_equipo', label:'Modelo de Equipo' },
@@ -677,8 +701,20 @@ function PartNumbersTab() {
         </div>
         <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{count.toLocaleString()} registros</span>
         <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={exportXLSX}>
+          <Download size={14}/> Exportar Excel
+        </button>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>setShowBulk(true)}>
           <Upload size={14}/> Importar Excel
+        </button>
+        <button onClick={handleDeleteAll} disabled={count===0}
+          style={{ fontSize:13, display:'flex', alignItems:'center', gap:6,
+            padding:'7px 14px', borderRadius:8, border:'1.5px solid #fecaca',
+            background: count===0 ? '#f9fafb' : '#fff',
+            color: count===0 ? '#d1d5db' : '#dc2626',
+            cursor: count===0 ? 'default' : 'pointer', fontWeight:600 }}>
+          <Trash2 size={14}/> Borrar todo
         </button>
         <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>setShowAdd(v=>!v)}>
