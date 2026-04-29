@@ -17,6 +17,8 @@ class Spare(models.Model):
     fecha_asignacion   = models.DateField(blank=True, null=True)
     valor_lote         = models.CharField(max_length=100, blank=True, null=True)
     motivo_asignacion  = models.CharField(max_length=300, blank=True, null=True)
+    procedencia        = models.CharField(max_length=200, blank=True, null=True)
+    pedido_traslado    = models.CharField(max_length=200, blank=True, null=True)
     estatus            = models.CharField(max_length=100, blank=True, null=True, db_index=True)
 
     created_at         = models.DateTimeField(auto_now_add=True)

@@ -678,7 +678,8 @@ const ALL_COLS = [
   { key:'motivo_asignacion',label:'Motivo Asignación',  default:false },
 ]
 
-function ColumnSelector({ visibleCols, onChange }) {
+function ColumnSelector({ visibleCols, onChange, allCols }) {
+  const cols = allCols || ALL_COLS
   const [open, setOpen] = useState(false)
   const ref = useRef()
   useEffect(() => {
@@ -704,7 +705,7 @@ function ColumnSelector({ visibleCols, onChange }) {
           border:'1px solid #e5e7eb', padding:'8px 0', minWidth:210 }}>
           <p style={{ margin:'0 0 4px', padding:'4px 14px', fontSize:10, fontWeight:700,
             color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.5px' }}>Columnas visibles</p>
-          {ALL_COLS.map(col => (
+          {cols.map(col => (
             <label key={col.key} style={{ display:'flex', alignItems:'center', gap:10,
               padding:'6px 14px', cursor:'pointer', fontSize:13, color:'#374151' }}
               onMouseEnter={e => e.currentTarget.style.background='#f9fafb'}
@@ -722,12 +723,12 @@ function ColumnSelector({ visibleCols, onChange }) {
             </label>
           ))}
           <div style={{ borderTop:'1px solid #f3f4f6', margin:'6px 0 2px' }}/>
-          <button onClick={() => onChange(ALL_COLS.map(c => c.key))}
+          <button onClick={() => onChange(cols.map(c => c.key))}
             style={{ width:'100%', padding:'6px 14px', background:'none', border:'none',
               fontSize:12, color:'#7c3aed', cursor:'pointer', textAlign:'left', fontWeight:600 }}>
             Mostrar todas
           </button>
-          <button onClick={() => onChange(ALL_COLS.filter(c => c.default).map(c => c.key))}
+          <button onClick={() => onChange(cols.filter(c => c.default).map(c => c.key))}
             style={{ width:'100%', padding:'6px 14px', background:'none', border:'none',
               fontSize:12, color:'#6b7280', cursor:'pointer', textAlign:'left' }}>
             Restaurar por defecto
@@ -736,6 +737,586 @@ function ColumnSelector({ visibleCols, onChange }) {
       )}
     </div>
   )
+}
+
+
+// ── Tab Control Inventario ────────────────────────────────────────────────────
+const CONTROL_COLS = [
+  { key:'centro',           label:'Centro',              default:true  },
+  { key:'almacen',          label:'Almacén',             default:true  },
+  { key:'zona',             label:'Zona',                default:true  },
+  { key:'proveedor',        label:'Proveedor',           default:true  },
+  { key:'modelo',           label:'Modelo',              default:true  },
+  { key:'tipo',             label:'Tipo',                default:true  },
+  { key:'sap',              label:'SAP',                 default:true  },
+  { key:'part_number',      label:'Part Number',         default:true  },
+  { key:'descripcion',      label:'Descripción',         default:true  },
+  { key:'serial_number',    label:'N° Serie',            default:true  },
+  { key:'valor_lote',       label:'Lote',                default:true  },
+  { key:'estatus',          label:'Estatus',             default:true  },
+  { key:'fecha_ingreso',    label:'Fecha Ingreso',       default:true  },
+  { key:'fecha_asignacion', label:'Fecha Asignación',    default:true  },
+  { key:'motivo_asignacion',label:'Motivo Asignación',   default:true  },
+  { key:'orden_compra',     label:'Orden Compra',        default:true  },
+  { key:'procedencia',      label:'Procedencia',         default:true  },
+  { key:'pedido_traslado',  label:'Pedido de Traslado',  default:true  },
+]
+
+function TabControlInventario() {
+  const [items, setItems]       = useState([])
+  const [total, setTotal]       = useState(0)
+  const [pages, setPages]       = useState(1)
+  const [page, setPage]         = useState(1)
+  const [loading, setLoading]   = useState(true)
+  const [search, setSearch]     = useState('')
+  const [editItem, setEditItem] = useState(null)
+  const [showNew, setShowNew]   = useState(false)
+  const [viewItem, setViewItem] = useState(null)
+  const [visibleCols, setVisibleCols] = useState(CONTROL_COLS.map(c=>c.key))
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState(null)
+  const [sapLoading, setSapLoading] = useState(false)
+  const fileRef = useRef()
+  const token = localStorage.getItem('access_token')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams({ page, page_size:50 })
+      if (search) params.set('search', search)
+      const r = await fetch(`/api/spare/items/?${params}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const d = await r.json()
+      setItems(Array.isArray(d) ? d : (d.results || []))
+      setTotal(d.count || 0)
+      setPages(Math.ceil((d.count||1)/50))
+    } finally { setLoading(false) }
+  }, [page, search])
+
+  useEffect(() => { load() }, [load])
+
+  const handleImport = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setImporting(true); setImportMsg(null)
+    const fd = new FormData(); fd.append('file', file)
+    try {
+      const r = await fetch('/api/spare/import/xlsx-spare/', {
+        method:'POST', body:fd,
+        headers:{ Authorization:`Bearer ${token}` }
+      })
+      const d = await r.json()
+      setImportMsg(d)
+      if (d.imported > 0) load()
+    } catch(e) { setImportMsg({ error: e.message }) }
+    finally { setImporting(false); e.target.value='' }
+  }
+
+  const handleDelete = async (id) => {
+    if (!confirm('¿Eliminar este registro?')) return
+    await fetch(`/api/spare/items/${id}/`, {
+      method:'DELETE', headers:{ Authorization:`Bearer ${token}` }
+    })
+    load()
+  }
+
+  const exportXLSX = () => {
+    const header = CONTROL_COLS.map(c => c.label)
+    const rows = items.map(r => CONTROL_COLS.map(c => r[c.key] ?? ''))
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Control Inventario')
+    XLSX.writeFile(wb, 'control_inventario_admip.xlsx')
+  }
+
+  return (
+    <div>
+      {/* Toolbar */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+        marginBottom:16, gap:10, flexWrap:'wrap' }}>
+        <div style={{ position:'relative', flex:1, maxWidth:420 }}>
+          <Search size={14} style={{ position:'absolute', left:10, top:'50%',
+            transform:'translateY(-50%)', color:'#9ca3af' }} />
+          <input className="input" style={{ paddingLeft:32 }}
+            placeholder="Buscar SAP, serie, descripción..."
+            value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} />
+        </div>
+        <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
+          <span style={{ fontSize:12, color:'#6b7280' }}>{total.toLocaleString()} registros</span>
+          <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+            onClick={exportXLSX}><Download size={14}/> Exportar</button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls"
+            style={{ display:'none' }} onChange={handleImport} />
+          <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+            onClick={()=>fileRef.current.click()} disabled={importing}>
+            <Upload size={14}/> {importing ? 'Importando...' : 'Importar Excel'}
+          </button>
+          <ColumnSelector visibleCols={visibleCols} onChange={setVisibleCols} allCols={CONTROL_COLS} />
+          <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+            onClick={()=>setShowNew(true)}>
+            <Plus size={14}/> Nuevo
+          </button>
+        </div>
+      </div>
+
+      {importMsg && (
+        <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:8,
+          background: importMsg.error ? '#fef2f2' : '#f0fdf4',
+          border:`1px solid ${importMsg.error ? '#fecaca' : '#bbf7d0'}`,
+          fontSize:13, color: importMsg.error ? '#dc2626' : '#16a34a' }}>
+          {importMsg.error
+            ? `Error: ${importMsg.error}`
+            : `✅ ${importMsg.imported} importados, ${importMsg.skipped||0} omitidos`}
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="card" style={{ padding:0, overflow:'hidden' }}>
+        <div style={{ overflowX:'auto' }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <thead>
+              <tr style={{ background:'#f9fafb', borderBottom:'1px solid #e5e7eb' }}>
+                {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c=>(
+                  <th key={c.key} style={{ padding:'9px 12px', textAlign:'left', fontSize:10,
+                    fontWeight:700, color:'#6b7280', textTransform:'uppercase',
+                    whiteSpace:'nowrap', letterSpacing:'.3px' }}>{c.label}</th>
+                ))}
+                <th style={{ padding:'9px 12px', fontSize:10, fontWeight:700,
+                  color:'#6b7280', textTransform:'uppercase' }}>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr><td colSpan={visibleCols.length+1}
+                  style={{ textAlign:'center', padding:'40px 0', color:'#9ca3af' }}>Cargando...</td></tr>
+              ) : items.length === 0 ? (
+                <tr><td colSpan={visibleCols.length+1}
+                  style={{ textAlign:'center', padding:'40px 0', color:'#9ca3af' }}>Sin registros</td></tr>
+              ) : items.map((row, i) => (
+                <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6',
+                  background: i%2===0 ? '#fff' : '#fafafa' }}>
+                  {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c => {
+                    const v = row[c.key]
+                    if (c.key === 'estatus') return (
+                      <td key={c.key} style={{ padding:'6px 12px' }}>
+                        <StatusBadge estatus={v} />
+                      </td>
+                    )
+                    if (c.key === 'sap') return (
+                      <td key={c.key} style={{ padding:'6px 12px', fontFamily:'monospace',
+                        fontWeight:700, color:'#7c3aed', whiteSpace:'nowrap',
+                        cursor:'pointer', textDecoration:'underline', textDecorationStyle:'dotted',
+                        textUnderlineOffset:3 }}
+                        onClick={()=>setViewItem(row)}>{v||'—'}</td>
+                    )
+                    if (c.key?.startsWith('fecha_')) return (
+                      <td key={c.key} style={{ padding:'6px 12px', color:'#6b7280',
+                        whiteSpace:'nowrap' }}>{v ? String(v).substring(0,10) : '—'}</td>
+                    )
+                    return (
+                      <td key={c.key} style={{ padding:'6px 12px', color:'#374151',
+                        whiteSpace:'nowrap', maxWidth:180, overflow:'hidden',
+                        textOverflow:'ellipsis' }} title={String(v||'')}>{v||'—'}</td>
+                    )
+                  })}
+                  <td style={{ padding:'6px 12px' }}>
+                    <div style={{ display:'flex', gap:4 }}>
+                      <button onClick={()=>setEditItem(row)}
+                        style={{ background:'none', border:'none', cursor:'pointer',
+                          color:'#7c3aed', padding:4, borderRadius:6 }}>
+                        <Edit2 size={13}/>
+                      </button>
+                      <button onClick={()=>handleDelete(row.id)}
+                        style={{ background:'none', border:'none', cursor:'pointer',
+                          color:'#dc2626', padding:4, borderRadius:6 }}>
+                        <Trash2 size={13}/>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Pagination */}
+      {pages > 1 && (
+        <div style={{ display:'flex', justifyContent:'center', gap:8, marginTop:16 }}>
+          <button className="btn-ghost" onClick={()=>setPage(p=>Math.max(1,p-1))}
+            disabled={page===1}><ChevronLeft size={14}/></button>
+          <span style={{ fontSize:13, color:'#6b7280', padding:'6px 12px' }}>{page} / {pages}</span>
+          <button className="btn-ghost" onClick={()=>setPage(p=>Math.min(pages,p+1))}
+            disabled={page===pages}><ChevronRight size={14}/></button>
+        </div>
+      )}
+
+      {/* View Modal */}
+      {viewItem && (
+        <ViewSpareModal item={viewItem}
+          onClose={()=>setViewItem(null)}
+          onEdit={()=>{ setEditItem(viewItem); setViewItem(null) }} />
+      )}
+
+      {/* Edit Modal */}
+      {editItem && (
+        <EditControlModal item={editItem}
+          onClose={()=>setEditItem(null)} onSaved={()=>{ load(); setEditItem(null) }} />
+      )}
+      {showNew && (
+        <EditControlModal item={{}}
+          onClose={()=>setShowNew(false)} onSaved={()=>{ load(); setShowNew(false) }} isNew />
+      )}
+    </div>
+  )
+}
+
+
+// ── ViewSpareModal ────────────────────────────────────────────────────────────
+function ViewSpareModal({ item, onClose, onEdit }) {
+  const SECTIONS = [
+    {
+      title: 'Identificación SAP',
+      color: '#7c3aed',
+      fields: [
+        ['SAP',          item.sap],
+        ['Part Number',  item.part_number],
+        ['Tipo',         item.tipo],
+        ['Modelo',       item.modelo],
+        ['Proveedor',    item.proveedor],
+        ['Descripción',  item.descripcion],
+      ]
+    },
+    {
+      title: 'Ubicación',
+      color: '#2563eb',
+      fields: [
+        ['Centro',   item.centro],
+        ['Almacén',  item.almacen],
+        ['Zona',     item.zona],
+      ]
+    },
+    {
+      title: 'Datos del Equipo',
+      color: '#0891b2',
+      fields: [
+        ['N° Serie',     item.serial_number],
+        ['Lote',         item.valor_lote],
+        ['Estatus',      item.estatus],
+        ['Orden Compra', item.orden_compra],
+        ['Procedencia',  item.procedencia],
+        ['Pedido Traslado', item.pedido_traslado],
+      ]
+    },
+    {
+      title: 'Fechas y Movimientos',
+      color: '#059669',
+      fields: [
+        ['Fecha Ingreso',     item.fecha_ingreso],
+        ['Fecha Asignación',  item.fecha_asignacion],
+        ['Motivo Asignación', item.motivo_asignacion],
+      ]
+    },
+  ]
+
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, zIndex:9999,
+      background:'rgba(0,0,0,.55)',
+      display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={e => e.target===e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:14, width:700,
+        maxHeight:'75vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+
+        {/* Header */}
+        <div style={{ padding:'12px 16px', borderBottom:'1px solid #e5e7eb',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>
+              Detalle del Spare
+            </p>
+            <p style={{ margin:0, fontWeight:800, color:'#7c3aed', fontFamily:'monospace', fontSize:15 }}>
+              {item.sap || '—'}
+              {item.serial_number ? <span style={{ fontSize:12, color:'#6b7280', fontWeight:400 }}> · {item.serial_number}</span> : ''}
+            </p>
+          </div>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <button onClick={onEdit}
+              style={{ fontSize:12, padding:'5px 12px', borderRadius:8,
+                background:'#f5f3ff', color:'#7c3aed', border:'1px solid #ede9fe',
+                cursor:'pointer', fontWeight:600 }}>✏️ Editar</button>
+            <button onClick={onClose}
+              style={{ background:'#f3f4f6', border:'none', borderRadius:8,
+                width:30, height:30, cursor:'pointer', fontSize:18, color:'#374151',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontWeight:700, lineHeight:1 }}>×</button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ overflowY:'auto', padding:'14px 16px', flex:1,
+          display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          {SECTIONS.map(sec => (
+            <div key={sec.title} style={{ border:'1px solid #e5e7eb', borderRadius:10, overflow:'hidden' }}>
+              <div style={{ background:sec.color, padding:'7px 14px' }}>
+                <p style={{ margin:0, fontSize:10, fontWeight:700, color:'#fff',
+                  textTransform:'uppercase', letterSpacing:'.5px' }}>{sec.title}</p>
+              </div>
+              <div>
+                {sec.fields.filter(([,v]) => v != null && v !== '').map(([label, val]) => (
+                  <div key={label} style={{ display:'flex', padding:'6px 14px',
+                    borderBottom:'1px solid #f9fafb', gap:8 }}>
+                    <span style={{ fontSize:11, color:'#9ca3af', minWidth:120, flexShrink:0 }}>{label}</span>
+                    <span style={{ fontSize:12, color:'#1f2937', fontWeight:500, wordBreak:'break-all' }}>
+                      {String(val)}
+                    </span>
+                  </div>
+                ))}
+                {sec.fields.filter(([,v]) => v != null && v !== '').length === 0 && (
+                  <p style={{ fontSize:11, color:'#d1d5db', textAlign:'center', padding:'10px 0', margin:0 }}>Sin datos</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  , document.body)
+}
+
+function EditControlModal({ item, onClose, onSaved, isNew }) {
+  const token = localStorage.getItem('access_token')
+
+  // Campos controlados que causan re-render mínimo
+  const [centro,    setCentro]    = useState(item.centro    || '')
+  const [almacen,   setAlmacen]   = useState(item.almacen   || '')
+  const [autoData,  setAutoData]  = useState({
+    part_number: item.part_number || '',
+    tipo:        item.tipo        || '',
+    modelo:      item.modelo      || '',
+    proveedor:   item.proveedor   || '',
+    descripcion: item.descripcion || '',
+  })
+  const [centros,    setCentros]    = useState([])
+  const [almacenes,  setAlmacenes]  = useState([])
+  const [sapLoading, setSapLoading] = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const sapTimer = useRef()
+
+  // Refs para campos de texto libre (sin re-render al escribir)
+  const refs = {
+    sap:              useRef(null),
+    zona:             useRef(null),
+    serial_number:    useRef(null),
+    valor_lote:       useRef(null),
+    estatus:          useRef(null),
+    fecha_ingreso:    useRef(null),
+    fecha_asignacion: useRef(null),
+    motivo_asignacion:useRef(null),
+    orden_compra:     useRef(null),
+    procedencia:      useRef(null),
+    pedido_traslado:  useRef(null),
+    descripcion:      useRef(null),
+  }
+
+  useEffect(() => {
+    fetch('/api/spare/centros/centros/', { headers:{ Authorization:`Bearer ${token}` } })
+      .then(r=>r.json()).then(d=>setCentros(Array.isArray(d)?d:[])).catch(()=>{})
+  }, [])
+
+  useEffect(() => {
+    if (!centro) { setAlmacenes([]); setAlmacen(''); return }
+    fetch(`/api/spare/centros/by-centro/?centro=${encodeURIComponent(centro)}`, {
+      headers:{ Authorization:`Bearer ${token}` }
+    }).then(r=>r.json()).then(d=>setAlmacenes(Array.isArray(d)?d:[])).catch(()=>{})
+  }, [centro])
+
+  const handleSapChange = () => {
+    const val = refs.sap.current?.value || ''
+    clearTimeout(sapTimer.current)
+    if (val.trim().length < 3) return
+    sapTimer.current = setTimeout(async () => {
+      setSapLoading(true)
+      try {
+        const r = await fetch(`/api/spare/part-numbers/lookup-by-sap/?sap=${encodeURIComponent(val.trim())}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        const d = await r.json()
+        if (d) {
+          setAutoData({
+            part_number: d.part_number   || '',
+            tipo:        d.tipo          || '',
+            modelo:      d.modelo_equipo || '',
+            proveedor:   d.proveedor     || '',
+            descripcion: d.descripcion   || '',
+          })
+          // Fill descripcion ref too
+          if (refs.descripcion.current && d.descripcion)
+            refs.descripcion.current.value = d.descripcion
+        }
+      } finally { setSapLoading(false) }
+    }, 600)
+  }
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const payload = {
+        centro, almacen,
+        sap:              refs.sap.current?.value              || '',
+        zona:             refs.zona.current?.value             || '',
+        serial_number:    refs.serial_number.current?.value    || '',
+        valor_lote:       refs.valor_lote.current?.value       || '',
+        estatus:          refs.estatus.current?.value          || '',
+        fecha_ingreso:    refs.fecha_ingreso.current?.value    || null,
+        fecha_asignacion: refs.fecha_asignacion.current?.value || null,
+        motivo_asignacion:refs.motivo_asignacion.current?.value|| '',
+        orden_compra:     refs.orden_compra.current?.value     || '',
+        procedencia:      refs.procedencia.current?.value      || '',
+        pedido_traslado:  refs.pedido_traslado.current?.value  || '',
+        descripcion:      refs.descripcion.current?.value      || autoData.descripcion || '',
+        part_number:      autoData.part_number,
+        tipo:             autoData.tipo,
+        modelo:           autoData.modelo,
+        proveedor:        autoData.proveedor,
+      }
+      if (!payload.fecha_ingreso)    delete payload.fecha_ingreso
+      if (!payload.fecha_asignacion) delete payload.fecha_asignacion
+      const url    = isNew ? '/api/spare/items/' : `/api/spare/items/${item.id}/`
+      const method = isNew ? 'POST' : 'PATCH'
+      await fetch(url, {
+        method,
+        headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify(payload)
+      })
+      onSaved()
+    } catch(e) { alert('Error al guardar') }
+    finally { setSaving(false) }
+  }
+
+  const lbl = (text) => (
+    <label style={{ fontSize:10, fontWeight:700, color:'#6b7280', display:'block',
+      marginBottom:2, textTransform:'uppercase', letterSpacing:'.3px' }}>{text}</label>
+  )
+  const AutoBadge = ({ val }) => val
+    ? <span style={{ marginLeft:4, fontSize:8, padding:'1px 4px', borderRadius:6,
+        background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0', fontWeight:700 }}>AUTO</span>
+    : null
+  const autoStyle = (val) => val
+    ? { background:'#f0fdf4', borderColor:'#bbf7d0', color:'#166534' } : {}
+
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:9999,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:'20px' }}
+      onClick={e => e.target===e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:14, width:800,
+        maxHeight:'85vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+
+        {/* Header */}
+        <div style={{ padding:'12px 20px', borderBottom:'1px solid #e5e7eb',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>{isNew ? 'Nuevo Spare' : 'Editar Spare'}</p>
+            <p style={{ margin:0, fontWeight:700, color:'#7c3aed', fontFamily:'monospace', fontSize:13 }}>{item.sap || '—'}{item.serial_number ? ` · ${item.serial_number}` : ''}</p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'1px solid #e5e7eb',
+            borderRadius:8, width:28, height:28, cursor:'pointer', fontSize:15, color:'#6b7280',
+            display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ overflowY:'auto', padding:'14px 20px', flex:1 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10 }}>
+
+            {/* Centro - select */}
+            <div>
+              {lbl('Centro')}
+              <select className="input" value={centro}
+                onChange={e=>{ setCentro(e.target.value); setAlmacen('') }}>
+                <option value=''>— Seleccionar —</option>
+                {centros.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+
+            {/* Almacen - select cascada */}
+            <div>
+              {lbl('Almacén')}
+              <select className="input" value={almacen}
+                onChange={e=>setAlmacen(e.target.value)} disabled={!centro}>
+                <option value=''>— Seleccionar —</option>
+                {almacenes.map(a=><option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+
+            <div>{lbl('Zona')}<input ref={refs.zona} className="input" defaultValue={item.zona||''}/></div>
+            <div>{lbl('N° Serie')}<input ref={refs.serial_number} className="input" defaultValue={item.serial_number||''}/></div>
+
+            {/* SAP con autofill */}
+            <div style={{ position:'relative' }}>
+              {lbl('SAP')}
+              <input ref={refs.sap} className="input" defaultValue={item.sap||''}
+                onChange={handleSapChange} placeholder="Ingresa SAP..." />
+              {sapLoading && <span style={{ position:'absolute', right:8, bottom:8,
+                fontSize:11, color:'#7c3aed' }}>🔍</span>}
+            </div>
+
+            {/* Campos auto */}
+            <div>
+              {lbl('Part Number')}<AutoBadge val={autoData.part_number}/>
+              <input className="input" value={autoData.part_number}
+                onChange={e=>setAutoData(d=>({...d,part_number:e.target.value}))}
+                style={autoStyle(autoData.part_number)}/>
+            </div>
+            <div>
+              {lbl('Tipo')}<AutoBadge val={autoData.tipo}/>
+              <input className="input" value={autoData.tipo}
+                onChange={e=>setAutoData(d=>({...d,tipo:e.target.value}))}
+                style={autoStyle(autoData.tipo)}/>
+            </div>
+            <div>
+              {lbl('Modelo')}<AutoBadge val={autoData.modelo}/>
+              <input className="input" value={autoData.modelo}
+                onChange={e=>setAutoData(d=>({...d,modelo:e.target.value}))}
+                style={autoStyle(autoData.modelo)}/>
+            </div>
+            <div>
+              {lbl('Proveedor')}<AutoBadge val={autoData.proveedor}/>
+              <input className="input" value={autoData.proveedor}
+                onChange={e=>setAutoData(d=>({...d,proveedor:e.target.value}))}
+                style={autoStyle(autoData.proveedor)}/>
+            </div>
+
+            <div>{lbl('Lote')}<input ref={refs.valor_lote} className="input" defaultValue={item.valor_lote||''}/></div>
+            <div>{lbl('Estatus')}<input ref={refs.estatus} className="input" defaultValue={item.estatus||''}/></div>
+            <div>{lbl('Orden Compra')}<input ref={refs.orden_compra} className="input" defaultValue={item.orden_compra||''}/></div>
+            <div>{lbl('F. Ingreso')}<input ref={refs.fecha_ingreso} type="date" className="input" defaultValue={item.fecha_ingreso||''}/></div>
+            <div>{lbl('F. Asignación')}<input ref={refs.fecha_asignacion} type="date" className="input" defaultValue={item.fecha_asignacion||''}/></div>
+            <div>{lbl('Procedencia')}<input ref={refs.procedencia} className="input" defaultValue={item.procedencia||''}/></div>
+            <div>{lbl('Pedido Traslado')}<input ref={refs.pedido_traslado} className="input" defaultValue={item.pedido_traslado||''}/></div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:10 }}>
+            <div>
+              {lbl('Descripción')}<AutoBadge val={autoData.descripcion}/>
+              <input ref={refs.descripcion} className="input" defaultValue={item.descripcion||autoData.descripcion||''}
+                style={autoStyle(autoData.descripcion)}/>
+            </div>
+            <div>{lbl('Motivo Asignación')}<input ref={refs.motivo_asignacion} className="input" defaultValue={item.motivo_asignacion||''}/></div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding:'10px 20px', borderTop:'1px solid #e5e7eb', flexShrink:0,
+          display:'flex', gap:10, justifyContent:'flex-end' }}>
+          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  , document.body)
 }
 
 // ── SpareList page ────────────────────────────────────────────────────────────
@@ -832,149 +1413,12 @@ export default function SpareList() {
 
   return (
     <div className="space-y-5 animate-in">
-      <div className="flex items-center justify-between">
-        <div>
+      <div style={{ marginBottom:8 }}>
           <h1 className="font-display text-2xl font-bold">Spares</h1>
-          <p className="text-sm mt-0.5" style={{ color:'#6b7280' }}>{total.toLocaleString()} registros</p>
-        </div>
-        <div className="flex gap-2">
-          <button className="btn-ghost flex items-center gap-2" onClick={handleExport}>
-            <Download size={15} /> Exportar
-          </button>
-          <button className="btn-ghost flex items-center gap-2" onClick={() => setShowImport(true)}>
-            <Upload size={15} /> Importar
-          </button>
-          <ColumnSelector visibleCols={visibleCols} onChange={setVisibleCols} />
-          <button className="btn-primary flex items-center gap-2" onClick={() => setModal('new')}>
-            <Plus size={15} /> Nuevo
-          </button>
-        </div>
       </div>
 
-      <div className="card p-4 space-y-3">
-        <div className="flex gap-3">
-          <div className="relative flex-1">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color:'#6b7280' }} />
-            <input className="input pl-9" placeholder="Buscar SAP, serial, descripción, modelo…"
-              value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
-          </div>
-          <button className="btn-ghost flex items-center gap-2" onClick={() => setShowFilters(f => !f)}>
-            <Filter size={15} /> Filtros
-          </button>
-        </div>
-        {showFilters && (
-          <div className="grid grid-cols-3 gap-3">
-            <Sel k="estatus" label="— Estatus —" />
-            <Sel k="tipo"    label="— Tipo —"    />
-            <Sel k="centro"  label="— Centro —"  />
-          </div>
-        )}
-      </div>
+      <TabControlInventario />
 
-      <div className="card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ borderBottom:'1px solid #e5e7eb', background:'#f9fafb' }}>
-                {ALL_COLS.filter(c => visibleCols.includes(c.key)).map(col => (
-                  <th key={col.key} className="px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide"
-                    style={{ color:'#6b7280', whiteSpace:'nowrap' }}>{col.label}</th>
-                ))}
-                <th className="px-4 py-3 text-left font-semibold text-xs uppercase tracking-wide" style={{ color:'#6b7280' }}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={visibleCols.length+1} className="text-center py-12" style={{ color:'#6b7280' }}>Cargando…</td></tr>
-              ) : spares.length === 0 ? (
-                <tr><td colSpan={visibleCols.length+1} className="text-center py-12" style={{ color:'#6b7280' }}>Sin resultados</td></tr>
-              ) : spares.map((s, i) => (
-                <tr key={s.id} style={{ borderBottom:'1px solid #f3f4f6',
-                  background: i%2===0 ? 'transparent' : 'rgba(249,250,251,0.6)' }}>
-                  {ALL_COLS.filter(c => visibleCols.includes(c.key)).map(col => {
-                    const v = s[col.key]
-                    if (col.key === 'sap') return (
-                      <td key={col.key} className="px-4 py-3 font-mono text-xs font-bold"
-                        style={{ color:'#7c3aed', cursor:'pointer', textDecoration:'underline',
-                          textDecorationStyle:'dotted', textUnderlineOffset:3 }}
-                        onClick={() => setViewSpare(s)}>{cleanNum(v)}</td>
-                    )
-                    if (col.key === 'modelo') return (
-                      <td key={col.key} className="px-4 py-3 max-w-xs" style={{ color:'#111827' }}>
-                        <div style={{ fontWeight:500, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:220 }}
-                          title={v}>{v || s.descripcion || '—'}</div>
-                        {s.descripcion && v && (
-                          <div style={{ fontSize:11, color:'#9ca3af', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', maxWidth:220 }}
-                            title={s.descripcion}>{s.descripcion}</div>
-                        )}
-                      </td>
-                    )
-                    if (col.key === 'proveedor') return (
-                      <td key={col.key} className="px-4 py-3 text-xs">
-                        {v ? <span style={{ padding:'2px 8px', borderRadius:10, fontSize:11, fontWeight:600,
-                          background: v==='HUAWEI'||v==='Huawei' ? '#eff6ff' : v==='ZTE' ? '#f0fdf4' : v==='ALCATEL' ? '#fef3c7' : '#f3f4f6',
-                          color:      v==='HUAWEI'||v==='Huawei' ? '#1d4ed8' : v==='ZTE' ? '#15803d' : v==='ALCATEL' ? '#b45309' : '#6b7280',
-                        }}>{v}</span> : <span style={{ color:'#9ca3af' }}>—</span>}
-                      </td>
-                    )
-                    if (col.key === 'estatus') return (
-                      <td key={col.key} className="px-4 py-3"><StatusBadge estatus={v} /></td>
-                    )
-                    if (col.key?.startsWith('fecha_')) return (
-                      <td key={col.key} className="px-4 py-3 text-xs" style={{ color:'#6b7280', whiteSpace:'nowrap' }}>
-                        {v ? String(v).substring(0,10) : '—'}
-                      </td>
-                    )
-                    if (col.key === 'centro') return (
-                      <td key={col.key} className="px-4 py-3 text-xs font-mono font-bold" style={{ color:'#374151' }}>{v || '—'}</td>
-                    )
-                    if (col.key === 'serial_number' || col.key === 'almacen') return (
-                      <td key={col.key} className="px-4 py-3 font-mono text-xs" style={{ color:'#6b7280' }}>{v || '—'}</td>
-                    )
-                    return (
-                      <td key={col.key} className="px-4 py-3 text-xs" style={{ color:'#374151', whiteSpace:'nowrap',
-                        maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v || '—'}</td>
-                    )
-                  })}
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <button onClick={() => setModal(s)} className="p-1.5 rounded hover:opacity-70" style={{ color:'#7c3aed' }}>
-                        <Edit2 size={14} />
-                      </button>
-                      <button onClick={() => handleDelete(s.id)} disabled={deleting===s.id}
-                        className="p-1.5 rounded hover:opacity-70" style={{ color:'#dc2626' }}>
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {pages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3" style={{ borderTop:'1px solid #e5e7eb' }}>
-            <p className="text-xs" style={{ color:'#6b7280' }}>Página {page} de {pages} · {total.toLocaleString()} registros</p>
-            <div className="flex gap-2">
-              <button className="btn-ghost px-2 py-1 text-xs flex items-center gap-1"
-                disabled={page===1} onClick={() => setPage(p=>p-1)}>
-                <ChevronLeft size={14}/> Anterior
-              </button>
-              <button className="btn-ghost px-2 py-1 text-xs flex items-center gap-1"
-                disabled={page===pages} onClick={() => setPage(p=>p+1)}>
-                Siguiente <ChevronRight size={14}/>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {showImport && (
-        <SpareImportModal
-          onClose={() => setShowImport(false)}
-          onDone={() => { setShowImport(false); load() }}
-        />
-      )}
 
       {viewSpare && createPortal(
         <SpareDetailModal spare={viewSpare} onClose={() => setViewSpare(null)}

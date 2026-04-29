@@ -81,6 +81,19 @@ export default function Dashboard() {
   const tipoData = stats
     ? Object.entries(stats.by_tipo).map(([name, value]) => ({ name: name.slice(0, 15), value }))
     : []
+  const proveedorData = stats?.by_proveedor
+    ? Object.entries(stats.by_proveedor).map(([name, value]) => ({ name: name.slice(0, 18), value }))
+    : []
+  const antiguedadData = stats?.by_antiguedad
+    ? Object.entries(stats.by_antiguedad)
+        .filter(([k]) => k !== 'Sin fecha')
+        .sort((a, b) => {
+          const na = parseInt(a[0]) || 0
+          const nb = parseInt(b[0]) || 0
+          return na - nb
+        })
+        .map(([name, value]) => ({ name, value }))
+    : []
   // sapData: [{name:'SAP', Operativo:3, Asignado:1, ...}, ...]
   const sapStatuses = stats?.by_sap
     ? [...new Set(Object.values(stats.by_sap).flatMap(d => Object.keys(d)))]
@@ -233,6 +246,133 @@ export default function Dashboard() {
                 </div>
               </ComponentCard>
             ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Antigüedad ── */}
+      {stats?.antiguedad_detalle?.length > 0 && (() => {
+        // Build chart data from detalle
+        const buckets = {}
+        stats.antiguedad_detalle.forEach(r => {
+          const k = r.antiguedad || 'Sin fecha'
+          if (!buckets[k]) buckets[k] = { value: 0, series: [] }
+          buckets[k].value += 1
+          if (r.serial_number) buckets[k].series.push(r.serial_number)
+          else buckets[k].series.push(r.sap || '—')
+        })
+        const chartData = Object.entries(buckets)
+          .filter(([k]) => k !== 'Sin fecha')
+          .map(([name, d]) => ({ name, value: d.value, series: d.series.join(', ') }))
+
+        const AntTooltip = ({ active, payload }) => {
+          if (!active || !payload?.length) return null
+          const d = payload[0].payload
+          return (
+            <div style={{ background:'#1f2937', borderRadius:8, padding:'8px 12px',
+              fontSize:12, color:'#fff', maxWidth:260 }}>
+              <p style={{ margin:'0 0 4px', fontWeight:700, color:'#fbbf24' }}>{d.name}</p>
+              <p style={{ margin:'0 0 2px', color:'#9ca3af', fontSize:11 }}>Cantidad: {d.value}</p>
+              <p style={{ margin:0, fontSize:11, color:'#e5e7eb' }}>Series: {d.series}</p>
+            </div>
+          )
+        }
+        return (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 14 }}>
+            Antigüedad del inventario
+          </p>
+          <div style={{ marginBottom:36 }}>
+            <div className="card" style={{ padding:'16px 16px 12px' }}>
+              <p style={{ margin:'0 0 2px', fontSize:12.5, fontWeight:600, color:'#374151' }}>Resumen</p>
+              <p style={{ margin:'0 0 12px', fontSize:12, color:'#9ca3af' }}>Días / meses / años</p>
+              <ResponsiveContainer width="100%" height={Math.max(160, chartData.length * 38)}>
+                <BarChart data={chartData} layout="vertical" margin={{ left:0, right:32 }}>
+                  <XAxis type="number" tick={{ fontSize:10, fill:'#9ca3af' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" width={72} tick={{ fontSize:10, fill:'#6b7280' }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<AntTooltip />} />
+                  <Bar dataKey="value" radius={[0,4,4,0]} fill="#d97706" opacity={0.85}
+                    label={{ position:'right', fontSize:11, fill:'#d97706', fontWeight:700 }} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          <div style={{ display:'none' }}>
+            <div style={{ padding:'14px 16px', borderBottom:'1px solid #e5e7eb', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div>
+                <p style={{ margin:0, fontSize:12.5, fontWeight:600, color:'#374151' }}>Detalle por número de serie</p>
+                <p style={{ margin:0, fontSize:12, color:'#9ca3af' }}>Ordenado por mayor antigüedad — días / meses / años</p>
+              </div>
+              <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20,
+                background:'#fef3c7', color:'#d97706', fontWeight:700 }}>
+                {stats.antiguedad_detalle.length} equipos
+              </span>
+            </div>
+            <div style={{ overflowY:'auto', maxHeight:380 }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead style={{ position:'sticky', top:0, background:'#f9fafb', zIndex:1 }}>
+                  <tr style={{ borderBottom:'1px solid #e5e7eb' }}>
+                    {['N° Serie','SAP','Modelo','Proveedor','Centro','Almacén','Estatus','F. Ingreso','Antigüedad'].map(h=>(
+                      <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontSize:10,
+                        fontWeight:700, color:'#6b7280', textTransform:'uppercase',
+                        whiteSpace:'nowrap', letterSpacing:'.3px' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.antiguedad_detalle.map((row, i) => {
+                    const dias = row.dias
+                    const color = dias > 1095 ? '#dc2626' : dias > 365 ? '#d97706' : '#16a34a'
+                    return (
+                      <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6',
+                        background: i%2===0 ? '#fff' : '#fafafa' }}>
+                        <td style={{ padding:'6px 12px', fontFamily:'monospace', fontSize:11, color:'#374151', whiteSpace:'nowrap' }}>{row.serial_number||'—'}</td>
+                        <td style={{ padding:'6px 12px', fontFamily:'monospace', fontWeight:700, color:'#7c3aed', whiteSpace:'nowrap' }}>{row.sap||'—'}</td>
+                        <td style={{ padding:'6px 12px', color:'#374151', whiteSpace:'nowrap', maxWidth:140, overflow:'hidden', textOverflow:'ellipsis' }}>{row.modelo||'—'}</td>
+                        <td style={{ padding:'6px 12px', color:'#6b7280', whiteSpace:'nowrap' }}>{row.proveedor||'—'}</td>
+                        <td style={{ padding:'6px 12px', fontFamily:'monospace', fontWeight:600, color:'#374151' }}>{row.centro||'—'}</td>
+                        <td style={{ padding:'6px 12px', fontFamily:'monospace', color:'#6b7280' }}>{row.almacen||'—'}</td>
+                        <td style={{ padding:'6px 12px' }}>
+                          <span style={{ fontSize:10, padding:'2px 7px', borderRadius:10, fontWeight:600,
+                            background: row.estatus?.toLowerCase().includes('operativo') ? '#f0fdf4' : '#f3f4f6',
+                            color:      row.estatus?.toLowerCase().includes('operativo') ? '#16a34a' : '#6b7280' }}>
+                            {row.estatus||'—'}
+                          </span>
+                        </td>
+                        <td style={{ padding:'6px 12px', color:'#6b7280', whiteSpace:'nowrap' }}>{row.fecha_ingreso||'—'}</td>
+                        <td style={{ padding:'6px 12px', whiteSpace:'nowrap' }}>
+                          <span style={{ fontWeight:700, color, fontSize:12 }}>{row.antiguedad}</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          </div>
+        </>
+        )
+      })()}
+
+      {/* ── Por Proveedor ── */}
+      {proveedorData.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 14 }}>
+            Top proveedores
+          </p>
+          <div className="card" style={{ padding: '20px 20px 14px', marginBottom: 36 }}>
+            <p style={{ fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Spares por proveedor</p>
+            <p style={{ fontSize: 12, color: '#9ca3af', marginBottom: 12 }}>Los 10 proveedores con más equipos</p>
+            <ResponsiveContainer width="100%" height={Math.max(180, proveedorData.length * 36)}>
+              <BarChart data={proveedorData} layout="vertical" margin={{ left: 0, right: 30 }}>
+                <XAxis type="number" tick={{ fontSize: 10.5, fill: '#9ca3af' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" width={120}
+                  tick={{ fontSize: 10.5, fill: '#6b7280' }} axisLine={false} tickLine={false} />
+                <Tooltip content={<Tooltip_ />} />
+                <Bar dataKey="value" radius={[0, 4, 4, 0]} fill="#0891b2" opacity={0.85}
+                  label={{ position:'right', fontSize:11, fill:'#0891b2', fontWeight:700 }} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </>
       )}

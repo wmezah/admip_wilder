@@ -859,18 +859,63 @@ class DashboardStatsView(APIView):
             if oc not in by_oc:
                 by_oc[oc] = {}
             by_oc[oc][est] = row['c']
+        # by_proveedor
+        by_proveedor = dict(
+            qs.exclude(proveedor__isnull=True).exclude(proveedor='')
+            .values('proveedor').annotate(c=Count('id'))
+            .order_by('-c').values_list('proveedor', 'c')[:10]
+        )
+
+        # by_antiguedad: detalle por serie con dias/meses/años
+        from datetime import date
+        hoy = date.today()
+        antiguedad_detalle = []
+        for row in qs.values('id', 'serial_number', 'sap', 'modelo', 'proveedor', 'centro', 'almacen', 'estatus', 'fecha_ingreso'):
+            fi = row['fecha_ingreso']
+            dias = (hoy - fi).days if fi else None
+            if dias is not None:
+                anos  = dias // 365
+                meses = (dias % 365) // 30
+                if anos >= 1:
+                    label = f'{anos}a {meses}m'
+                elif meses >= 1:
+                    label = f'{meses} mes{"es" if meses > 1 else ""}'
+                else:
+                    label = f'{dias} días'
+            else:
+                label = 'Sin fecha'
+                dias  = -1
+            antiguedad_detalle.append({
+                'id':            row['id'],
+                'serial_number': row['serial_number'] or '',
+                'sap':           row['sap'] or '',
+                'modelo':        row['modelo'] or '',
+                'proveedor':     row['proveedor'] or '',
+                'centro':        row['centro'] or '',
+                'almacen':       row['almacen'] or '',
+                'estatus':       row['estatus'] or '',
+                'fecha_ingreso': str(fi) if fi else '',
+                'antiguedad':    label,
+                'dias':          dias,
+            })
+        antiguedad_detalle.sort(key=lambda x: x['dias'], reverse=True)
+        antiguedad = {}  # kept for backward compat
+
         data = {
-            'total':     total,
-            'operativo': count_status('operativo'),
-            'utilizado': count_status('utilizado'),
-            'asignado':  count_status('asignado'),
-            'pendiente': count_status('pendiente'),
-            'revision':  count_status('revision'),
-            'baja':      count_status('baja'),
-            'by_tipo':   by_tipo,
-            'by_centro': by_centro,
-            'by_sap':    by_sap,
-            'by_oc':     by_oc,
+            'total':        total,
+            'operativo':    count_status('operativo'),
+            'utilizado':    count_status('utilizado'),
+            'asignado':     count_status('asignado'),
+            'pendiente':    count_status('pendiente'),
+            'revision':     count_status('revision'),
+            'baja':         count_status('baja'),
+            'by_tipo':      by_tipo,
+            'by_centro':    by_centro,
+            'by_sap':       by_sap,
+            'by_oc':        by_oc,
+            'by_proveedor': by_proveedor,
+            'by_antiguedad':    antiguedad,
+            'antiguedad_detalle': antiguedad_detalle,
         }
         return Response(DashboardStatsSerializer(data).data)
 
@@ -1052,7 +1097,9 @@ class ImportSpareXLSXView(APIView):
                     fecha_asignacion  =safe_date(row.get('fecha_asignacion') or row.get('Fecha Asignacion')),
                     valor_lote        =safe_str(row.get('valor_lote') or row.get('Valor Lote')),
                     motivo_asignacion =safe_str(row.get('motivo_asignacion') or row.get('Motivo Asignacion')),
-                    estatus           =safe_str(row.get('estatus') or row.get('Estatus')) or 'Operativo',
+                    estatus           =safe_str(row.get('estatus') or row.get('Estatus') or row.get('ESTATUS')) or 'Operativo',
+                    procedencia       =safe_str(row.get('procedencia') or row.get('Procedencia') or row.get('PROCEDENCIA')),
+                    pedido_traslado   =safe_str(row.get('pedido_traslado') or row.get('Pedido Traslado') or row.get('PEDIDO DE TRASLADO ')),
                 )
                 created += 1
             except Exception as e:

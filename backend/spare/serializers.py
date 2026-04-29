@@ -15,7 +15,8 @@ class SpareListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'sap', 'part_number', 'tipo', 'modelo', 'proveedor', 'descripcion',
             'serial_number', 'orden_compra', 'centro', 'almacen', 'zona',
-            'fecha_ingreso', 'fecha_asignacion', 'valor_lote', 'motivo_asignacion', 'estatus',
+            'fecha_ingreso', 'fecha_asignacion', 'valor_lote', 'motivo_asignacion',
+            'procedencia', 'pedido_traslado', 'estatus',
         ]
 
 
@@ -47,8 +48,11 @@ class DashboardStatsSerializer(serializers.Serializer):
     baja      = serializers.IntegerField()
     by_tipo   = serializers.DictField(child=serializers.IntegerField())
     by_centro = serializers.DictField(child=serializers.IntegerField())
-    by_sap    = serializers.DictField(child=serializers.DictField(child=serializers.IntegerField()))
-    by_oc     = serializers.DictField(child=serializers.DictField(child=serializers.IntegerField()))
+    by_sap        = serializers.DictField(child=serializers.DictField(child=serializers.IntegerField()))
+    by_oc         = serializers.DictField(child=serializers.DictField(child=serializers.IntegerField()))
+    by_proveedor  = serializers.DictField(child=serializers.IntegerField())
+    by_antiguedad       = serializers.DictField(child=serializers.IntegerField())
+    antiguedad_detalle  = serializers.ListField(child=serializers.DictField())
 
 
 class PartNumberSerializer(serializers.ModelSerializer):
