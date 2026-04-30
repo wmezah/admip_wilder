@@ -1082,7 +1082,23 @@ class ImportSpareXLSXView(APIView):
                     skipped += 1
                     continue
 
+                serial_val = safe_str(g('N Serie','serial_number','N° Serie','Serial Number'))
+
+                # Verificar duplicado por SAP + serial_number
+                if serial_val:
+                    if Spare.objects.filter(sap=sap_val, serial_number=serial_val).exists():
+                        skipped += 1
+                        continue
+                elif Spare.objects.filter(
+                    sap=sap_val,
+                    modelo=safe_str(g('Modelo','modelo')),
+                    valor_lote=safe_str(g('Lote','valor_lote','Valor Lote'))
+                ).exists():
+                    skipped += 1
+                    continue
+
                 Spare.objects.create(
+                    serial_number=serial_val,
                     centro            =safe_str(g('Centro','centro')),
                     almacen           =safe_str(g('Almacen','almacen','Almacén')),
                     zona              =safe_str(g('Zona','zona')),
@@ -1092,7 +1108,7 @@ class ImportSpareXLSXView(APIView):
                     sap               =sap_val,
                     part_number       =safe_str(g('Part Number','part_number')),
                     descripcion       =safe_str(g('Descripcion','descripcion','Descripción')),
-                    serial_number     =safe_str(g('N Serie','serial_number','N° Serie','Serial Number')),
+
                     valor_lote        =safe_str(g('Lote','valor_lote','Valor Lote')),
                     estatus           =safe_str(g('Estatus','estatus')) or 'Operativo',
                     fecha_ingreso     =safe_date(g('Fecha Ingreso','fecha_ingreso')),
