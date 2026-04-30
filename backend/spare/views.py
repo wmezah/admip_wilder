@@ -59,9 +59,37 @@ def safe_str(val):
 
 
 def safe_date(val):
+    if val is None: return None
     try:
-        if pd.isna(val) or val is None: return None
-        return pd.to_datetime(val).date()
+        if pd.isna(val): return None
+    except Exception:
+        pass
+    try:
+        import datetime, re
+        if hasattr(val, 'date') and callable(val.date):
+            return val.date()
+        if isinstance(val, datetime.date):
+            return val
+        s = str(val).strip()
+        if not s or s.lower() in ('nan', 'nat', 'none', ''): return None
+        # Handle JS Date format: "Mon Jun 27 2022 00:00:36 GMT-0500 (hora estándar de Perú)"
+        js_match = re.search(r'(\w{3})\s+(\w{3})\s+(\d{1,2})\s+(\d{4})', s)
+        if js_match:
+            s = f"{js_match.group(2)} {js_match.group(3)} {js_match.group(4)}"
+        parsed = pd.to_datetime(s, errors='coerce')
+        return parsed.date() if not pd.isna(parsed) else None
+    except Exception:
+        return None
+
+
+def safe_dec(val):
+    if val is None: return None
+    try:
+        if pd.isna(val): return None
+    except Exception:
+        pass
+    try:
+        return float(str(val).replace(',', '.').strip()) if str(val).strip() else None
     except Exception:
         return None
 
@@ -107,6 +135,11 @@ class SpareViewSet(viewsets.ModelViewSet):
         centro = list(Spare.objects.exclude(centro__isnull=True)
             .values_list('centro', flat=True).distinct().order_by('centro'))
         return Response({'estatus': estatus, 'tipo': tipo, 'centro': centro})
+
+    @action(detail=False, methods=['delete'], url_path='clear_all')
+    def clear_all(self, request):
+        count, _ = Spare.objects.all().delete()
+        return Response({'deleted': count})
 
     @action(detail=False, methods=['get'], url_path='export-csv')
     def export_csv(self, request):
@@ -1027,79 +1060,49 @@ class ImportSpareXLSXView(APIView):
             return Response({'error': f'No se pudo leer el archivo: {e}'}, status=400)
 
         df.columns = [str(col).lstrip('\ufeff').strip() for col in df.columns]
-
-        sap_catalog   = {s.sap: s for s in SAPCatalog.objects.all()}
-        pn_catalog    = {p.part_number: p for p in PartNumber.objects.all()}
-        valid_centros = set(CentroAlmacen.objects.values_list('centro', 'almacen'))
-
         created, skipped, errors = 0, 0, []
 
         for i, row in df.iterrows():
             row_num = i + 2
             try:
-                sap_val     = safe_str(row.get('sap') or row.get('SAP')) or ''
-                pn_val      = safe_str(row.get('part_number') or row.get('Part Number')) or ''
-                centro_val  = safe_str(row.get('centro') or row.get('Centro')) or ''
-                almacen_val = safe_str(row.get('almacen') or row.get('Almacén') or row.get('Almacen')) or ''
+                def g(*keys):
+                    for k in keys:
+                        v = row.get(k)
+                        if v is None: continue
+                        try:
+                            if pd.isna(v): continue
+                        except Exception:
+                            pass
+                        s = str(v).strip()
+                        if s and s.lower() not in ('nan','nat','none'): return v
+                    return None
 
-                if centro_val and almacen_val:
-                    if (centro_val, almacen_val) not in valid_centros:
-                        centro_val = ''; almacen_val = ''
-
-                sap_obj    = sap_catalog.get(sap_val) if sap_val else None
-                sap_fields = {}
-                if sap_obj:
-                    sap_fields = {
-                        'tipo':            getattr(sap_obj, 'denom_tpmt',      None) or '',
-                        'modelo':          getattr(sap_obj, 'texto_breve',     None) or '',
-                        'tipo_material':   getattr(sap_obj, 'tipo_material',   None) or '',
-                        'grupo_art':       getattr(sap_obj, 'grupo_art',       None) or '',
-                        'descrip_gpo_art': getattr(sap_obj, 'descrip_gpo_art', None) or '',
-                        'cat_valoracion':  getattr(sap_obj, 'cat_valoracion',  None) or '',
-                        'unidad_medida':   getattr(sap_obj, 'unidad_medida',   None) or '',
-                        'creado_el_sap':   getattr(sap_obj, 'creado_el',       None) or '',
-                        'creado_por_sap':  getattr(sap_obj, 'creado_por',      None) or '',
-                        'sujeto_lote':     getattr(sap_obj, 'sujeto_lote',     None) or '',
-                        'etiqueta':        getattr(sap_obj, 'etiqueta',        None) or '',
-                        'cod_naciones':    getattr(sap_obj, 'cod_naciones',    None) or '',
-                        'grupo_art_ext':   getattr(sap_obj, 'grupo_art_ext',   None) or '',
-                        'cod_subcat':      getattr(sap_obj, 'cod_subcat',      None) or '',
-                        'desc_subcat':     getattr(sap_obj, 'desc_subcat',     None) or '',
-                        'perfil_numserie': getattr(sap_obj, 'perfil_numserie', None) or '',
-                        'marcado_borrar':  getattr(sap_obj, 'marcado_borrar',  None) or '',
-                        'texto_pedido':    getattr(sap_obj, 'texto_pedido',    None) or '',
-                        'fuente':          getattr(sap_obj, 'fuente',          None) or '',
-                    }
-                    sap_fields.pop('descripcion', None)
-
-                pn_obj        = pn_catalog.get(pn_val) if pn_val else None
-                proveedor_val = safe_str(row.get('proveedor') or row.get('Proveedor')) or ''
-                if not proveedor_val and pn_obj:
-                    proveedor_val = pn_obj.proveedor or ''
-
-                desc_val = safe_str(row.get('descripcion') or row.get('Descripcion'))
-                if not desc_val and sap_obj:
-                    desc_val = getattr(sap_obj, 'texto_breve', '') or ''
+                sap_val = safe_str(g('SAP','sap')) or ''
+                if not sap_val:
+                    skipped += 1
+                    continue
 
                 Spare.objects.create(
+                    centro            =safe_str(g('Centro','centro')),
+                    almacen           =safe_str(g('Almacen','almacen','Almacén')),
+                    zona              =safe_str(g('Zona','zona')),
+                    proveedor         =safe_str(g('Proveedor','proveedor')),
+                    modelo            =safe_str(g('Modelo','modelo')),
+                    tipo              =safe_str(g('Tipo','tipo')),
                     sap               =sap_val,
-                    part_number       =pn_val,
-                    tipo              =safe_str(row.get('tipo') or row.get('Tipo')),
-                    modelo            =safe_str(row.get('modelo') or row.get('Modelo')),
-                    proveedor         =proveedor_val,
-                    descripcion       =desc_val,
-                    serial_number     =safe_str(row.get('serial_number') or row.get('Serial Number')),
-                    orden_compra      =safe_str(row.get('orden_compra') or row.get('Orden Compra')),
-                    centro            =centro_val,
-                    almacen           =almacen_val,
-                    zona              =safe_str(row.get('zona') or row.get('Zona')),
-                    fecha_ingreso     =safe_date(row.get('fecha_ingreso') or row.get('Fecha Ingreso')),
-                    fecha_asignacion  =safe_date(row.get('fecha_asignacion') or row.get('Fecha Asignacion')),
-                    valor_lote        =safe_str(row.get('valor_lote') or row.get('Valor Lote')),
-                    motivo_asignacion =safe_str(row.get('motivo_asignacion') or row.get('Motivo Asignacion')),
-                    estatus           =safe_str(row.get('estatus') or row.get('Estatus') or row.get('ESTATUS')) or 'Operativo',
-                    procedencia       =safe_str(row.get('procedencia') or row.get('Procedencia') or row.get('PROCEDENCIA')),
-                    pedido_traslado   =safe_str(row.get('pedido_traslado') or row.get('Pedido Traslado') or row.get('PEDIDO DE TRASLADO ')),
+                    part_number       =safe_str(g('Part Number','part_number')),
+                    descripcion       =safe_str(g('Descripcion','descripcion','Descripción')),
+                    serial_number     =safe_str(g('N Serie','serial_number','N° Serie','Serial Number')),
+                    valor_lote        =safe_str(g('Lote','valor_lote','Valor Lote')),
+                    estatus           =safe_str(g('Estatus','estatus')) or 'Operativo',
+                    fecha_ingreso     =safe_date(g('Fecha Ingreso','fecha_ingreso')),
+                    fecha_asignacion  =safe_date(g('Fecha Asignacion','fecha_asignacion','Fecha Asignación')),
+                    motivo_asignacion =safe_str(g('Motivo Asignacion','motivo_asignacion')),
+                    orden_compra      =safe_str(g('Orden Compra','orden_compra')),
+                    procedencia       =safe_str(g('Procedencia','procedencia')),
+                    pedido_traslado   =safe_str(g('Pedido de Traslado','pedido_traslado')),
+                    comentario        =safe_str(g('Comentario','comentario')),
+                    precio            =safe_dec(g('Precio','precio')),
                 )
                 created += 1
             except Exception as e:

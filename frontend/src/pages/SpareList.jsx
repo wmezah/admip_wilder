@@ -3,7 +3,7 @@ import * as XLSX from 'xlsx'
 import { createPortal } from 'react-dom'
 import {
   Search, Filter, Download, Plus, Edit2, Trash2, X,
-  ChevronLeft, ChevronRight, CheckCircle, Upload, FileUp, Columns
+  ChevronLeft, ChevronRight, CheckCircle, Upload, FileUp, Columns, RefreshCw
 } from 'lucide-react'
 import {
   getSpares, deleteSpare, getFilterOptions, exportCSV,
@@ -143,22 +143,26 @@ function SpareDetailModal({ spare, onClose, onEdit }) {
 
 // ── SpareImportModal ──────────────────────────────────────────────────────────
 const SPARE_IMPORT_COLS = [
-  { key:'sap',              label:'SAP' },
-  { key:'part_number',      label:'Part Number' },
-  { key:'tipo',             label:'Tipo' },
-  { key:'modelo',           label:'Modelo' },
-  { key:'proveedor',        label:'Proveedor' },
-  { key:'descripcion',      label:'Descripcion' },
-  { key:'serial_number',    label:'Serial Number' },
-  { key:'orden_compra',     label:'Orden Compra' },
   { key:'centro',           label:'Centro' },
   { key:'almacen',          label:'Almacen' },
   { key:'zona',             label:'Zona' },
+  { key:'proveedor',        label:'Proveedor' },
+  { key:'modelo',           label:'Modelo' },
+  { key:'tipo',             label:'Tipo' },
+  { key:'sap',              label:'SAP' },
+  { key:'part_number',      label:'Part Number' },
+  { key:'descripcion',      label:'Descripcion' },
+  { key:'serial_number',    label:'N Serie' },
+  { key:'valor_lote',       label:'Lote' },
+  { key:'estatus',          label:'Estatus' },
   { key:'fecha_ingreso',    label:'Fecha Ingreso' },
   { key:'fecha_asignacion', label:'Fecha Asignacion' },
-  { key:'valor_lote',       label:'Valor Lote' },
   { key:'motivo_asignacion',label:'Motivo Asignacion' },
-  { key:'estatus',          label:'Estatus' },
+  { key:'orden_compra',     label:'Orden Compra' },
+  { key:'procedencia',      label:'Procedencia' },
+  { key:'pedido_traslado',  label:'Pedido de Traslado' },
+  { key:'comentario',       label:'Comentario' },
+  { key:'precio',           label:'Precio' },
 ]
 
 function SpareImportModal({ onClose, onDone }) {
@@ -200,7 +204,7 @@ function SpareImportModal({ onClose, onDone }) {
   }
 
   const downloadTemplate = () => {
-    const ws = XLSX.utils.aoa_to_sheet([SPARE_IMPORT_COLS.map(c => c.key)])
+    const ws = XLSX.utils.aoa_to_sheet([SPARE_IMPORT_COLS.map(c => c.label)])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Plantilla')
     XLSX.writeFile(wb, 'plantilla_equipos.xlsx')
@@ -760,6 +764,8 @@ const CONTROL_COLS = [
   { key:'orden_compra',     label:'Orden Compra',        default:true  },
   { key:'procedencia',      label:'Procedencia',         default:true  },
   { key:'pedido_traslado',  label:'Pedido de Traslado',  default:true  },
+  { key:'comentario',       label:'Comentario',           default:true  },
+  { key:'precio',           label:'Precio',               default:true  },
 ]
 
 function TabControlInventario() {
@@ -769,8 +775,9 @@ function TabControlInventario() {
   const [page, setPage]         = useState(1)
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
-  const [editItem, setEditItem] = useState(null)
-  const [showNew, setShowNew]   = useState(false)
+  const [editItem, setEditItem]         = useState(null)
+  const [showNew, setShowNew]           = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [viewItem, setViewItem] = useState(null)
   const [visibleCols, setVisibleCols] = useState(CONTROL_COLS.map(c=>c.key))
   const [importing, setImporting] = useState(false)
@@ -845,12 +852,28 @@ function TabControlInventario() {
         <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
           <span style={{ fontSize:12, color:'#6b7280' }}>{total.toLocaleString()} registros</span>
           <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-            onClick={exportXLSX}><Download size={14}/> Exportar</button>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls"
-            style={{ display:'none' }} onChange={handleImport} />
+            onClick={()=>setShowImportModal(true)}>
+            <Upload size={14}/> Importar XLSX
+          </button>
           <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-            onClick={()=>fileRef.current.click()} disabled={importing}>
-            <Upload size={14}/> {importing ? 'Importando...' : 'Importar Excel'}
+            onClick={exportXLSX}>
+            <Download size={14}/> Exportar Excel
+          </button>
+          <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+            onClick={load}>
+            <RefreshCw size={14}/> Actualizar
+          </button>
+          <button onClick={async ()=>{
+              if (!confirm(`¿Eliminar todos los ${total.toLocaleString()} registros? Esta acción no se puede deshacer.`)) return
+              await fetch('/api/spare/items/clear_all/', { method:'DELETE', headers:{ Authorization:`Bearer ${token}` } })
+              load()
+            }}
+            disabled={total===0}
+            style={{ fontSize:13, display:'flex', alignItems:'center', gap:6,
+              padding:'7px 14px', borderRadius:8, border:'1.5px solid #fecaca',
+              background:'#fff', color: total===0 ? '#d1d5db' : '#dc2626',
+              cursor: total===0 ? 'default' : 'pointer', fontWeight:600 }}>
+            <Trash2 size={14}/> Limpiar todo
           </button>
           <ColumnSelector visibleCols={visibleCols} onChange={setVisibleCols} allCols={CONTROL_COLS} />
           <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
@@ -959,6 +982,12 @@ function TabControlInventario() {
           onEdit={()=>{ setEditItem(viewItem); setViewItem(null) }} />
       )}
 
+      {/* Import Modal */}
+      {showImportModal && createPortal(
+        <SpareImportModal onClose={()=>setShowImportModal(false)} onDone={()=>{ load(); setShowImportModal(false) }} />,
+        document.body
+      )}
+
       {/* Edit Modal */}
       {editItem && (
         <EditControlModal item={editItem}
@@ -1007,6 +1036,8 @@ function ViewSpareModal({ item, onClose, onEdit }) {
         ['Orden Compra', item.orden_compra],
         ['Procedencia',  item.procedencia],
         ['Pedido Traslado', item.pedido_traslado],
+        ['Comentario',      item.comentario],
+        ['Precio',          item.precio],
       ]
     },
     {
@@ -1117,6 +1148,8 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
     orden_compra:     useRef(null),
     procedencia:      useRef(null),
     pedido_traslado:  useRef(null),
+    comentario:       useRef(null),
+    precio:           useRef(null),
     descripcion:      useRef(null),
   }
 
@@ -1175,6 +1208,8 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
         orden_compra:     refs.orden_compra.current?.value     || '',
         procedencia:      refs.procedencia.current?.value      || '',
         pedido_traslado:  refs.pedido_traslado.current?.value  || '',
+        comentario:       refs.comentario.current?.value       || '',
+        precio:           refs.precio.current?.value ? parseFloat(refs.precio.current.value) : null,
         descripcion:      refs.descripcion.current?.value      || autoData.descripcion || '',
         part_number:      autoData.part_number,
         tipo:             autoData.tipo,
@@ -1295,6 +1330,8 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
             <div>{lbl('F. Asignación')}<input ref={refs.fecha_asignacion} type="date" className="input" defaultValue={item.fecha_asignacion||''}/></div>
             <div>{lbl('Procedencia')}<input ref={refs.procedencia} className="input" defaultValue={item.procedencia||''}/></div>
             <div>{lbl('Pedido Traslado')}<input ref={refs.pedido_traslado} className="input" defaultValue={item.pedido_traslado||''}/></div>
+            <div>{lbl('Comentario')}<input ref={refs.comentario} className="input" defaultValue={item.comentario||''}/></div>
+            <div>{lbl('Precio')}<input ref={refs.precio} type="number" step="0.01" className="input" defaultValue={item.precio||''}/></div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:10 }}>
             <div>
