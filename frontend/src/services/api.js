@@ -24,6 +24,28 @@ api.interceptors.request.use(config => {
   return config
 })
 
+// Auto-refresh token on 401 for api instance
+api.interceptors.response.use(
+  res => res,
+  async err => {
+    if (err.response?.status === 401) {
+      const refreshToken = localStorage.getItem('refresh_token')
+      if (refreshToken) {
+        try {
+          const r = await authApi.post('/refresh/', { refresh: refreshToken })
+          localStorage.setItem('access_token', r.data.access)
+          err.config.headers['Authorization'] = `Bearer ${r.data.access}`
+          return api(err.config)
+        } catch (_) {}
+      }
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      window.location.href = '/'
+    }
+    return Promise.reject(err)
+  }
+)
+
 usersApi.interceptors.request.use(config => {
   const token = localStorage.getItem('access_token')
   if (token) config.headers['Authorization'] = `Bearer ${token}`
@@ -91,6 +113,10 @@ export const getPartNumbers        = (params) => api.get('/part-numbers/', { par
 export const createPartNumber      = (data)   => api.post('/part-numbers/', data)
 export const updatePartNumber      = (id, d)  => api.patch(`/part-numbers/${id}/`, d)
 export const deletePartNumber      = (id)     => api.delete(`/part-numbers/${id}/`)
+export const bulkImportPartNumbers = (file)   => {
+  const fd = new FormData(); fd.append('file', file)
+  return api.post('/part-numbers/bulk-import/', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
 export const lookupPartNumber      = (pn)     => api.get('/part-numbers/lookup/', { params: { part_number: pn } })
 export const lookupPartNumberBySAP = (sap)    => api.get('/part-numbers/lookup-by-sap/', { params: { sap } })
 export const getByProveedor        = (p)      => api.get('/part-numbers/by-proveedor/', { params: { proveedor: p } })

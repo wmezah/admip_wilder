@@ -94,6 +94,7 @@ class PartNumber(models.Model):
     sap         = models.CharField(max_length=100, blank=True, null=True)
     part_number = models.CharField(max_length=200, unique=True)
     descripcion = models.CharField(max_length=300, blank=True, null=True)
+    precio        = models.DecimalField(max_digits=14, decimal_places=2, blank=True, null=True)
     comentarios   = models.TextField(blank=True, null=True)                  # ← NUEVO
 
     class Meta:

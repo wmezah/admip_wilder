@@ -172,13 +172,10 @@ function SpareImportModal({ onClose, onDone }) {
   const [result, setResult] = useState(null)
   const fileRef             = useRef()
 
-  // Convert float 4033670.0 -> "4033670"
   const cleanVal = (val) => {
     if (val === null || val === undefined || val === '') return ''
-    // Numbers: always convert to integer string (4033670.0 -> '4033670')
     if (typeof val === 'number') return String(Math.trunc(val))
     const s = String(val).trim()
-    // String with .0 suffix: '4033670.0' -> '4033670'
     return s.replace(/^(\d+)\.0+$/, '$1')
   }
 
@@ -214,7 +211,6 @@ function SpareImportModal({ onClose, onDone }) {
     if (rows.length === 0) return
     setSaving(true)
     try {
-      // Build XLSX and POST to backend import endpoint
       const wsData = [
         SPARE_IMPORT_COLS.map(c => c.key),
         ...rows.map(r => SPARE_IMPORT_COLS.map(c => r[c.key] || ''))
@@ -232,7 +228,6 @@ function SpareImportModal({ onClose, onDone }) {
         headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
       })
       const data = await res.json()
-      console.log('[Import result]', data)
       if (!res.ok) throw new Error(data.error || JSON.stringify(data))
       setResult(data)
       if (data.imported > 0) onDone()
@@ -378,18 +373,15 @@ const EMPTY = {
 }
 
 // ── SAP Autocomplete hook ─────────────────────────────────────────────────────
-// Pre-builds a sorted index on first load so searches are O(log n) not O(n)
 function useSAPSearch(sapCatalog) {
   const [query, setQuery]             = useState('')
   const [suggestions, setSuggestions] = useState([])
   const [searching, setSearching]     = useState(false)
   const debounce  = useRef(null)
-  const indexRef  = useRef(null)   // sorted array of {key, row} for binary search
+  const indexRef  = useRef(null)
 
-  // Build index once when catalog loads
   useEffect(() => {
     if (!sapCatalog.length) return
-    // Sort by lowercase sap for binary search
     const idx = sapCatalog
       .map(r => ({ key: (r.sap || '').toLowerCase() + ' ' + (r.textoBreve || r.texto_breve || '').toLowerCase(), row: r }))
       .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
@@ -405,21 +397,17 @@ function useSAPSearch(sapCatalog) {
       const q = val.toLowerCase()
       const idx = indexRef.current
       let results = []
-
       if (idx) {
-        // Binary search for prefix matches (very fast)
         let lo = 0, hi = idx.length - 1, start = idx.length
         while (lo <= hi) {
           const mid = (lo + hi) >> 1
           if (idx[mid].key >= q) { start = mid; hi = mid - 1 }
           else lo = mid + 1
         }
-        // Collect up to 8 prefix matches
         for (let i = start; i < idx.length && results.length < 8; i++) {
           if (!idx[i].key.startsWith(q)) break
           results.push(idx[i].row)
         }
-        // If fewer than 8, add texto_breve matches (but cap total scan at 5000)
         if (results.length < 8) {
           const seen = new Set(results.map(r => r.sap))
           const limit = Math.min(idx.length, 5000)
@@ -431,7 +419,6 @@ function useSAPSearch(sapCatalog) {
           }
         }
       }
-
       setSuggestions(results)
       setSearching(false)
     }, 150)
@@ -441,8 +428,7 @@ function useSAPSearch(sapCatalog) {
   return { query, setQuery, suggestions, setSuggestions, searching, search, clear }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-// Remove .0 suffix from numeric values: 4033670.0 -> '4033670'
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const cleanNum = (v) => {
   if (v === null || v === undefined || v === '') return ''
   if (typeof v === 'number') return String(Math.trunc(v))
@@ -451,20 +437,18 @@ const cleanNum = (v) => {
 }
 
 // ── SpareModal ────────────────────────────────────────────────────────────────
-// Uses refs for simple text/date inputs → zero re-renders on keystroke
 function SpareModal({ spare, onClose, onSaved }) {
   const init = spare ? { ...spare } : { ...EMPTY }
 
-  const [saving, setSaving]       = useState(false)
+  const [saving, setSaving]         = useState(false)
   const [sapLoading, setSapLoading] = useState(false)
-  const [centro, setCentro]       = useState(init.centro || '')
-  const [almacen, setAlmacen]     = useState(init.almacen || '')
-  const [estatus, setEstatus]     = useState(init.estatus || '')
-  const [centros, setCentros]     = useState([])
-  const [almacenes, setAlmacenes] = useState([])
-  const sapTimer                  = useRef(null)
+  const [centro, setCentro]         = useState(init.centro || '')
+  const [almacen, setAlmacen]       = useState(init.almacen || '')
+  const [estatus, setEstatus]       = useState(init.estatus || '')
+  const [centros, setCentros]       = useState([])
+  const [almacenes, setAlmacenes]   = useState([])
+  const sapTimer                    = useRef(null)
 
-  // Auto fields (react state — re-render on SAP lookup)
   const [autoFields, setAutoFields] = useState({
     sap:         init.sap         || '',
     part_number: init.part_number || '',
@@ -472,9 +456,9 @@ function SpareModal({ spare, onClose, onSaved }) {
     modelo:      init.modelo      || '',
     proveedor:   init.proveedor   || '',
     descripcion: init.descripcion || '',
+    precio:      init.precio != null ? String(init.precio) : '',
   })
 
-  // Uncontrolled fields (refs — no re-render on type)
   const refs = {
     serial_number:    useRef(null),
     orden_compra:     useRef(null),
@@ -506,11 +490,12 @@ function SpareModal({ spare, onClose, onSaved }) {
         if (data) {
           setAutoFields(f => ({
             ...f,
-            part_number: data.part_number || f.part_number,
-            tipo:        data.tipo        || f.tipo,
-            modelo:      data.modelo_equipo || f.modelo,
-            proveedor:   data.proveedor   || f.proveedor,
-            descripcion: data.descripcion || f.descripcion,
+            part_number: data.part_number    || f.part_number,
+            tipo:        data.tipo           || f.tipo,
+            modelo:      data.modelo_equipo  || f.modelo,
+            proveedor:   data.proveedor      || f.proveedor,
+            descripcion: data.descripcion    || f.descripcion,
+            precio:      data.precio != null ? String(data.precio) : f.precio,
           }))
         }
       } finally { setSapLoading(false) }
@@ -522,6 +507,7 @@ function SpareModal({ spare, onClose, onSaved }) {
     setSaving(true)
     const payload = {
       ...autoFields,
+      precio: autoFields.precio !== '' ? parseFloat(autoFields.precio) : null,
       centro, almacen, estatus,
       serial_number:     refs.serial_number.current?.value     || '',
       orden_compra:      refs.orden_compra.current?.value      || '',
@@ -549,14 +535,14 @@ function SpareModal({ spare, onClose, onSaved }) {
     </div>
   )
 
-  const AF = ({ label, k }) => (
+  const AF = ({ label, k, type='text' }) => (
     <div>
       <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>
         {label}
         {autoFields[k] && <span style={{ marginLeft:5, fontSize:9, padding:'1px 6px', borderRadius:10,
           background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0', fontWeight:700 }}>AUTO</span>}
       </label>
-      <input className="input" value={autoFields[k] || ''}
+      <input className="input" type={type} value={autoFields[k] || ''}
         onChange={e => setAutoFields(f => ({...f, [k]: e.target.value}))}
         style={{ background: autoFields[k] ? '#f0fdf4' : undefined,
           borderColor: autoFields[k] ? '#bbf7d0' : undefined,
@@ -577,7 +563,6 @@ function SpareModal({ spare, onClose, onSaved }) {
       onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="card w-full max-w-3xl max-h-[92vh] overflow-y-auto" style={{ padding:0 }}>
 
-        {/* Header */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
           padding:'18px 24px', borderBottom:'1px solid #e5e7eb' }}>
           <h2 style={{ fontWeight:700, fontSize:17, margin:0 }}>
@@ -589,8 +574,6 @@ function SpareModal({ spare, onClose, onSaved }) {
         </div>
 
         <div style={{ padding:'20px 24px' }}>
-
-          {/* SAP + autofill */}
           <Section title="Código SAP IP" />
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12, marginBottom:4 }}>
             <div style={{ position:'relative' }}>
@@ -608,9 +591,9 @@ function SpareModal({ spare, onClose, onSaved }) {
             <AF label="Modelo"      k="modelo" />
             <AF label="Proveedor"   k="proveedor" />
             <AF label="Descripción" k="descripcion" />
+            <AF label="Precio"      k="precio" type="number" />
           </div>
 
-          {/* Ubicación */}
           <Section title="Ubicación" />
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
             <div>
@@ -630,7 +613,6 @@ function SpareModal({ spare, onClose, onSaved }) {
             <F label="Zona" k="zona" />
           </div>
 
-          {/* Datos */}
           <Section title="Datos del Equipo" />
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
             <F label="Serial Number"    k="serial_number" />
@@ -649,7 +631,6 @@ function SpareModal({ spare, onClose, onSaved }) {
           </div>
         </div>
 
-        {/* Footer */}
         <div style={{ display:'flex', gap:10, justifyContent:'flex-end',
           padding:'14px 24px', borderTop:'1px solid #e5e7eb' }}>
           <button className="btn-ghost" onClick={onClose}>Cancelar</button>
@@ -662,7 +643,7 @@ function SpareModal({ spare, onClose, onSaved }) {
   )
 }
 
-// ── Columnas disponibles ─────────────────────────────────────────────────────
+// ── Columnas disponibles ──────────────────────────────────────────────────────
 const ALL_COLS = [
   { key:'sap',              label:'SAP',               default:true  },
   { key:'modelo',           label:'Modelo',             default:true  },
@@ -745,6 +726,7 @@ function ColumnSelector({ visibleCols, onChange, allCols }) {
 
 
 // ── Tab Control Inventario ────────────────────────────────────────────────────
+// ── CAMBIO: agregado precio a CONTROL_COLS ───────────────────────────────────
 const CONTROL_COLS = [
   { key:'centro',           label:'Centro',              default:true  },
   { key:'almacen',          label:'Almacén',             default:true  },
@@ -758,14 +740,14 @@ const CONTROL_COLS = [
   { key:'serial_number',    label:'N° Serie',            default:true  },
   { key:'valor_lote',       label:'Lote',                default:true  },
   { key:'estatus',          label:'Estatus',             default:true  },
+  { key:'precio',           label:'Precio',              default:true  },
   { key:'fecha_ingreso',    label:'Fecha Ingreso',       default:true  },
   { key:'fecha_asignacion', label:'Fecha Asignación',    default:true  },
   { key:'motivo_asignacion',label:'Motivo Asignación',   default:true  },
   { key:'orden_compra',     label:'Orden Compra',        default:true  },
   { key:'procedencia',      label:'Procedencia',         default:true  },
   { key:'pedido_traslado',  label:'Pedido de Traslado',  default:true  },
-  { key:'comentario',       label:'Comentario',           default:true  },
-  { key:'precio',           label:'Precio',               default:true  },
+  { key:'comentario',       label:'Comentario',          default:true  },
 ]
 
 function TabControlInventario() {
@@ -782,7 +764,6 @@ function TabControlInventario() {
   const [visibleCols, setVisibleCols] = useState(CONTROL_COLS.map(c=>c.key))
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState(null)
-  const [sapLoading, setSapLoading] = useState(false)
   const fileRef = useRef()
   const token = localStorage.getItem('access_token')
 
@@ -937,6 +918,11 @@ function TabControlInventario() {
                       <td key={c.key} style={{ padding:'6px 12px', color:'#6b7280',
                         whiteSpace:'nowrap' }}>{v ? String(v).substring(0,10) : '—'}</td>
                     )
+                    if (c.key === 'precio') return (
+                      <td key={c.key} style={{ padding:'6px 12px', color:'#374151', whiteSpace:'nowrap' }}>
+                        {v != null && v !== '' ? `$ ${Number(v).toLocaleString('es-PE', { minimumFractionDigits:2, maximumFractionDigits:2 })}` : '—'}
+                      </td>
+                    )
                     return (
                       <td key={c.key} style={{ padding:'6px 12px', color:'#374151',
                         whiteSpace:'nowrap', maxWidth:180, overflow:'hidden',
@@ -975,20 +961,17 @@ function TabControlInventario() {
         </div>
       )}
 
-      {/* View Modal */}
       {viewItem && (
         <ViewSpareModal item={viewItem}
           onClose={()=>setViewItem(null)}
           onEdit={()=>{ setEditItem(viewItem); setViewItem(null) }} />
       )}
 
-      {/* Import Modal */}
       {showImportModal && createPortal(
         <SpareImportModal onClose={()=>setShowImportModal(false)} onDone={()=>{ load(); setShowImportModal(false) }} />,
         document.body
       )}
 
-      {/* Edit Modal */}
       {editItem && (
         <EditControlModal item={editItem}
           onClose={()=>setEditItem(null)} onSaved={()=>{ load(); setEditItem(null) }} />
@@ -1030,14 +1013,14 @@ function ViewSpareModal({ item, onClose, onEdit }) {
       title: 'Datos del Equipo',
       color: '#0891b2',
       fields: [
-        ['N° Serie',     item.serial_number],
-        ['Lote',         item.valor_lote],
-        ['Estatus',      item.estatus],
-        ['Orden Compra', item.orden_compra],
-        ['Procedencia',  item.procedencia],
+        ['N° Serie',        item.serial_number],
+        ['Lote',            item.valor_lote],
+        ['Estatus',         item.estatus],
+        ['Precio',          item.precio],
+        ['Orden Compra',    item.orden_compra],
+        ['Procedencia',     item.procedencia],
         ['Pedido Traslado', item.pedido_traslado],
         ['Comentario',      item.comentario],
-        ['Precio',          item.precio],
       ]
     },
     {
@@ -1060,7 +1043,6 @@ function ViewSpareModal({ item, onClose, onEdit }) {
         maxHeight:'75vh', display:'flex', flexDirection:'column',
         boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
 
-        {/* Header */}
         <div style={{ padding:'12px 16px', borderBottom:'1px solid #e5e7eb',
           display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
           <div>
@@ -1085,7 +1067,6 @@ function ViewSpareModal({ item, onClose, onEdit }) {
           </div>
         </div>
 
-        {/* Body */}
         <div style={{ overflowY:'auto', padding:'14px 16px', flex:1,
           display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
           {SECTIONS.map(sec => (
@@ -1119,7 +1100,6 @@ function ViewSpareModal({ item, onClose, onEdit }) {
 function EditControlModal({ item, onClose, onSaved, isNew }) {
   const token = localStorage.getItem('access_token')
 
-  // Campos controlados que causan re-render mínimo
   const [centro,    setCentro]    = useState(item.centro    || '')
   const [almacen,   setAlmacen]   = useState(item.almacen   || '')
   const [autoData,  setAutoData]  = useState({
@@ -1135,7 +1115,6 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
   const [saving,     setSaving]     = useState(false)
   const sapTimer = useRef()
 
-  // Refs para campos de texto libre (sin re-render al escribir)
   const refs = {
     sap:              useRef(null),
     zona:             useRef(null),
@@ -1184,9 +1163,11 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
             proveedor:   d.proveedor     || '',
             descripcion: d.descripcion   || '',
           })
-          // Fill descripcion ref too
           if (refs.descripcion.current && d.descripcion)
             refs.descripcion.current.value = d.descripcion
+          // ✅ Auto-fill precio desde lookup SAP
+          if (refs.precio.current && d.precio != null)
+            refs.precio.current.value = d.precio
         }
       } finally { setSapLoading(false) }
     }, 600)
@@ -1249,7 +1230,6 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
         maxHeight:'85vh', display:'flex', flexDirection:'column',
         boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
 
-        {/* Header */}
         <div style={{ padding:'12px 20px', borderBottom:'1px solid #e5e7eb',
           display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
           <div>
@@ -1261,11 +1241,8 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
             display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
         </div>
 
-        {/* Body */}
         <div style={{ overflowY:'auto', padding:'14px 20px', flex:1 }}>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr 1fr', gap:10 }}>
-
-            {/* Centro - select */}
             <div>
               {lbl('Centro')}
               <select className="input" value={centro}
@@ -1274,8 +1251,6 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
                 {centros.map(c=><option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-
-            {/* Almacen - select cascada */}
             <div>
               {lbl('Almacén')}
               <select className="input" value={almacen}
@@ -1284,11 +1259,8 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
                 {almacenes.map(a=><option key={a} value={a}>{a}</option>)}
               </select>
             </div>
-
             <div>{lbl('Zona')}<input ref={refs.zona} className="input" defaultValue={item.zona||''}/></div>
             <div>{lbl('N° Serie')}<input ref={refs.serial_number} className="input" defaultValue={item.serial_number||''}/></div>
-
-            {/* SAP con autofill */}
             <div style={{ position:'relative' }}>
               {lbl('SAP')}
               <input ref={refs.sap} className="input" defaultValue={item.sap||''}
@@ -1296,8 +1268,6 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
               {sapLoading && <span style={{ position:'absolute', right:8, bottom:8,
                 fontSize:11, color:'#7c3aed' }}>🔍</span>}
             </div>
-
-            {/* Campos auto */}
             <div>
               {lbl('Part Number')}<AutoBadge val={autoData.part_number}/>
               <input className="input" value={autoData.part_number}
@@ -1322,7 +1292,6 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
                 onChange={e=>setAutoData(d=>({...d,proveedor:e.target.value}))}
                 style={autoStyle(autoData.proveedor)}/>
             </div>
-
             <div>{lbl('Lote')}<input ref={refs.valor_lote} className="input" defaultValue={item.valor_lote||''}/></div>
             <div>{lbl('Estatus')}<input ref={refs.estatus} className="input" defaultValue={item.estatus||''}/></div>
             <div>{lbl('Orden Compra')}<input ref={refs.orden_compra} className="input" defaultValue={item.orden_compra||''}/></div>
@@ -1343,7 +1312,6 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
           </div>
         </div>
 
-        {/* Footer */}
         <div style={{ padding:'10px 20px', borderTop:'1px solid #e5e7eb', flexShrink:0,
           display:'flex', gap:10, justifyContent:'flex-end' }}>
           <button className="btn-ghost" onClick={onClose}>Cancelar</button>
@@ -1375,7 +1343,6 @@ export default function SpareList() {
   const [sapCatalog, setSapCatalog] = useState([])
   const [visibleCols, setVisibleCols] = useState(ALL_COLS.filter(c=>c.default).map(c=>c.key))
 
-  // Load SAP catalog from public JSON (fast, no DB round-trip for search)
   useEffect(() => {
     fetch('/sap_catalog.json')
       .then(r => r.json())
@@ -1420,11 +1387,9 @@ export default function SpareList() {
         return s
       }
       const rows = data.map(s => cols.map(k => fmtCell(k, s[k])))
-      // Force SAP and numeric code columns as text cells
       const numericCols = ['sap','orden_compra','valor_lote']
       const wsRows = [header, ...rows]
       const ws = XLSX.utils.aoa_to_sheet(wsRows)
-      // Set column format to text for SAP etc
       const range = XLSX.utils.decode_range(ws['!ref'])
       for (let R = 1; R <= range.e.r; R++) {
         cols.forEach((col, C) => {
@@ -1451,24 +1416,15 @@ export default function SpareList() {
   return (
     <div className="space-y-5 animate-in">
       <div style={{ marginBottom:8 }}>
-          <h1 className="font-display text-2xl font-bold">Spares</h1>
+        <h1 className="font-display text-2xl font-bold">Spares</h1>
       </div>
 
       <TabControlInventario />
-
 
       {viewSpare && createPortal(
         <SpareDetailModal spare={viewSpare} onClose={() => setViewSpare(null)}
           onEdit={() => { setModal(viewSpare); setViewSpare(null) }} />,
         document.body
-      )}
-
-      {viewSpare && (
-        <SpareDetailModal
-          spare={viewSpare}
-          onClose={() => setViewSpare(null)}
-          onEdit={() => { setModal(viewSpare); setViewSpare(null) }}
-        />
       )}
 
       {modal && createPortal(

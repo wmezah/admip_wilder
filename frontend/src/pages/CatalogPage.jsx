@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx'
 import {
   getSAPCatalog, createSAPItem, updateSAPItem, deleteSAPItem, bulkImportSAP,
   getCentroAlmacen, createCentroAlm, updateCentroAlm, deleteCentroAlm,
-  getPartNumbers, createPartNumber, updatePartNumber, deletePartNumber,
+  getPartNumbers, createPartNumber, updatePartNumber, deletePartNumber, bulkImportPartNumbers,
   getStockSAP, importStockSAPXLS, clearStockSAP
 } from '../services/api'
 
@@ -39,6 +39,7 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
   const [saving, setSaving]   = useState(false)
   const [result, setResult]   = useState(null)
   const fileRef               = useRef()
+  const rawFile               = useRef(null)
 
   const parseXLSX = (file) => {
     const reader = new FileReader()
@@ -71,6 +72,7 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
   const handleFile = (e) => {
     const file = e.target.files[0]
     if (!file) return
+    rawFile.current = file
     setRows([]); setError('')
     parseXLSX(file)
   }
@@ -90,7 +92,7 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
     if (invalid.length) { setError(invalid.slice(0,3).join(' | ')); return }
     setSaving(true)
     try {
-      const res = await onImport(rows)
+      const res = await onImport(rows, rawFile.current)
       setResult(res)
     } catch(e) { setError(e.response?.data ? JSON.stringify(e.response.data) : e.message) }
     finally { setSaving(false) }
@@ -607,7 +609,7 @@ function PartNumbersTab() {
   const [loading, setLoading]   = useState(true)
   const [editId, setEditId]     = useState(null)
   const [editRow, setEditRow]   = useState({})
-  const [form, setForm]         = useState({ proveedor:'', modelo_equipo:'', tipo:'', sap:'', part_number:'', descripcion:'', comentarios:'' })
+  const [form, setForm]         = useState({ proveedor:'', modelo_equipo:'', tipo:'', sap:'', part_number:'', descripcion:'', precio:'', comentarios:'' })
   const [adding, setAdding]     = useState(false)
   const [showAdd, setShowAdd]   = useState(false)
   const [msg, setMsg]           = useState(null)
@@ -639,7 +641,7 @@ function PartNumbersTab() {
     setAdding(true)
     try {
       await createPartNumber(form)
-      setForm({ proveedor:'', modelo_equipo:'', tipo:'', sap:'', part_number:'', descripcion:'', comentarios:'' })
+      setForm({ proveedor:'', modelo_equipo:'', tipo:'', sap:'', part_number:'', descripcion:'', precio:'', comentarios:'' })
       setShowAdd(false)
       setMsg({ type:'ok', text:`✓ ${form.part_number} añadido` })
       load()
@@ -687,6 +689,7 @@ function PartNumbersTab() {
     { key:'sap',           label:'SAP' },
     { key:'part_number',   label:'Part Number' },
     { key:'descripcion',   label:'Descripción' },
+    { key:'precio',         label:'Precio' },
     { key:'comentarios',   label:'Comentarios' },
   ]
 
@@ -851,15 +854,13 @@ function PartNumbersTab() {
             {key:'sap',           label:'SAP',              required:false},
             {key:'part_number',   label:'Part Number',      required:true},
             {key:'descripcion',   label:'Descripcion',      required:false},
+            {key:'precio',         label:'Precio',             required:false},
             {key:'comentarios',   label:'Comentarios',      required:false},
           ]}
-          onImport={async (rows) => {
-            const results = []
-            for (const r of rows) {
-              try { await createPartNumber(r); results.push(r) } catch(_) {}
-            }
+          onImport={async (_, file) => {
+            const r = await bulkImportPartNumbers(file)
             load()
-            return results
+            return Array(r.data.created + r.data.updated).fill({})
           }}
           onClose={()=>setShowBulk(false)}
         />

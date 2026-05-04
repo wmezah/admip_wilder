@@ -293,6 +293,81 @@ class PartNumberViewSet(viewsets.ModelViewSet):
         except PartNumber.DoesNotExist:
             return Response(None)
 
+
+    @action(detail=False, methods=['post'], url_path='bulk-import',
+            parser_classes=[MultiPartParser])
+    def bulk_import(self, request):
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'error': 'No se envió archivo.'}, status=400)
+        try:
+            df = pd.read_excel(file)
+        except Exception as e:
+            return Response({'error': f'No se pudo leer el archivo: {e}'}, status=400)
+
+        col_map = {
+            'proveedor':     ['proveedor'],
+            'modelo_equipo': ['modelo de equipo', 'modelo_equipo'],
+            'tipo':          ['tipo'],
+            'sap':           ['sap'],
+            'part_number':   ['part number', 'part_number'],
+            'descripcion':   ['descripcion', 'descripción'],
+            'precio':        ['precio', 'price'],
+            'comentarios':   ['comentarios'],
+        }
+
+        def find_col(df, aliases):
+            norm = lambda s: str(s).strip().lower()
+            for col in df.columns:
+                if norm(col) in aliases:
+                    return col
+            return None
+
+        created = updated = errors = 0
+        for _, row in df.iterrows():
+            try:
+                data = {}
+                for field, aliases in col_map.items():
+                    col = find_col(df, aliases)
+                    val = row.get(col) if col else None
+                    if val is None or (isinstance(val, float) and pd.isna(val)):
+                        data[field] = None
+                    else:
+                        data[field] = str(val).strip() if field != 'precio' else val
+
+                pn = data.get('part_number')
+                prov = data.get('proveedor')
+                if not pn or not prov:
+                    errors += 1
+                    continue
+
+                precio_val = data.get('precio')
+                try:
+                    precio_val = float(precio_val) if precio_val not in (None, '', 'None') else None
+                except (ValueError, TypeError):
+                    precio_val = None
+
+                obj, created_flag = PartNumber.objects.update_or_create(
+                    part_number=pn,
+                    defaults={
+                        'proveedor':     prov,
+                        'modelo_equipo': data.get('modelo_equipo'),
+                        'tipo':          data.get('tipo'),
+                        'sap':           data.get('sap'),
+                        'descripcion':   data.get('descripcion'),
+                        'precio':        precio_val,
+                        'comentarios':   data.get('comentarios'),
+                    }
+                )
+                if created_flag:
+                    created += 1
+                else:
+                    updated += 1
+            except Exception:
+                errors += 1
+
+        return Response({'created': created, 'updated': updated, 'errors': errors})
+
     @action(detail=False, methods=['delete'], url_path='clear_all')
     def clear_all(self, request):
         count, _ = PartNumber.objects.all().delete()
