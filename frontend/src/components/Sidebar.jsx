@@ -9,9 +9,8 @@ const NAV_GROUPS = [
     section: 'Almacén',
     collapsible: true,
     items: [
-      { label:'Dashboard',      icon:LayoutDashboard, to:'/', end:true },
       { label:'Spares',         icon:Package,         to:'/spare'       },
-      { label:'Gestión RMA',icon:FileText,         to:'/rma'         },
+      { label:'Gestión RMA',    icon:FileText,         to:'/rma'         },
       { label:'Seguimiento',    icon:ClipboardList,    to:'/seguimiento' },
       { label:'Catálogos',      icon:BookOpen,         to:'/catalogo'    },
     ],

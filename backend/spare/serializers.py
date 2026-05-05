@@ -8,6 +8,19 @@ class SpareSerializer(serializers.ModelSerializer):
         model = Spare
         fields = '__all__'
 
+    def validate(self, attrs):
+        sap    = (attrs.get('sap') or '').strip()
+        serial = (attrs.get('serial_number') or '').strip()
+        if sap and serial:
+            qs = Spare.objects.filter(sap=sap, serial_number=serial)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'serial_number': f'Ya existe un spare con SAP {sap} y N° Serie {serial}.'}
+                )
+        return attrs
+
 
 class SpareListSerializer(serializers.ModelSerializer):
     class Meta:

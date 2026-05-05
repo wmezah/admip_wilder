@@ -922,7 +922,22 @@ class SeguimientoProveedorViewSet(viewsets.ModelViewSet):
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 class DashboardStatsView(APIView):
     def get(self, request):
-        qs    = Spare.objects.all()
+        qs = Spare.objects.all()
+
+        # ── Filtros opcionales por query param ──────────────────────────────
+        for field in ('centro', 'almacen', 'zona', 'proveedor', 'tipo', 'estatus'):
+            val = request.query_params.get(field, '').strip()
+            if val:
+                qs = qs.filter(**{f'{field}__iexact': val})
+        search = request.query_params.get('search', '').strip()
+        if search:
+            from django.db.models import Q as Q2
+            qs = qs.filter(
+                Q2(sap__icontains=search) | Q2(descripcion__icontains=search) |
+                Q2(serial_number__icontains=search) | Q2(modelo__icontains=search)
+            )
+        # ────────────────────────────────────────────────────────────────────
+
         total = qs.count()
 
         def count_status(*terms):
@@ -1031,9 +1046,13 @@ class DashboardStatsView(APIView):
 class DashboardTimelineView(APIView):
     def get(self, request):
         from django.db.models.functions import TruncMonth
+        qs = Spare.objects.filter(fecha_ingreso__isnull=False)
+        for field in ('centro', 'almacen', 'zona', 'proveedor', 'tipo', 'estatus'):
+            val = request.query_params.get(field, '').strip()
+            if val:
+                qs = qs.filter(**{f'{field}__iexact': val})
         result = (
-            Spare.objects.filter(fecha_ingreso__isnull=False)
-            .annotate(mes=TruncMonth('fecha_ingreso'))
+            qs.annotate(mes=TruncMonth('fecha_ingreso'))
             .values('mes').annotate(cantidad=Count('id'))
             .order_by('mes')
         )

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import * as XLSX from 'xlsx'
 import { createPortal } from 'react-dom'
 import {
@@ -524,7 +524,13 @@ function SpareModal({ spare, onClose, onSaved }) {
       onSaved(); onClose()
     } catch(e) {
       const d = e.response?.data
-      alert('Error: ' + (d ? Object.entries(d).map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(', '):v}`).join('\n') : e.message))
+      let msg = 'Error al guardar'
+      if (d) {
+        if (d.serial_number) msg = `N° Serie: ${Array.isArray(d.serial_number) ? d.serial_number.join(', ') : d.serial_number}`
+        else if (d.non_field_errors) msg = Array.isArray(d.non_field_errors) ? d.non_field_errors.join(', ') : d.non_field_errors
+        else msg = Object.entries(d).map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(', '):v}`).join('\n')
+      } else { msg = e.message }
+      alert(msg)
     } finally { setSaving(false) }
   }
 
@@ -740,14 +746,14 @@ const CONTROL_COLS = [
   { key:'serial_number',    label:'N° Serie',            default:true  },
   { key:'valor_lote',       label:'Lote',                default:true  },
   { key:'estatus',          label:'Estatus',             default:true  },
-  { key:'precio',           label:'Precio',              default:true  },
-  { key:'fecha_ingreso',    label:'Fecha Ingreso',       default:true  },
-  { key:'fecha_asignacion', label:'Fecha Asignación',    default:true  },
-  { key:'motivo_asignacion',label:'Motivo Asignación',   default:true  },
+  { key:'precio',           label:'Precio',              default:false },
+  { key:'fecha_ingreso',    label:'Fecha Ingreso',       default:false },
+  { key:'fecha_asignacion', label:'Fecha Asignación',    default:false },
+  { key:'motivo_asignacion',label:'Motivo Asignación',   default:false },
   { key:'orden_compra',     label:'Orden Compra',        default:true  },
-  { key:'procedencia',      label:'Procedencia',         default:true  },
-  { key:'pedido_traslado',  label:'Pedido de Traslado',  default:true  },
-  { key:'comentario',       label:'Comentario',          default:true  },
+  { key:'procedencia',      label:'Procedencia',         default:false },
+  { key:'pedido_traslado',  label:'Pedido de Traslado',  default:false },
+  { key:'comentario',       label:'Comentario',          default:false },
 ]
 
 function TabControlInventario() {
@@ -761,16 +767,126 @@ function TabControlInventario() {
   const [showNew, setShowNew]           = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [viewItem, setViewItem] = useState(null)
-  const [visibleCols, setVisibleCols] = useState(CONTROL_COLS.map(c=>c.key))
+  const [visibleCols, setVisibleCols] = useState(CONTROL_COLS.filter(c=>c.default).map(c=>c.key))
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState(null)
   const fileRef = useRef()
   const token = localStorage.getItem('access_token')
 
+  // ── Filtros de columna (client-side) ─────────────────────────────────────
+  const [colFilters, setColFilters] = useState({})
+  const setColFilter = (key, val) => {
+    setColFilters(prev => ({ ...prev, [key]: val }))
+  }
+  const hasColFilters = Object.values(colFilters).some(v => v && v !== '')
+  const clearColFilters = () => setColFilters({})
+
+  // Opciones únicas para dropdowns (columnas categóricas)
+  const DROPDOWN_COLS = ['centro','almacen','zona','proveedor','tipo','estatus','procedencia','motivo_asignacion']
+  const dropdownOpts = useMemo(() => {
+    const opts = {}
+    DROPDOWN_COLS.forEach(key => {
+      opts[key] = [...new Set(items.map(r => r[key]).filter(Boolean))].sort()
+    })
+    return opts
+  }, [items])
+
+  // Filtrado client-side aplicado sobre los items recibidos del servidor
+  const filteredItems = useMemo(() => {
+    if (!hasColFilters) return items
+    return items.filter(row => {
+      return Object.entries(colFilters).every(([key, val]) => {
+        if (!val || val === '') return true
+        const cell = String(row[key] || '').toLowerCase()
+        if (DROPDOWN_COLS.includes(key)) return cell === val.toLowerCase()
+        return cell.includes(val.toLowerCase())
+      })
+    })
+  }, [items, colFilters, hasColFilters])
+
+  // ── Stats del dashboard calculados desde filteredItems (client-side) ────────
+  const dashStats = useMemo(() => {
+    const rows = filteredItems
+    const count = (term) => rows.filter(r => String(r.estatus||'').toLowerCase().includes(term.toLowerCase())).length
+    const byKey = (key) => {
+      const map = {}
+      rows.forEach(r => { const v = r[key]; if (v) map[v] = (map[v]||0)+1 })
+      return Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,10)
+    }
+    const bySAP = {}
+    rows.forEach(r => {
+      if (!r.sap) return
+      if (!bySAP[r.sap]) bySAP[r.sap] = {}
+      const est = r.estatus || 'Sin estatus'
+      bySAP[r.sap][est] = (bySAP[r.sap][est]||0)+1
+    })
+    const byOC = {}
+    rows.forEach(r => {
+      if (!r.orden_compra) return
+      if (!byOC[r.orden_compra]) byOC[r.orden_compra] = {}
+      const est = r.estatus || 'Sin estatus'
+      byOC[r.orden_compra][est] = (byOC[r.orden_compra][est]||0)+1
+    })
+    const byMes = {}
+    rows.forEach(r => {
+      if (!r.fecha_ingreso) return
+      const mes = String(r.fecha_ingreso).substring(0,7)
+      byMes[mes] = (byMes[mes]||0)+1
+    })
+    const preciosBySAP = {}
+    rows.forEach(r => {
+      if (r.precio == null || r.precio === '' || !r.sap) return
+      const p = Number(r.precio)
+      if (!preciosBySAP[r.sap] || p > preciosBySAP[r.sap]) preciosBySAP[r.sap] = p
+    })
+    const topPrecios = Object.entries(preciosBySAP)
+      .sort((a,b) => b[1]-a[1])
+      .slice(0,10)
+      .map(([sap, precio]) => ({ sap, precio }))
+    const maxPrecio = topPrecios.length ? topPrecios[0].precio : 1
+    return {
+      total: rows.length,
+      operativo:  count('operativo'),
+      utilizado:  count('utilizado'),
+      asignado:   count('asignado'),
+      pendiente:  count('pendiente'),
+      revision:   count('revision'),
+      baja:       count('baja'),
+      byTipo:     byKey('tipo'),
+      byProveedor:byKey('proveedor'),
+      byCentro:   byKey('centro'),
+      bySAP:      Object.entries(bySAP).sort((a,b)=>Object.values(b[1]).reduce((s,v)=>s+v,0)-Object.values(a[1]).reduce((s,v)=>s+v,0)).slice(0,8),
+      byOC:       Object.entries(byOC).sort((a,b)=>Object.values(b[1]).reduce((s,v)=>s+v,0)-Object.values(a[1]).reduce((s,v)=>s+v,0)).slice(0,8),
+      byMes:      Object.entries(byMes).sort((a,b)=>a[0].localeCompare(b[0])),
+      topPrecios, maxPrecio,
+    }
+  }, [filteredItems])
+
+  // Colores por estatus
+  const EST_COLORS = {
+    operativo: '#16a34a', utilizado: '#dc2626', asignado: '#7c3aed',
+    pendiente: '#d97706', revision: '#0891b2', baja: '#6b7280',
+  }
+  const estColor = (est='') => {
+    const k = Object.keys(EST_COLORS).find(k => est.toLowerCase().includes(k))
+    return k ? EST_COLORS[k] : '#9ca3af'
+  }
+
+  // Click en dashboard → aplica filtro en tabla
+  const handleDashClick = (key, val) => {
+    setColFilters(prev => ({ ...prev, [key]: prev[key] === val ? '' : val }))
+    setPage(1)
+    // scroll suave a la tabla
+    setTimeout(() => {
+      document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' })
+    }, 100)
+  }
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ page, page_size:50 })
+      // Siempre traemos todos para que el dashboard client-side sea preciso
+      const params = new URLSearchParams({ page: 1, page_size: 2000 })
       if (search) params.set('search', search)
       const r = await fetch(`/api/spare/items/?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -780,7 +896,7 @@ function TabControlInventario() {
       setTotal(d.count || 0)
       setPages(Math.ceil((d.count||1)/50))
     } finally { setLoading(false) }
-  }, [page, search])
+  }, [search])
 
   useEffect(() => { load() }, [load])
 
@@ -820,6 +936,308 @@ function TabControlInventario() {
 
   return (
     <div>
+      {/* ══════════════ DASHBOARD ══════════════ */}
+      <div style={{ background:'#f9fafb', borderBottom:'2px solid #e5e7eb', padding:'12px 0 10px', marginBottom:12 }}>
+
+        {/* KPIs */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, marginBottom:14 }}>
+          {[
+            { label:'Total spares', val:dashStats.total,     color:'#7c3aed', bg:'#f5f3ff', est:null },
+            { label:'Operativo',    val:dashStats.operativo,  color:'#16a34a', bg:'#f0fdf4', est:'operativo' },
+            { label:'Utilizado',    val:dashStats.utilizado,  color:'#dc2626', bg:'#fef2f2', est:'utilizado' },
+            { label:'Asignado',     val:dashStats.asignado,   color:'#7c3aed', bg:'#f5f3ff', est:'asignado' },
+            { label:'Pendiente',    val:dashStats.pendiente,  color:'#d97706', bg:'#fffbeb', est:'pendiente' },
+            { label:'En revisión',  val:dashStats.revision,   color:'#0891b2', bg:'#f0f9ff', est:'revision' },
+          ].map(k => (
+            <div key={k.label}
+              onClick={() => k.est && handleDashClick('estatus', k.est)}
+              style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12,
+                padding:'10px 12px', display:'flex', alignItems:'center', gap:10,
+                cursor: k.est ? 'pointer' : 'default',
+                boxShadow: k.est && colFilters.estatus?.toLowerCase().includes(k.est) ? `0 0 0 2px ${k.color}` : 'none',
+                transition:'box-shadow .15s' }}>
+              <div style={{ width:32, height:32, borderRadius:8, background:k.bg,
+                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:14, color:k.color }}>●</span>
+              </div>
+              <div>
+                <div style={{ fontSize:22, fontWeight:600, color:'#111827', lineHeight:1 }}>{k.val.toLocaleString()}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>{k.label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ fontSize:10, fontWeight:700, color:'#6b7280', letterSpacing:'.06em', textTransform:'uppercase', marginBottom:10 }}>
+          Distribución y tendencias {(hasColFilters || search) && <span style={{ background:'#7c3aed', color:'#fff', borderRadius:8, padding:'1px 8px', marginLeft:6, fontSize:9 }}>filtrado</span>}
+        </div>
+
+        {/* Fila 1: Dona + Top tipos */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+          {/* Dona estatus */}
+          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
+            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Por estatus</p>
+            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 12px' }}>Distribución actual del inventario</p>
+            <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+              {/* Dona SVG */}
+              <svg viewBox="0 0 80 80" style={{ width:80, height:80, flexShrink:0 }}>
+                {(() => {
+                  const slices = [
+                    { label:'operativo', val:dashStats.operativo, color:'#7c3aed' },
+                    { label:'utilizado', val:dashStats.utilizado, color:'#dc2626' },
+                    { label:'asignado',  val:dashStats.asignado,  color:'#d97706' },
+                    { label:'pendiente', val:dashStats.pendiente, color:'#0891b2' },
+                    { label:'revision',  val:dashStats.revision,  color:'#6b7280' },
+                  ].filter(s => s.val > 0)
+                  const tot = slices.reduce((s,x)=>s+x.val,0) || 1
+                  const C = 2*Math.PI*28
+                  let offset = 0
+                  return slices.map((s,i) => {
+                    const dash = (s.val/tot)*C
+                    const el = (
+                      <circle key={i} cx="40" cy="40" r="28" fill="none"
+                        stroke={s.color} strokeWidth="14"
+                        strokeDasharray={`${dash-1} ${C-dash+1}`}
+                        strokeDashoffset={-offset+C/4}
+                        style={{ cursor:'pointer', opacity: colFilters.estatus?.toLowerCase().includes(s.label) ? 1 : 0.85 }}
+                        onClick={() => handleDashClick('estatus', s.label)}
+                      />
+                    )
+                    offset += dash
+                    return el
+                  })
+                })()}
+              </svg>
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                {[
+                  { label:'Operativo', val:dashStats.operativo, color:'#7c3aed', est:'operativo' },
+                  { label:'Utilizado', val:dashStats.utilizado, color:'#dc2626', est:'utilizado' },
+                  { label:'Asignado',  val:dashStats.asignado,  color:'#d97706', est:'asignado' },
+                  { label:'Pendiente', val:dashStats.pendiente, color:'#0891b2', est:'pendiente' },
+                  { label:'Revisión',  val:dashStats.revision,  color:'#6b7280', est:'revision' },
+                ].map(s => (
+                  <div key={s.label} onClick={() => handleDashClick('estatus', s.est)}
+                    style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer',
+                      opacity: colFilters.estatus && !colFilters.estatus.toLowerCase().includes(s.est) ? .4 : 1 }}>
+                    <span style={{ width:10, height:10, borderRadius:'50%', background:s.color, flexShrink:0, display:'inline-block' }}/>
+                    <span style={{ fontSize:11, color:'#6b7280' }}>{s.label}</span>
+                    <span style={{ fontSize:11, fontWeight:600, color:'#374151', marginLeft:4 }}>{s.val.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Top tipos */}
+          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
+            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top tipos</p>
+            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 12px' }}>Los 10 tipos más frecuentes</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {dashStats.byTipo.map(([tipo, cnt]) => {
+                const max = dashStats.byTipo[0]?.[1] || 1
+                const active = colFilters.tipo === tipo
+                return (
+                  <div key={tipo} onClick={() => handleDashClick('tipo', tipo)}
+                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                      opacity: colFilters.tipo && !active ? .4 : 1 }}>
+                    <span style={{ fontSize:10, color:'#6b7280', width:80, flexShrink:0, textAlign:'right',
+                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{tipo}</span>
+                    <div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:10 }}>
+                      <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background: active ? '#5b21b6' : '#7c3aed', borderRadius:3, opacity:.85 }}/>
+                    </div>
+                    <span style={{ fontSize:10, color:'#6b7280', width:24, textAlign:'right', fontWeight:600 }}>{cnt}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Línea ingresos por mes */}
+        {dashStats.byMes.length > 0 && (
+          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px', marginBottom:10 }}>
+            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Ingresos por mes</p>
+            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 8px' }}>Evolución histórica de entradas al almacén</p>
+            <svg viewBox={`0 0 620 65`} style={{ width:'100%', height:65 }}>
+              {(() => {
+                const data = dashStats.byMes
+                const maxV = Math.max(...data.map(d=>d[1]), 1)
+                const W = 620, H = 55, pad = 10
+                const pts = data.map((d,i) => {
+                  const x = pad + (i/(data.length-1||1))*(W-2*pad)
+                  const y = H - pad - ((d[1]/maxV)*(H-2*pad))
+                  return [x,y]
+                })
+                const pStr = pts.map(p=>p.join(',')).join(' ')
+                return (
+                  <>
+                    <line x1="0" y1={H} x2={W} y2={H} stroke="#f3f4f6" strokeWidth="1"/>
+                    <line x1="0" y1={H/2} x2={W} y2={H/2} stroke="#f3f4f6" strokeWidth="1"/>
+                    <polyline points={pStr} fill="none" stroke="#7c3aed" strokeWidth="1.5" strokeLinejoin="round"/>
+                    {pts.map((p,i) => <circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill="#7c3aed"/>)}
+                    {[0, Math.floor(data.length/4), Math.floor(data.length/2), Math.floor(data.length*3/4), data.length-1]
+                      .filter((v,i,a)=>a.indexOf(v)===i && data[v])
+                      .map(i => (
+                        <text key={i} x={pts[i]?.[0]||0} y="64" fontSize="8" fill="#9ca3af" textAnchor="middle">{data[i]?.[0]}</text>
+                      ))}
+                  </>
+                )
+              })()}
+            </svg>
+          </div>
+        )}
+
+        {/* Fila 2: Top SAP + Top OC */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+          {/* Top SAP */}
+          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
+            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top SAP</p>
+            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Cantidad por estatus</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {dashStats.bySAP.map(([sap, breakdown]) => {
+                const tot = Object.values(breakdown).reduce((s,v)=>s+v,0)
+                const active = colFilters.sap === sap
+                return (
+                  <div key={sap} onClick={() => handleDashClick('sap', sap)}
+                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                      opacity: colFilters.sap && !active ? .4 : 1 }}>
+                    <span style={{ fontSize:10, fontFamily:'monospace', color: active ? '#5b21b6' : '#7c3aed',
+                      fontWeight:600, width:58, flexShrink:0 }}>{sap}</span>
+                    <div style={{ flex:1, display:'flex', borderRadius:3, overflow:'hidden', height:10 }}>
+                      {Object.entries(breakdown).map(([est,cnt],i) => (
+                        <div key={i} style={{ width:`${(cnt/tot)*100}%`, background:estColor(est), opacity:.85 }}/>
+                      ))}
+                    </div>
+                    <span style={{ fontSize:10, color:'#6b7280', width:20, textAlign:'right', fontWeight:600 }}>{tot}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <div style={{ display:'flex', gap:10, marginTop:8, flexWrap:'wrap' }}>
+              {Object.entries(EST_COLORS).map(([est,color]) => (
+                <span key={est} style={{ display:'flex', alignItems:'center', gap:3, fontSize:9, color:'#6b7280' }}>
+                  <span style={{ width:8, height:8, background:color, borderRadius:2, display:'inline-block', opacity:.85 }}/>
+                  {est.charAt(0).toUpperCase()+est.slice(1)}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Top OC */}
+          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
+            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top Orden de Compra</p>
+            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Cantidad por estatus</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {dashStats.byOC.map(([oc, breakdown]) => {
+                const tot = Object.values(breakdown).reduce((s,v)=>s+v,0)
+                const active = colFilters.orden_compra === oc
+                return (
+                  <div key={oc} onClick={() => handleDashClick('orden_compra', oc)}
+                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                      opacity: colFilters.orden_compra && !active ? .4 : 1 }}>
+                    <span style={{ fontSize:10, fontFamily:'monospace', color:'#6b7280',
+                      width:72, flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{oc}</span>
+                    <div style={{ flex:1, display:'flex', borderRadius:3, overflow:'hidden', height:10 }}>
+                      {Object.entries(breakdown).map(([est,cnt],i) => (
+                        <div key={i} style={{ width:`${(cnt/tot)*100}%`, background:estColor(est), opacity:.85 }}/>
+                      ))}
+                    </div>
+                    <span style={{ fontSize:10, color:'#6b7280', width:20, textAlign:'right', fontWeight:600 }}>{tot}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Fila 3: Proveedores + Antigüedad + Top Precios */}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+
+          {/* Proveedores + Centros */}
+          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
+            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top proveedores</p>
+            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Spares por proveedor</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {dashStats.byProveedor.slice(0,5).map(([prov,cnt]) => {
+                const max = dashStats.byProveedor[0]?.[1]||1
+                const active = colFilters.proveedor === prov
+                return (
+                  <div key={prov} onClick={() => handleDashClick('proveedor', prov)}
+                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                      opacity: colFilters.proveedor && !active ? .4 : 1 }}>
+                    <span style={{ fontSize:10, color:'#6b7280', width:60, flexShrink:0, textAlign:'right',
+                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prov}</span>
+                    <div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:10 }}>
+                      <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background: active ? '#065f46' : '#0891b2', borderRadius:3, opacity:.85 }}/>
+                    </div>
+                    <span style={{ fontSize:10, color:'#6b7280', width:24, textAlign:'right', fontWeight:600 }}>{cnt}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'12px 0 2px' }}>Antigüedad</p>
+            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Días / meses / años desde ingreso</p>
+            {(() => {
+              const hoy = new Date()
+              let gt2=0, gt1=0, lt1=0
+              filteredItems.forEach(r => {
+                if (!r.fecha_ingreso) return
+                const dias = Math.floor((hoy - new Date(r.fecha_ingreso))/86400000)
+                if (dias > 730) gt2++
+                else if (dias > 365) gt1++
+                else lt1++
+              })
+              const max = Math.max(gt2,gt1,lt1,1)
+              return (
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {[{label:'+2 años',val:gt2,color:'#dc2626'},{label:'1-2 años',val:gt1,color:'#d97706'},{label:'<1 año',val:lt1,color:'#16a34a'}].map(b=>(
+                    <div key={b.label} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <span style={{ fontSize:10, color:'#6b7280', width:44, flexShrink:0, textAlign:'right' }}>{b.label}</span>
+                      <div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:10 }}>
+                        <div style={{ width:`${(b.val/max)*100}%`, height:'100%', background:b.color, borderRadius:3, opacity:.8 }}/>
+                      </div>
+                      <span style={{ fontSize:10, fontWeight:600, color:b.color, width:24, textAlign:'right' }}>{b.val}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* Top 10 Mayor Precio — 2 columnas */}
+          <div style={{ gridColumn:'span 2', background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
+            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top 10 — mayor precio</p>
+            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Spares con mayor valor unitario registrado</p>
+            {dashStats.topPrecios.length === 0 ? (
+              <p style={{ fontSize:11, color:'#9ca3af', textAlign:'center', padding:'20px 0' }}>Sin datos de precio registrados</p>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                {dashStats.topPrecios.map(({ sap, precio }) => {
+                  const pct = (precio/dashStats.maxPrecio)*100
+                  const active = colFilters.sap === sap
+                  return (
+                    <div key={sap} onClick={() => handleDashClick('sap', sap)}
+                      style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer',
+                        opacity: colFilters.sap && !active ? .4 : 1 }}>
+                      <span style={{ fontSize:10, fontFamily:'monospace', color: active ? '#5b21b6' : '#7c3aed',
+                        fontWeight:600, width:58, flexShrink:0 }}>{sap}</span>
+                      <div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:10, position:'relative' }}>
+                        <div style={{ width:`${pct}%`, height:'100%', background: active ? '#92400e' : '#d97706', borderRadius:3, opacity:.85 }}/>
+                      </div>
+                      <span style={{ fontSize:10, fontWeight:600, color:'#854f0b', width:80, textAlign:'right', flexShrink:0 }}>
+                        $ {precio.toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════════ TABLA ══════════════ */}
+      <div id="spare-table-section">
       {/* Toolbar */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
         marginBottom:16, gap:10, flexWrap:'wrap' }}>
@@ -831,7 +1249,17 @@ function TabControlInventario() {
             value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} />
         </div>
         <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-          <span style={{ fontSize:12, color:'#6b7280' }}>{total.toLocaleString()} registros</span>
+          <span style={{ fontSize:12, color:'#6b7280' }}>
+            {hasColFilters || search
+              ? `${filteredItems.length.toLocaleString()} / ${items.length.toLocaleString()} registros`
+              : `${items.length.toLocaleString()} registros`}
+          </span>
+          {hasColFilters && (
+            <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#7c3aed', borderColor:'#ede9fe' }}
+              onClick={clearColFilters}>
+              <X size={12}/> Limpiar filtros
+            </button>
+          )}
           <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
             onClick={()=>setShowImportModal(true)}>
             <Upload size={14}/> Importar XLSX
@@ -880,24 +1308,97 @@ function TabControlInventario() {
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
-              <tr style={{ background:'#f9fafb', borderBottom:'1px solid #e5e7eb' }}>
-                {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c=>(
-                  <th key={c.key} style={{ padding:'9px 12px', textAlign:'left', fontSize:10,
-                    fontWeight:700, color:'#6b7280', textTransform:'uppercase',
-                    whiteSpace:'nowrap', letterSpacing:'.3px' }}>{c.label}</th>
-                ))}
-                <th style={{ padding:'9px 12px', fontSize:10, fontWeight:700,
-                  color:'#6b7280', textTransform:'uppercase' }}>Acciones</th>
+              {/* Fila 1 — Labels de columna */}
+              <tr style={{ background:'#f3f4f6' }}>
+                {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c => {
+                  const isActive = !!(colFilters[c.key] && colFilters[c.key] !== '')
+                  return (
+                    <th key={c.key} style={{
+                      padding:'7px 12px 4px', textAlign:'left', fontSize:10,
+                      fontWeight:700, color: isActive ? '#7c3aed' : '#6b7280',
+                      textTransform:'uppercase', whiteSpace:'nowrap', letterSpacing:'.4px',
+                      background: isActive ? '#ede9fe' : '#f3f4f6',
+                      borderBottom:'1px solid #e5e7eb',
+                      borderTop: isActive ? '2px solid #7c3aed' : '2px solid transparent',
+                      userSelect:'none'
+                    }}>
+                      {c.label}
+                    </th>
+                  )
+                })}
+                <th style={{ padding:'7px 12px 4px', fontSize:10, fontWeight:700,
+                  color:'#6b7280', textTransform:'uppercase', background:'#f3f4f6',
+                  borderBottom:'1px solid #e5e7eb', borderTop:'2px solid transparent' }}>
+                  Acciones
+                </th>
+              </tr>
+              {/* Fila 2 — Inputs de filtro */}
+              <tr style={{ background:'#fafafa', borderBottom:'2px solid #e5e7eb' }}>
+                {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c => {
+                  const isDropdown = ['centro','almacen','zona','proveedor','tipo','estatus','procedencia','motivo_asignacion'].includes(c.key)
+                  const isText = ['sap','part_number','descripcion','serial_number','modelo','valor_lote','orden_compra','pedido_traslado','comentario','precio','fecha_ingreso','fecha_asignacion'].includes(c.key)
+                  const filterVal = colFilters[c.key] || ''
+                  const isActive = filterVal !== ''
+                  const base = {
+                    width:'100%', borderRadius:5, fontSize:11,
+                    padding:'4px 7px', outline:'none', boxSizing:'border-box',
+                    fontFamily:'inherit', transition:'border-color .15s, box-shadow .15s',
+                  }
+                  const inputSt = {
+                    ...base,
+                    border: `1px solid ${isActive ? '#a78bfa' : '#d1d5db'}`,
+                    background: isActive ? '#f5f3ff' : '#fff',
+                    color:'#374151',
+                    boxShadow: isActive ? '0 0 0 2px #ede9fe' : 'none',
+                  }
+                  const selSt = { ...inputSt, cursor:'pointer', paddingRight:4 }
+                  return (
+                    <td key={c.key} style={{
+                      padding:'5px 8px',
+                      background: isActive ? '#faf5ff' : '#fafafa',
+                      minWidth: isDropdown ? 110 : 90,
+                      maxWidth: c.key === 'descripcion' ? 200 : undefined,
+                    }}>
+                      {isDropdown ? (
+                        <select style={selSt} value={filterVal}
+                          onChange={e => setColFilter(c.key, e.target.value)}>
+                          <option value=''>Todos</option>
+                          {(dropdownOpts[c.key] || []).map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : isText ? (
+                        <div style={{ position:'relative' }}>
+                          <input style={{ ...inputSt, paddingRight: isActive ? 20 : 7 }}
+                            placeholder="Filtrar…"
+                            value={filterVal}
+                            onChange={e => setColFilter(c.key, e.target.value)} />
+                          {isActive && (
+                            <button onClick={() => setColFilter(c.key, '')}
+                              style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
+                                background:'none', border:'none', cursor:'pointer', padding:0,
+                                color:'#a78bfa', fontSize:13, lineHeight:1, display:'flex' }}>×</button>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ display:'block', height:26 }} />
+                      )}
+                    </td>
+                  )
+                })}
+                <td style={{ padding:'5px 8px', background:'#fafafa' }} />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr><td colSpan={visibleCols.length+1}
                   style={{ textAlign:'center', padding:'40px 0', color:'#9ca3af' }}>Cargando...</td></tr>
-              ) : items.length === 0 ? (
+              ) : filteredItems.length === 0 ? (
                 <tr><td colSpan={visibleCols.length+1}
-                  style={{ textAlign:'center', padding:'40px 0', color:'#9ca3af' }}>Sin registros</td></tr>
-              ) : items.map((row, i) => (
+                  style={{ textAlign:'center', padding:'40px 0', color:'#9ca3af' }}>
+                  {items.length === 0 ? 'Sin registros' : 'Sin resultados con los filtros aplicados'}
+                </td></tr>
+              ) : filteredItems.slice((page-1)*50, page*50).map((row, i) => (
                 <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6',
                   background: i%2===0 ? '#fff' : '#fafafa' }}>
                   {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c => {
@@ -951,13 +1452,13 @@ function TabControlInventario() {
       </div>
 
       {/* Pagination */}
-      {pages > 1 && (
+      {Math.ceil(filteredItems.length/50) > 1 && (
         <div style={{ display:'flex', justifyContent:'center', gap:8, marginTop:16 }}>
           <button className="btn-ghost" onClick={()=>setPage(p=>Math.max(1,p-1))}
             disabled={page===1}><ChevronLeft size={14}/></button>
-          <span style={{ fontSize:13, color:'#6b7280', padding:'6px 12px' }}>{page} / {pages}</span>
-          <button className="btn-ghost" onClick={()=>setPage(p=>Math.min(pages,p+1))}
-            disabled={page===pages}><ChevronRight size={14}/></button>
+          <span style={{ fontSize:13, color:'#6b7280', padding:'6px 12px' }}>{page} / {Math.ceil(filteredItems.length/50)}</span>
+          <button className="btn-ghost" onClick={()=>setPage(p=>Math.min(Math.ceil(filteredItems.length/50),p+1))}
+            disabled={page===Math.ceil(filteredItems.length/50)}><ChevronRight size={14}/></button>
         </div>
       )}
 
@@ -980,6 +1481,7 @@ function TabControlInventario() {
         <EditControlModal item={{}}
           onClose={()=>setShowNew(false)} onSaved={()=>{ load(); setShowNew(false) }} isNew />
       )}
+      </div>{/* end spare-table-section */}
     </div>
   )
 }
@@ -1201,11 +1703,19 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
       if (!payload.fecha_asignacion) delete payload.fecha_asignacion
       const url    = isNew ? '/api/spare/items/' : `/api/spare/items/${item.id}/`
       const method = isNew ? 'POST' : 'PATCH'
-      await fetch(url, {
+      const res = await fetch(url, {
         method,
         headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
         body: JSON.stringify(payload)
       })
+      const data = await res.json()
+      if (!res.ok) {
+        const msg = data.serial_number
+          ? `N° Serie: ${Array.isArray(data.serial_number) ? data.serial_number.join(', ') : data.serial_number}`
+          : Object.entries(data).map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(', '):v}`).join('\n')
+        alert(msg)
+        return
+      }
       onSaved()
     } catch(e) { alert('Error al guardar') }
     finally { setSaving(false) }
