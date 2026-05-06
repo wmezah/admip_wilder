@@ -6,7 +6,7 @@ import {
 
 // ─── Roles ───────────────────────────────────────────────────────────────────
 const ROLES = [
-  { value: 'admin',    label: 'Administrador', color: '#7c3aed', bg: '#ede9fe' },
+  { value: 'admin',    label: 'Administrador', color: '#1877f2', bg: '#cce0ff' },
   { value: 'operator', label: 'Operador',      color: '#0369a1', bg: '#e0f2fe' },
   { value: 'viewer',   label: 'Viewer',        color: '#065f46', bg: '#d1fae5' },
 ]
@@ -17,7 +17,7 @@ function Field({ label, name, value, onChange, type = 'text', error, required })
   return (
     <div style={{ marginBottom: 16 }}>
       <label style={{
-        display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280',
+        display: 'block', fontSize: 11, fontWeight: 700, color: '#65676b',
         textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6
       }}>{label}{required && ' *'}</label>
       <input
@@ -27,8 +27,8 @@ function Field({ label, name, value, onChange, type = 'text', error, required })
         style={{
           width: '100%', boxSizing: 'border-box',
           padding: '9px 12px', borderRadius: 8, fontSize: 14,
-          border: error ? '1.5px solid #ef4444' : '1.5px solid #e5e7eb',
-          outline: 'none', color: '#1f2937', background: '#fff',
+          border: error ? '1.5px solid #ef4444' : '1.5px solid #dadde1',
+          outline: 'none', color: '#1c1e21', background: '#fff',
         }}
       />
       {error && <p style={{ margin: '4px 0 0', fontSize: 12, color: '#ef4444' }}>{error}</p>}
@@ -42,7 +42,7 @@ function PasswordField({ label, name, value, onChange, error }) {
   return (
     <div style={{ marginBottom: 16 }}>
       <label style={{
-        display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280',
+        display: 'block', fontSize: 11, fontWeight: 700, color: '#65676b',
         textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6
       }}>{label}</label>
       <div style={{ position: 'relative' }}>
@@ -53,13 +53,13 @@ function PasswordField({ label, name, value, onChange, error }) {
           style={{
             width: '100%', boxSizing: 'border-box',
             padding: '9px 40px 9px 12px', borderRadius: 8, fontSize: 14,
-            border: error ? '1.5px solid #ef4444' : '1.5px solid #e5e7eb',
-            outline: 'none', color: '#1f2937',
+            border: error ? '1.5px solid #ef4444' : '1.5px solid #dadde1',
+            outline: 'none', color: '#1c1e21',
           }}
         />
         <button onClick={() => setShow(v => !v)} type="button" style={{
           position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-          background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: 0
+          background: 'none', border: 'none', cursor: 'pointer', color: '#8a8d91', padding: 0
         }}>
           {show ? <EyeOff size={15} /> : <Eye size={15} />}
         </button>
@@ -147,9 +147,9 @@ function UserModal({ user, onClose, onSave }) {
       }}>
         {/* Header */}
         <div style={{
-          padding: '20px 24px', borderBottom: '1px solid #f3f4f6',
+          padding: '20px 24px', borderBottom: '1px solid #f0f2f5',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: 'linear-gradient(135deg,#7c3aed,#6d28d9)',
+          background: 'linear-gradient(135deg,#1877f2,#1565c0)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <User size={20} color="#fff" />
@@ -175,20 +175,20 @@ function UserModal({ user, onClose, onSave }) {
           {/* Rol */}
           <div style={{ marginBottom: 16 }}>
             <label style={{
-              display: 'block', fontSize: 11, fontWeight: 700, color: '#6b7280',
+              display: 'block', fontSize: 11, fontWeight: 700, color: '#65676b',
               textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6
             }}>Rol *</label>
             <div style={{ position: 'relative' }}>
               <select value={role} onChange={e => setRole(e.target.value)} style={{
                 width: '100%', padding: '9px 36px 9px 12px', borderRadius: 8,
-                border: '1.5px solid #e5e7eb', fontSize: 14, color: '#1f2937',
+                border: '1.5px solid #dadde1', fontSize: 14, color: '#1c1e21',
                 background: '#fff', appearance: 'none', cursor: 'pointer', outline: 'none'
               }}>
                 {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
               <ChevronDown size={14} style={{
                 position: 'absolute', right: 12, top: '50%',
-                transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none'
+                transform: 'translateY(-50%)', color: '#8a8d91', pointerEvents: 'none'
               }} />
             </div>
           </div>
@@ -205,17 +205,17 @@ function UserModal({ user, onClose, onSave }) {
           {/* Activo toggle */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '12px 16px', background: '#f9fafb', borderRadius: 10, border: '1px solid #f3f4f6'
+            padding: '12px 16px', background: '#f0f2f5', borderRadius: 10, border: '1px solid #f0f2f5'
           }}>
             <div>
-              <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1f2937' }}>Usuario Activo</p>
-              <p style={{ margin: 0, fontSize: 12, color: '#6b7280' }}>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#1c1e21' }}>Usuario Activo</p>
+              <p style={{ margin: 0, fontSize: 12, color: '#65676b' }}>
                 {isActive ? 'Puede iniciar sesión' : 'Acceso bloqueado'}
               </p>
             </div>
             <button onClick={() => setIsActive(v => !v)} type="button" style={{
               width: 44, height: 24, borderRadius: 12, border: 'none',
-              background: isActive ? '#7c3aed' : '#d1d5db',
+              background: isActive ? '#1877f2' : '#ccd0d5',
               position: 'relative', cursor: 'pointer', transition: 'background .2s',
             }}>
               <span style={{
@@ -229,19 +229,19 @@ function UserModal({ user, onClose, onSave }) {
 
         {/* Footer */}
         <div style={{
-          padding: '16px 24px', borderTop: '1px solid #f3f4f6',
+          padding: '16px 24px', borderTop: '1px solid #f0f2f5',
           display: 'flex', gap: 10, justifyContent: 'flex-end', background: '#fafafa'
         }}>
           <button onClick={onClose} style={{
-            padding: '9px 20px', borderRadius: 8, border: '1.5px solid #e5e7eb',
-            background: '#fff', fontSize: 14, fontWeight: 600, color: '#374151', cursor: 'pointer'
+            padding: '9px 20px', borderRadius: 8, border: '1.5px solid #dadde1',
+            background: '#fff', fontSize: 14, fontWeight: 600, color: '#1c1e21', cursor: 'pointer'
           }}>Cancelar</button>
           <button onClick={handleSave} disabled={saving} style={{
             padding: '9px 24px', borderRadius: 8, border: 'none',
-            background: saving ? '#a78bfa' : 'linear-gradient(135deg,#7c3aed,#6d28d9)',
+            background: saving ? '#6babf5' : 'linear-gradient(135deg,#1877f2,#1565c0)',
             fontSize: 14, fontWeight: 700, color: '#fff', cursor: saving ? 'default' : 'pointer',
             display: 'flex', alignItems: 'center', gap: 6,
-            boxShadow: '0 4px 12px rgba(124,58,237,.35)'
+            boxShadow: '0 4px 12px rgba(24,119,242,.35)'
           }}>
             <Check size={15} />
             {saving ? 'Guardando...' : 'Guardar'}
@@ -270,16 +270,16 @@ function ConfirmModal({ user, onClose, onConfirm }) {
         }}>
           <AlertCircle size={24} color="#ef4444" />
         </div>
-        <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: '#1f2937' }}>
+        <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700, color: '#1c1e21' }}>
           ¿Eliminar usuario?
         </h3>
-        <p style={{ margin: '0 0 24px', color: '#6b7280', fontSize: 14 }}>
+        <p style={{ margin: '0 0 24px', color: '#65676b', fontSize: 14 }}>
           Se eliminará <strong>{user.username}</strong> permanentemente.
         </p>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
           <button onClick={onClose} style={{
-            padding: '9px 20px', borderRadius: 8, border: '1.5px solid #e5e7eb',
-            background: '#fff', fontSize: 14, fontWeight: 600, color: '#374151', cursor: 'pointer'
+            padding: '9px 20px', borderRadius: 8, border: '1.5px solid #dadde1',
+            background: '#fff', fontSize: 14, fontWeight: 600, color: '#1c1e21', cursor: 'pointer'
           }}>Cancelar</button>
           <button onClick={async () => { setLoading(true); await onConfirm(); setLoading(false) }} style={{
             padding: '9px 20px', borderRadius: 8, border: 'none',
@@ -393,15 +393,15 @@ export default function UsersPage() {
       {/* Header */}
       <div style={{ marginBottom: 28, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <h1 style={{ margin: '0 0 4px', fontSize: 26, fontWeight: 800, color: '#1f2937' }}>Usuarios</h1>
-          <p style={{ margin: 0, color: '#6b7280', fontSize: 14 }}>Gestiona el acceso y roles del sistema</p>
+          <h1 style={{ margin: '0 0 4px', fontSize: 26, fontWeight: 800, color: '#1c1e21' }}>Usuarios</h1>
+          <p style={{ margin: 0, color: '#65676b', fontSize: 14 }}>Gestiona el acceso y roles del sistema</p>
         </div>
         <button onClick={() => setModal({ mode: 'create' })} style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '10px 20px', borderRadius: 10, border: 'none',
-          background: 'linear-gradient(135deg,#7c3aed,#6d28d9)',
+          background: 'linear-gradient(135deg,#1877f2,#1565c0)',
           color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-          boxShadow: '0 4px 14px rgba(124,58,237,.4)'
+          boxShadow: '0 4px 14px rgba(24,119,242,.4)'
         }}>
           <Plus size={16} /> Nuevo Usuario
         </button>
@@ -410,16 +410,16 @@ export default function UsersPage() {
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 16, marginBottom: 24 }}>
         {[
-          { label: 'Total',      value: stats.total,    color: '#7c3aed' },
+          { label: 'Total',      value: stats.total,    color: '#1877f2' },
           { label: 'Activos',    value: stats.active,   color: '#0369a1' },
           { label: 'Admins',     value: stats.admin,    color: '#dc2626' },
           { label: 'Operadores', value: stats.operator, color: '#065f46' },
         ].map(s => (
           <div key={s.label} style={{
             background: '#fff', borderRadius: 12, padding: '16px 20px',
-            boxShadow: '0 1px 4px rgba(0,0,0,.06)', border: '1px solid #f3f4f6'
+            boxShadow: '0 1px 4px rgba(0,0,0,.06)', border: '1px solid #f0f2f5'
           }}>
-            <p style={{ margin: '0 0 4px', fontSize: 12, color: '#6b7280', fontWeight: 600, textTransform: 'uppercase' }}>{s.label}</p>
+            <p style={{ margin: '0 0 4px', fontSize: 12, color: '#65676b', fontWeight: 600, textTransform: 'uppercase' }}>{s.label}</p>
             <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color: s.color }}>{s.value}</p>
           </div>
         ))}
@@ -428,11 +428,11 @@ export default function UsersPage() {
       {/* Filtros */}
       <div style={{
         background: '#fff', borderRadius: 12, padding: '16px 20px',
-        boxShadow: '0 1px 4px rgba(0,0,0,.06)', border: '1px solid #f3f4f6',
+        boxShadow: '0 1px 4px rgba(0,0,0,.06)', border: '1px solid #f0f2f5',
         marginBottom: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center'
       }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
-          <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
+          <Search size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#8a8d91' }} />
           <input
             placeholder="Buscar por nombre, usuario o email…"
             value={search}
@@ -440,7 +440,7 @@ export default function UsersPage() {
             style={{
               width: '100%', boxSizing: 'border-box',
               padding: '9px 12px 9px 36px', borderRadius: 8,
-              border: '1.5px solid #e5e7eb', fontSize: 14, outline: 'none', color: '#1f2937'
+              border: '1.5px solid #dadde1', fontSize: 14, outline: 'none', color: '#1c1e21'
             }}
           />
         </div>
@@ -449,9 +449,9 @@ export default function UsersPage() {
             <button key={r.value} onClick={() => setRoleFilter(r.value)} style={{
               padding: '7px 14px', borderRadius: 8, border: '1.5px solid',
               fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              borderColor: roleFilter === r.value ? '#7c3aed' : '#e5e7eb',
-              background:  roleFilter === r.value ? '#7c3aed' : '#fff',
-              color:       roleFilter === r.value ? '#fff'    : '#6b7280',
+              borderColor: roleFilter === r.value ? '#1877f2' : '#dadde1',
+              background:  roleFilter === r.value ? '#1877f2' : '#fff',
+              color:       roleFilter === r.value ? '#fff'    : '#65676b',
             }}>{r.label}</button>
           ))}
         </div>
@@ -460,70 +460,70 @@ export default function UsersPage() {
       {/* Tabla */}
       <div style={{
         background: '#fff', borderRadius: 12,
-        boxShadow: '0 1px 4px rgba(0,0,0,.06)', border: '1px solid #f3f4f6', overflow: 'hidden'
+        boxShadow: '0 1px 4px rgba(0,0,0,.06)', border: '1px solid #f0f2f5', overflow: 'hidden'
       }}>
         {loading ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#9ca3af' }}>
+          <div style={{ padding: 48, textAlign: 'center', color: '#8a8d91' }}>
             <p>Cargando usuarios…</p>
           </div>
         ) : filtered.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#9ca3af' }}>
+          <div style={{ padding: 48, textAlign: 'center', color: '#8a8d91' }}>
             <Users size={32} style={{ marginBottom: 12, opacity: .4 }} />
             <p>No se encontraron usuarios</p>
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr style={{ background: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}>
+              <tr style={{ background: '#f0f2f5', borderBottom: '1px solid #f0f2f5' }}>
                 {['Usuario','Nombre','Email','Rol','Estado','Acciones'].map(h => (
                   <th key={h} style={{
                     padding: '12px 16px', fontSize: 11, fontWeight: 700,
-                    color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.5px', textAlign: 'left'
+                    color: '#65676b', textTransform: 'uppercase', letterSpacing: '.5px', textAlign: 'left'
                   }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.map((u, i) => (
-                <tr key={u.id} style={{ borderBottom: i < filtered.length-1 ? '1px solid #f9fafb' : 'none' }}>
+                <tr key={u.id} style={{ borderBottom: i < filtered.length-1 ? '1px solid #f0f2f5' : 'none' }}>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
+                        background: 'linear-gradient(135deg,#1877f2,#42a5f5)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0
                       }}>
                         {(u.username||'?')[0].toUpperCase()}
                       </div>
-                      <span style={{ fontWeight: 600, fontSize: 14, color: '#1f2937' }}>{u.username}</span>
+                      <span style={{ fontWeight: 600, fontSize: 14, color: '#1c1e21' }}>{u.username}</span>
                     </div>
                   </td>
-                  <td style={{ padding: '14px 16px', fontSize: 14, color: '#374151' }}>
+                  <td style={{ padding: '14px 16px', fontSize: 14, color: '#1c1e21' }}>
                     {[u.first_name, u.last_name].filter(Boolean).join(' ') || '—'}
                   </td>
-                  <td style={{ padding: '14px 16px', fontSize: 13, color: '#6b7280' }}>{u.email||'—'}</td>
+                  <td style={{ padding: '14px 16px', fontSize: 13, color: '#65676b' }}>{u.email||'—'}</td>
                   <td style={{ padding: '14px 16px' }}><RoleBadge role={u.role||'viewer'} /></td>
                   <td style={{ padding: '14px 16px' }}>
                     <span style={{
                       display: 'inline-flex', alignItems: 'center', gap: 5,
                       padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
-                      color:      u.is_active ? '#065f46' : '#9ca3af',
-                      background: u.is_active ? '#d1fae5' : '#f3f4f6',
+                      color:      u.is_active ? '#065f46' : '#8a8d91',
+                      background: u.is_active ? '#d1fae5' : '#f0f2f5',
                     }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: u.is_active ? '#10b981' : '#d1d5db' }} />
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: u.is_active ? '#10b981' : '#ccd0d5' }} />
                       {u.is_active ? 'Activo' : 'Inactivo'}
                     </span>
                   </td>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={() => setModal({ mode: 'edit', user: u })} title="Editar" style={{
-                        padding: '6px 10px', borderRadius: 7, border: '1px solid #e5e7eb',
-                        background: '#fff', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center'
+                        padding: '6px 10px', borderRadius: 7, border: '1px solid #dadde1',
+                        background: '#fff', cursor: 'pointer', color: '#65676b', display: 'flex', alignItems: 'center'
                       }}><Edit2 size={14} /></button>
                       <button onClick={() => setToDelete(u)} title="Eliminar" style={{
-                        padding: '6px 10px', borderRadius: 7, border: '1px solid #e5e7eb',
-                        background: '#fff', cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center'
+                        padding: '6px 10px', borderRadius: 7, border: '1px solid #dadde1',
+                        background: '#fff', cursor: 'pointer', color: '#65676b', display: 'flex', alignItems: 'center'
                       }}><Trash2 size={14} /></button>
                     </div>
                   </td>

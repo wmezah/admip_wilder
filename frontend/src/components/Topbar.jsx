@@ -20,48 +20,45 @@ export default function Topbar({ darkMode, onToggleDark, onLogout }) {
   return (
     <header style={{
       position:'fixed', top:0, left:220, right:0, height:52, zIndex:20,
-      background:'#ffffff', borderBottom:'1px solid #e5e7eb',
+      background:'#ffffff', borderBottom:'1px solid #dadde1',
       display:'flex', alignItems:'center', padding:'0 24px', gap:16,
       fontFamily:"'DM Sans', sans-serif",
     }}>
       <nav style={{ display:'flex', alignItems:'center', gap:6, flex:1 }}>
-        <span style={{ fontSize:13, color:'#6b7280', fontWeight:400 }}>{section}</span>
-        <ChevronRight size={13} style={{ color:'#d1d5db' }} />
-        <span style={{ fontSize:13, color:'#111827', fontWeight:500 }}>{page}</span>
+        <span style={{ fontSize:13, color:'#65676b', fontWeight:400 }}>{section}</span>
+        <ChevronRight size={13} style={{ color:'#ccd0d5' }} />
+        <span style={{ fontSize:13, color:'#1c1e21', fontWeight:500 }}>{page}</span>
       </nav>
 
       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-        {/* Toggle dark mode */}
         <button onClick={onToggleDark}
-          style={{ width:32, height:32, borderRadius:8, border:'1px solid #e5e7eb',
+          style={{ width:32, height:32, borderRadius:8, border:'1px solid #dadde1',
             background:'transparent', display:'flex', alignItems:'center', justifyContent:'center',
-            cursor:'pointer', color:'#6b7280', fontFamily:'inherit' }}
+            cursor:'pointer', color:'#65676b', fontFamily:'inherit' }}
           className="st-icon-btn">
           {darkMode ? <Sun size={15}/> : <Moon size={15}/>}
         </button>
 
-        <div style={{ width:1, height:20, background:'#e5e7eb' }} />
+        <div style={{ width:1, height:20, background:'#dadde1' }} />
 
-        {/* Usuario logueado */}
-        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#6b7280' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:12, color:'#65676b' }}>
           <User size={14} />
-          <span style={{ fontWeight:500, color:'#374151' }}>
+          <span style={{ fontWeight:500, color:'#1c1e21' }}>
             {localStorage.getItem('username') || 'Admin'}
           </span>
         </div>
 
-        {/* Salir */}
         <button onClick={onLogout}
           style={{ display:'flex', alignItems:'center', gap:5,
-            padding:'5px 12px', borderRadius:7, border:'1px solid #e5e7eb',
-            background:'#fff', cursor:'pointer', fontSize:12, color:'#6b7280',
+            padding:'5px 12px', borderRadius:7, border:'1px solid #dadde1',
+            background:'#fff', cursor:'pointer', fontSize:12, color:'#65676b',
             fontFamily:'inherit' }}
           className="st-icon-btn">
           <LogOut size={13} /> Salir
         </button>
       </div>
 
-      <style>{`.st-icon-btn:hover{background:#f9fafb!important}`}</style>
+      <style>{`.st-icon-btn:hover{background:#f0f2f5!important}`}</style>
     </header>
   )
 }

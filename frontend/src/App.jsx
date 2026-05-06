@@ -73,7 +73,7 @@ function SessionWarning({ secondsLeft, onStay, onLogout }) {
           </button>
           <button onClick={onStay}
             style={{ padding:'8px 20px', borderRadius:8, border:'none',
-              background:'#7c3aed', color:'#fff', fontSize:13, cursor:'pointer', fontWeight:600 }}>
+              background:'#1877f2', color:'#fff', fontSize:13, cursor:'pointer', fontWeight:600 }}>
             Seguir conectado
           </button>
         </div>

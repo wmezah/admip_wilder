@@ -27,7 +27,7 @@ function SpareDetailModal({ spare, onClose, onEdit }) {
   const SECTIONS = [
     {
       title: 'Identificación',
-      color: '#7c3aed',
+      color: '#1877f2',
       fields: [
         ['SAP',           spare.sap],
         ['Part Number',   spare.part_number],
@@ -91,13 +91,13 @@ function SpareDetailModal({ spare, onClose, onEdit }) {
           <div>
             <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 2px',
               textTransform:'uppercase', letterSpacing:'.5px' }}>Detalle del Equipo</p>
-            <p style={{ fontSize:18, fontWeight:800, color:'#7c3aed',
+            <p style={{ fontSize:18, fontWeight:800, color:'#1877f2',
               fontFamily:'monospace', margin:0 }}>{cleanNum(spare.sap)}</p>
           </div>
           <div style={{ display:'flex', gap:8 }}>
             <button onClick={onEdit}
               style={{ fontSize:12, padding:'6px 14px', borderRadius:8,
-                background:'#f5f3ff', color:'#7c3aed', border:'1px solid #ede9fe',
+                background:'#e7f3ff', color:'#1877f2', border:'1px solid #cce0ff',
                 cursor:'pointer', fontWeight:600 }}>
               ✏️ Editar
             </button>
@@ -241,7 +241,7 @@ function SpareImportModal({ onClose, onDone }) {
       <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:680,
         boxShadow:'0 20px 60px rgba(0,0,0,0.15)',overflow:'hidden'}}>
 
-        <div style={{padding:'14px 20px',background:'linear-gradient(135deg,#7c3aed,#a78bfa)',
+        <div style={{padding:'14px 20px',background:'linear-gradient(135deg,#1877f2,#6babf5)',
           display:'flex',justifyContent:'space-between',alignItems:'center'}}>
           <p style={{margin:0,fontSize:14,fontWeight:700,color:'#fff'}}>Importar Equipos — Excel</p>
           <button onClick={onClose} style={{background:'rgba(255,255,255,0.2)',border:'none',
@@ -279,17 +279,17 @@ function SpareImportModal({ onClose, onDone }) {
             </div>
           ) : (
             <>
-              <div style={{background:'#f5f3ff',borderRadius:8,padding:'10px 14px',
+              <div style={{background:'#e7f3ff',borderRadius:8,padding:'10px 14px',
                 marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
-                  <p style={{margin:0,fontSize:12,fontWeight:600,color:'#7c3aed'}}>📋 Plantilla Excel</p>
+                  <p style={{margin:0,fontSize:12,fontWeight:600,color:'#1877f2'}}>📋 Plantilla Excel</p>
                   <p style={{margin:'2px 0 0',fontSize:11,color:'#6b7280'}}>
                     Compatible con el Excel exportado desde Spares o la plantilla descargable.
                   </p>
                 </div>
                 <button onClick={downloadTemplate}
-                  style={{fontSize:11,padding:'6px 12px',border:'1px solid #7c3aed',
-                    borderRadius:7,background:'#fff',color:'#7c3aed',cursor:'pointer',fontWeight:600}}>
+                  style={{fontSize:11,padding:'6px 12px',border:'1px solid #1877f2',
+                    borderRadius:7,background:'#fff',color:'#1877f2',cursor:'pointer',fontWeight:600}}>
                   Descargar plantilla
                 </button>
               </div>
@@ -297,10 +297,10 @@ function SpareImportModal({ onClose, onDone }) {
               <div onClick={()=>fileRef.current.click()}
                 style={{border:'2px dashed #d8b4fe',borderRadius:10,padding:'24px',
                   textAlign:'center',cursor:'pointer',marginBottom:16,background:'#faf5ff'}}
-                onMouseEnter={e=>e.currentTarget.style.borderColor='#7c3aed'}
+                onMouseEnter={e=>e.currentTarget.style.borderColor='#1877f2'}
                 onMouseLeave={e=>e.currentTarget.style.borderColor='#d8b4fe'}>
-                <FileUp size={24} color="#a78bfa" style={{margin:'0 auto 8px',display:'block'}}/>
-                <p style={{margin:0,fontSize:13,fontWeight:600,color:'#7c3aed'}}>Seleccionar archivo Excel (.xlsx)</p>
+                <FileUp size={24} color="#6babf5" style={{margin:'0 auto 8px',display:'block'}}/>
+                <p style={{margin:0,fontSize:13,fontWeight:600,color:'#1877f2'}}>Seleccionar archivo Excel (.xlsx)</p>
                 <p style={{margin:'4px 0 0',fontSize:11,color:'#9ca3af'}}>Haz clic para buscar</p>
                 <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:'none'}}
                   onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>parseXLSX(ev.target.result);r.readAsArrayBuffer(f)}}} />
@@ -590,7 +590,7 @@ function SpareModal({ spare, onClose, onSaved }) {
                 onChange={e => handleSapChange(e.target.value)}
                 placeholder="Ingresa SAP para autocompletar..." />
               {sapLoading && <span style={{ position:'absolute', right:10, top:32,
-                fontSize:11, color:'#7c3aed' }}>🔍 Buscando...</span>}
+                fontSize:11, color:'#1877f2' }}>🔍 Buscando...</span>}
             </div>
             <AF label="Part Number" k="part_number" />
             <AF label="Tipo"        k="tipo" />
@@ -683,9 +683,9 @@ function ColumnSelector({ visibleCols, onChange, allCols }) {
       <button onClick={() => setOpen(v => !v)} style={{
         display:'inline-flex', alignItems:'center', gap:6,
         padding:'7px 14px', borderRadius:8,
-        border:`1.5px solid ${open ? '#c4b5fd' : '#e5e7eb'}`,
-        background: open ? '#f5f3ff' : '#fff',
-        color: open ? '#7c3aed' : '#374151',
+        border:`1.5px solid ${open ? '#90bef7' : '#e5e7eb'}`,
+        background: open ? '#e7f3ff' : '#fff',
+        color: open ? '#1877f2' : '#374151',
         fontSize:13, fontWeight:600, cursor:'pointer'
       }}>
         <Columns size={14}/> Columnas
@@ -709,14 +709,14 @@ function ColumnSelector({ visibleCols, onChange, allCols }) {
                     onChange([...visibleCols, col.key])
                   }
                 }}
-                style={{ accentColor:'#7c3aed', width:14, height:14 }} />
+                style={{ accentColor:'#1877f2', width:14, height:14 }} />
               {col.label}
             </label>
           ))}
           <div style={{ borderTop:'1px solid #f3f4f6', margin:'6px 0 2px' }}/>
           <button onClick={() => onChange(cols.map(c => c.key))}
             style={{ width:'100%', padding:'6px 14px', background:'none', border:'none',
-              fontSize:12, color:'#7c3aed', cursor:'pointer', textAlign:'left', fontWeight:600 }}>
+              fontSize:12, color:'#1877f2', cursor:'pointer', textAlign:'left', fontWeight:600 }}>
             Mostrar todas
           </button>
           <button onClick={() => onChange(cols.filter(c => c.default).map(c => c.key))}
@@ -726,6 +726,138 @@ function ColumnSelector({ visibleCols, onChange, allCols }) {
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+
+// ── PivotChart ────────────────────────────────────────────────────────────────
+const PIVOT_PALETTE = [
+  '#1877f2','#16a34a','#d97706','#dc2626','#0891b2','#42a5f5','#0d47a1','#6b7280','#1565c0','#90bef7'
+]
+
+function PivotRow({ row, provs, maxTotal, isActive, hasFilter, onFilter, activeFilter }) {
+  // Ocultar fila si hay filtro de proveedor y esta zona no tiene ese proveedor
+  const provFilter = activeFilter && provs.includes(activeFilter)
+  if (provFilter && !row.values[activeFilter]) return null
+
+  const displayTotal = provFilter ? (row.values[activeFilter] || 0) : row.total
+
+  return (
+    <div
+      onClick={() => onFilter(isActive ? '' : row.label)}
+      style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+        opacity: hasFilter && !isActive && !provFilter ? 0.4 : 1,
+        transition:'opacity .15s' }}>
+      <span style={{ fontSize:10, width:90, flexShrink:0, textAlign:'right',
+        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+        color: isActive ? '#1877f2' : '#65676b', fontWeight: isActive ? 600 : 400 }}>
+        {row.label}
+      </span>
+      <div style={{ flex:1, display:'flex', borderRadius:3, overflow:'hidden', height:10,
+        boxShadow: isActive ? '0 0 0 1.5px #1877f2' : 'none' }}>
+        {provs.map((p, pi) => {
+          const val = row.values[p] || 0
+          if (val === 0) return null
+          const pct = (val / maxTotal) * 100
+          return (
+            <div key={p} title={p + ': ' + val}
+              style={{ width: pct + '%',
+                background: PIVOT_PALETTE[pi % PIVOT_PALETTE.length],
+                opacity: activeFilter && activeFilter !== p ? 0.15 : 1,
+                minWidth: 2, position:'relative', flexShrink:0,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                transition:'opacity .2s' }}>
+              {pct > 5 && (
+                <span style={{ fontSize:9, color:'#fff', fontWeight:700,
+                  whiteSpace:'nowrap', pointerEvents:'none', lineHeight:1 }}>{val}</span>
+              )}
+            </div>
+          )
+        })}
+        <div style={{ flex:1, background:'#f0f2f5' }}/>
+      </div>
+      <span style={{ fontSize:10, width:28, textAlign:'right', fontWeight:600, flexShrink:0,
+        color: isActive ? '#1877f2' : '#65676b' }}>
+        {displayTotal}
+      </span>
+    </div>
+  )
+}
+
+
+function PivotChart({ items, onFilter, activeFilter }) {
+  const pivot = useMemo(() => {
+    if (!items || items.length === 0) return null
+    const provSet = new Set()
+    const zonaMap = {}
+    items.forEach(item => {
+      const prov = item.proveedor
+      const zona = item.zona || item.almacen || item.centro
+      if (!prov || !zona) return
+      provSet.add(prov)
+      if (!zonaMap[zona]) zonaMap[zona] = {}
+      zonaMap[zona][prov] = (zonaMap[zona][prov] || 0) + 1
+    })
+    const provs = [...provSet].sort()
+    const rows = Object.entries(zonaMap)
+      .map(([zona, vals]) => ({
+        label: zona,
+        values: vals,
+        total: Object.values(vals).reduce((s,v) => s+v, 0),
+      }))
+      .sort((a,b) => b.total - a.total)
+      .slice(0, 10)
+    if (rows.length === 0) return null
+    const grand = rows.reduce((s,r) => s+r.total, 0)
+    return { provs, rows, grand }
+  }, [items])
+
+  if (!pivot) return null
+  const { provs, rows, grand } = pivot
+  const maxTotal = Math.max(...rows.map(r => r.total), 1)
+
+  return (
+    <div style={{ background:'#fff', border:'0.5px solid #dadde1', borderRadius:12, padding:'14px 16px', marginBottom:10 }}>
+      <p style={{ fontSize:12.5, fontWeight:600, color:'#1c1e21', margin:'0 0 2px' }}>Zona por proveedor</p>
+      <p style={{ fontSize:11, color:'#8a8d91', margin:'0 0 12px' }}>
+        Top 10 zonas ·{' '}
+        {activeFilter && provs.includes(activeFilter)
+          ? rows.reduce((s,r) => s+(r.values[activeFilter]||0), 0).toLocaleString() + ' de '
+          : ''}{grand.toLocaleString()} spares total
+      </p>
+      <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+        {rows.map((row) => (
+          <PivotRow
+            key={row.label}
+            row={row}
+            provs={provs}
+            maxTotal={maxTotal}
+            isActive={activeFilter === row.label}
+            hasFilter={!!activeFilter}
+            activeFilter={activeFilter}
+            onFilter={onFilter}
+          />
+        ))}
+      </div>
+      <div style={{ display:'flex', gap:'6px 14px', flexWrap:'wrap', marginTop:10 }}>
+        {provs.map((p, pi) => {
+          const tot = rows.reduce((s,r) => s+(r.values[p]||0), 0)
+          const isActive = activeFilter === p
+          return tot > 0 ? (
+            <div key={p} onClick={() => onFilter(isActive ? '' : p)}
+              style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, cursor:'pointer',
+                color: isActive ? PIVOT_PALETTE[pi%PIVOT_PALETTE.length] : '#65676b',
+                fontWeight: isActive ? 700 : 400,
+                opacity: activeFilter && !isActive ? 0.4 : 1, transition:'opacity .15s' }}>
+              <span style={{ width:8, height:8, borderRadius:'50%', background:PIVOT_PALETTE[pi%PIVOT_PALETTE.length],
+                display:'inline-block', flexShrink:0,
+                boxShadow: isActive ? '0 0 0 2px ' + PIVOT_PALETTE[pi%PIVOT_PALETTE.length] : 'none' }}/>
+              {p}
+            </div>
+          ) : null
+        })}
+      </div>
     </div>
   )
 }
@@ -797,6 +929,17 @@ function TabControlInventario() {
     return items.filter(row => {
       return Object.entries(colFilters).every(([key, val]) => {
         if (!val || val === '') return true
+        if (key === 'fecha_ingreso') {
+          return String(row.fecha_ingreso || '').startsWith(val)
+        }
+        if (key === '_antiguedad') {
+          if (!row.fecha_ingreso) return false
+          const dias = Math.floor((new Date() - new Date(row.fecha_ingreso)) / 86400000)
+          if (val === 'gt2') return dias > 730
+          if (val === 'gt1') return dias > 365 && dias <= 730
+          if (val === 'lt1') return dias <= 365
+          return true
+        }
         const cell = String(row[key] || '').toLowerCase()
         if (DROPDOWN_COLS.includes(key)) return cell === val.toLowerCase()
         return cell.includes(val.toLowerCase())
@@ -864,7 +1007,7 @@ function TabControlInventario() {
 
   // Colores por estatus
   const EST_COLORS = {
-    operativo: '#16a34a', utilizado: '#dc2626', asignado: '#7c3aed',
+    operativo: '#16a34a', utilizado: '#dc2626', asignado: '#1877f2',
     pendiente: '#d97706', revision: '#0891b2', baja: '#6b7280',
   }
   const estColor = (est='') => {
@@ -942,10 +1085,10 @@ function TabControlInventario() {
         {/* KPIs */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, marginBottom:14 }}>
           {[
-            { label:'Total spares', val:dashStats.total,     color:'#7c3aed', bg:'#f5f3ff', est:null },
+            { label:'Total spares', val:dashStats.total,     color:'#1877f2', bg:'#e7f3ff', est:null },
             { label:'Operativo',    val:dashStats.operativo,  color:'#16a34a', bg:'#f0fdf4', est:'operativo' },
             { label:'Utilizado',    val:dashStats.utilizado,  color:'#dc2626', bg:'#fef2f2', est:'utilizado' },
-            { label:'Asignado',     val:dashStats.asignado,   color:'#7c3aed', bg:'#f5f3ff', est:'asignado' },
+            { label:'Asignado',     val:dashStats.asignado,   color:'#1877f2', bg:'#e7f3ff', est:'asignado' },
             { label:'Pendiente',    val:dashStats.pendiente,  color:'#d97706', bg:'#fffbeb', est:'pendiente' },
             { label:'En revisión',  val:dashStats.revision,   color:'#0891b2', bg:'#f0f9ff', est:'revision' },
           ].map(k => (
@@ -969,7 +1112,7 @@ function TabControlInventario() {
         </div>
 
         <div style={{ fontSize:10, fontWeight:700, color:'#6b7280', letterSpacing:'.06em', textTransform:'uppercase', marginBottom:10 }}>
-          Distribución y tendencias {(hasColFilters || search) && <span style={{ background:'#7c3aed', color:'#fff', borderRadius:8, padding:'1px 8px', marginLeft:6, fontSize:9 }}>filtrado</span>}
+          Distribución y tendencias {(hasColFilters || search) && <span style={{ background:'#1877f2', color:'#fff', borderRadius:8, padding:'1px 8px', marginLeft:6, fontSize:9 }}>filtrado</span>}
         </div>
 
         {/* Fila 1: Dona + Top tipos */}
@@ -983,7 +1126,7 @@ function TabControlInventario() {
               <svg viewBox="0 0 80 80" style={{ width:80, height:80, flexShrink:0 }}>
                 {(() => {
                   const slices = [
-                    { label:'operativo', val:dashStats.operativo, color:'#7c3aed' },
+                    { label:'operativo', val:dashStats.operativo, color:'#1877f2' },
                     { label:'utilizado', val:dashStats.utilizado, color:'#dc2626' },
                     { label:'asignado',  val:dashStats.asignado,  color:'#d97706' },
                     { label:'pendiente', val:dashStats.pendiente, color:'#0891b2' },
@@ -1010,7 +1153,7 @@ function TabControlInventario() {
               </svg>
               <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
                 {[
-                  { label:'Operativo', val:dashStats.operativo, color:'#7c3aed', est:'operativo' },
+                  { label:'Operativo', val:dashStats.operativo, color:'#1877f2', est:'operativo' },
                   { label:'Utilizado', val:dashStats.utilizado, color:'#dc2626', est:'utilizado' },
                   { label:'Asignado',  val:dashStats.asignado,  color:'#d97706', est:'asignado' },
                   { label:'Pendiente', val:dashStats.pendiente, color:'#0891b2', est:'pendiente' },
@@ -1043,7 +1186,7 @@ function TabControlInventario() {
                     <span style={{ fontSize:10, color:'#6b7280', width:80, flexShrink:0, textAlign:'right',
                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{tipo}</span>
                     <div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:10 }}>
-                      <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background: active ? '#5b21b6' : '#7c3aed', borderRadius:3, opacity:.85 }}/>
+                      <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background: active ? '#1251aa' : '#1877f2', borderRadius:3, opacity:.85 }}/>
                     </div>
                     <span style={{ fontSize:10, color:'#6b7280', width:24, textAlign:'right', fontWeight:600 }}>{cnt}</span>
                   </div>
@@ -1054,45 +1197,97 @@ function TabControlInventario() {
         </div>
 
         {/* Línea ingresos por mes */}
-        {dashStats.byMes.length > 0 && (
-          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px', marginBottom:10 }}>
-            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Ingresos por mes</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 8px' }}>Evolución histórica de entradas al almacén</p>
-            <svg viewBox={`0 0 620 65`} style={{ width:'100%', height:65 }}>
-              {(() => {
-                const data = dashStats.byMes
-                const maxV = Math.max(...data.map(d=>d[1]), 1)
-                const W = 620, H = 55, pad = 10
-                const pts = data.map((d,i) => {
-                  const x = pad + (i/(data.length-1||1))*(W-2*pad)
-                  const y = H - pad - ((d[1]/maxV)*(H-2*pad))
-                  return [x,y]
-                })
-                const pStr = pts.map(p=>p.join(',')).join(' ')
-                return (
-                  <>
-                    <line x1="0" y1={H} x2={W} y2={H} stroke="#f3f4f6" strokeWidth="1"/>
-                    <line x1="0" y1={H/2} x2={W} y2={H/2} stroke="#f3f4f6" strokeWidth="1"/>
-                    <polyline points={pStr} fill="none" stroke="#7c3aed" strokeWidth="1.5" strokeLinejoin="round"/>
-                    {pts.map((p,i) => <circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill="#7c3aed"/>)}
-                    {[0, Math.floor(data.length/4), Math.floor(data.length/2), Math.floor(data.length*3/4), data.length-1]
-                      .filter((v,i,a)=>a.indexOf(v)===i && data[v])
-                      .map(i => (
-                        <text key={i} x={pts[i]?.[0]||0} y="64" fontSize="8" fill="#9ca3af" textAnchor="middle">{data[i]?.[0]}</text>
-                      ))}
-                  </>
-                )
-              })()}
-            </svg>
-          </div>
-        )}
+        {dashStats.byMes.length > 0 && (() => {
+          const data = dashStats.byMes
+          const maxV = Math.max(...data.map(d=>d[1]), 1)
+          const W = 620, H = 130, padL = 32, padR = 12, padT = 16, padB = 24
+          const chartW = W - padL - padR
+          const chartH = H - padT - padB
+          const pts = data.map((d,i) => ({
+            x: padL + (i/(data.length-1||1))*chartW,
+            y: padT + chartH - (d[1]/maxV)*chartH,
+            mes: d[0], val: d[1]
+          }))
+          const pStr = pts.map(p => p.x+','+p.y).join(' ')
+          const ticks = [0, Math.round(maxV/2), maxV]
+          const activeMes = colFilters.fecha_ingreso || ''
+          return (
+            <div style={{ background:'#fff', border:'0.5px solid #dadde1', borderRadius:12, padding:'14px 16px', marginBottom:10 }}>
+              <p style={{ fontSize:12.5, fontWeight:600, color:'#1c1e21', margin:'0 0 2px' }}>Ingresos por mes</p>
+              <p style={{ fontSize:11, color:'#8a8d91', margin:'0 0 10px' }}>Evolución histórica de entradas al almacén · clic en punto para filtrar</p>
+              <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:'auto', display:'block' }}>
+                {ticks.map((t,i) => {
+                  const y = padT + chartH - (t/maxV)*chartH
+                  return (
+                    <g key={i}>
+                      <line x1={padL} y1={y} x2={W-padR} y2={y} stroke="#f0f2f5" strokeWidth="1"/>
+                      <text x={padL-4} y={y+4} fontSize="7" fill="#8a8d91" textAnchor="end">{t}</text>
+                    </g>
+                  )
+                })}
+                <line x1={padL} y1={padT+chartH} x2={W-padR} y2={padT+chartH} stroke="#dadde1" strokeWidth="0.5"/>
+                <polyline points={pStr} fill="none" stroke="#1877f2" strokeWidth="2" strokeLinejoin="round"/>
+                {pts.map((p,i) => {
+                  const isActive = !!activeMes && p.mes === activeMes
+                  return (
+                    <g key={i} style={{ cursor:'pointer' }}
+                      onClick={() => {
+                        setColFilters(prev => ({
+                          ...prev,
+                          fecha_ingreso: isActive ? '' : p.mes
+                        }))
+                        setPage(1)
+                        setTimeout(() => {
+                          document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' })
+                        }, 100)
+                      }}>
+                      <circle cx={p.x} cy={p.y} r="8" fill="transparent"/>
+                      <circle cx={p.x} cy={p.y} r={isActive ? 5 : 3} fill={isActive ? '#1251aa' : '#1877f2'}
+                        stroke={isActive ? '#e7f3ff' : 'none'} strokeWidth="2"/>
+                      {isActive && <text x={p.x} y={p.y-8} fontSize="8" fill="#1877f2" textAnchor="middle" fontWeight="600">{p.val}</text>}
+                    </g>
+                  )
+                })}
+                {[0, Math.floor(data.length/4), Math.floor(data.length/2), Math.floor(data.length*3/4), data.length-1]
+                  .filter((v,i,a) => a.indexOf(v)===i && data[v])
+                  .map(i => (
+                    <text key={i} x={pts[i].x} y={H-4} fontSize="7" fill="#8a8d91" textAnchor="middle">{data[i][0]}</text>
+                  ))}
+              </svg>
+            </div>
+          )
+        })()}
+
+        {/* Zona por proveedor */}
+        <PivotChart
+          items={filteredItems}
+          activeFilter={colFilters.zona || colFilters.almacen || colFilters.centro || colFilters.proveedor || ''}
+          onFilter={(val) => {
+            // If val matches a zona/almacen/centro → filter by location
+            // If val matches a proveedor → filter by proveedor
+            const isZona = items.some(i => (i.zona || i.almacen || i.centro) === val)
+            const isProv = items.some(i => i.proveedor === val)
+            if (isProv && !isZona) {
+              setColFilters(prev => ({ ...prev, proveedor: prev.proveedor === val ? '' : val }))
+            } else {
+              const hasZona = items.some(i => i.zona)
+              const hasAlmacen = items.some(i => i.almacen)
+              const field = hasZona ? 'zona' : hasAlmacen ? 'almacen' : 'centro'
+              setColFilters(prev => ({ ...prev, [field]: val }))
+            }
+            setPage(1)
+            setTimeout(() => {
+              document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' })
+            }, 100)
+          }}
+        />
 
         {/* Fila 2: Top SAP + Top OC */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
           {/* Top SAP */}
           <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
             <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top SAP</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Cantidad por estatus</p>
+            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Top 10 por cantidad</p>
             <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
               {dashStats.bySAP.map(([sap, breakdown]) => {
                 const tot = Object.values(breakdown).reduce((s,v)=>s+v,0)
@@ -1101,7 +1296,7 @@ function TabControlInventario() {
                   <div key={sap} onClick={() => handleDashClick('sap', sap)}
                     style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
                       opacity: colFilters.sap && !active ? .4 : 1 }}>
-                    <span style={{ fontSize:10, fontFamily:'monospace', color: active ? '#5b21b6' : '#7c3aed',
+                    <span style={{ fontSize:10, fontFamily:'monospace', color: active ? '#1251aa' : '#1877f2',
                       fontWeight:600, width:58, flexShrink:0 }}>{sap}</span>
                     <div style={{ flex:1, display:'flex', borderRadius:3, overflow:'hidden', height:10 }}>
                       {Object.entries(breakdown).map(([est,cnt],i) => (
@@ -1114,19 +1309,26 @@ function TabControlInventario() {
               })}
             </div>
             <div style={{ display:'flex', gap:10, marginTop:8, flexWrap:'wrap' }}>
-              {Object.entries(EST_COLORS).map(([est,color]) => (
-                <span key={est} style={{ display:'flex', alignItems:'center', gap:3, fontSize:9, color:'#6b7280' }}>
-                  <span style={{ width:8, height:8, background:color, borderRadius:2, display:'inline-block', opacity:.85 }}/>
-                  {est.charAt(0).toUpperCase()+est.slice(1)}
-                </span>
-              ))}
+              {Object.entries(EST_COLORS).map(([est,color]) => {
+                const isActive = colFilters.estatus?.toLowerCase().includes(est)
+                return (
+                  <span key={est} onClick={() => handleDashClick('estatus', isActive ? '' : est)}
+                    style={{ display:'flex', alignItems:'center', gap:3, fontSize:9, cursor:'pointer',
+                      color: isActive ? color : '#65676b', fontWeight: isActive ? 700 : 400,
+                      opacity: colFilters.estatus && !isActive ? 0.4 : 1, transition:'opacity .15s' }}>
+                    <span style={{ width:8, height:8, background:color, borderRadius:2, display:'inline-block',
+                      boxShadow: isActive ? '0 0 0 2px ' + color : 'none' }}/>
+                    {est.charAt(0).toUpperCase()+est.slice(1)}
+                  </span>
+                )
+              })}
             </div>
           </div>
 
           {/* Top OC */}
           <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
             <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top Orden de Compra</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Cantidad por estatus</p>
+            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Top 10 por cantidad</p>
             <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
               {dashStats.byOC.map(([oc, breakdown]) => {
                 const tot = Object.values(breakdown).reduce((s,v)=>s+v,0)
@@ -1188,17 +1390,36 @@ function TabControlInventario() {
                 else lt1++
               })
               const max = Math.max(gt2,gt1,lt1,1)
+              const activeAnt = colFilters._antiguedad || ''
+              const handleAntClick = (key) => {
+                setColFilters(prev => ({ ...prev, _antiguedad: prev._antiguedad === key ? '' : key }))
+                setPage(1)
+                setTimeout(() => document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' }), 100)
+              }
               return (
                 <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                  {[{label:'+2 años',val:gt2,color:'#dc2626'},{label:'1-2 años',val:gt1,color:'#d97706'},{label:'<1 año',val:lt1,color:'#16a34a'}].map(b=>(
-                    <div key={b.label} style={{ display:'flex', alignItems:'center', gap:8 }}>
-                      <span style={{ fontSize:10, color:'#6b7280', width:44, flexShrink:0, textAlign:'right' }}>{b.label}</span>
-                      <div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:10 }}>
-                        <div style={{ width:`${(b.val/max)*100}%`, height:'100%', background:b.color, borderRadius:3, opacity:.8 }}/>
+                  {[
+                    {label:'+2 años', val:gt2, color:'#dc2626', key:'gt2'},
+                    {label:'1-2 años',val:gt1, color:'#d97706', key:'gt1'},
+                    {label:'<1 año',  val:lt1, color:'#16a34a', key:'lt1'},
+                  ].map(b => {
+                    const isActive = activeAnt === b.key
+                    return (
+                      <div key={b.label} onClick={() => handleAntClick(b.key)}
+                        style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                          opacity: activeAnt && !isActive ? 0.4 : 1, transition:'opacity .15s' }}>
+                        <span style={{ fontSize:10, width:44, flexShrink:0, textAlign:'right',
+                          color: isActive ? b.color : '#65676b', fontWeight: isActive ? 700 : 400 }}>
+                          {b.label}
+                        </span>
+                        <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:10,
+                          boxShadow: isActive ? '0 0 0 1.5px ' + b.color : 'none' }}>
+                          <div style={{ width:(b.val/max)*100+'%', height:'100%', background:b.color, borderRadius:3, opacity: isActive ? 1 : .8 }}/>
+                        </div>
+                        <span style={{ fontSize:10, fontWeight:700, color:b.color, width:28, textAlign:'right' }}>{b.val}</span>
                       </div>
-                      <span style={{ fontSize:10, fontWeight:600, color:b.color, width:24, textAlign:'right' }}>{b.val}</span>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )
             })()}
@@ -1219,7 +1440,7 @@ function TabControlInventario() {
                     <div key={sap} onClick={() => handleDashClick('sap', sap)}
                       style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer',
                         opacity: colFilters.sap && !active ? .4 : 1 }}>
-                      <span style={{ fontSize:10, fontFamily:'monospace', color: active ? '#5b21b6' : '#7c3aed',
+                      <span style={{ fontSize:10, fontFamily:'monospace', color: active ? '#1251aa' : '#1877f2',
                         fontWeight:600, width:58, flexShrink:0 }}>{sap}</span>
                       <div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:10, position:'relative' }}>
                         <div style={{ width:`${pct}%`, height:'100%', background: active ? '#92400e' : '#d97706', borderRadius:3, opacity:.85 }}/>
@@ -1255,7 +1476,7 @@ function TabControlInventario() {
               : `${items.length.toLocaleString()} registros`}
           </span>
           {hasColFilters && (
-            <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#7c3aed', borderColor:'#ede9fe' }}
+            <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#1877f2', borderColor:'#cce0ff' }}
               onClick={clearColFilters}>
               <X size={12}/> Limpiar filtros
             </button>
@@ -1315,11 +1536,11 @@ function TabControlInventario() {
                   return (
                     <th key={c.key} style={{
                       padding:'7px 12px 4px', textAlign:'left', fontSize:10,
-                      fontWeight:700, color: isActive ? '#7c3aed' : '#6b7280',
+                      fontWeight:700, color: isActive ? '#1877f2' : '#6b7280',
                       textTransform:'uppercase', whiteSpace:'nowrap', letterSpacing:'.4px',
-                      background: isActive ? '#ede9fe' : '#f3f4f6',
+                      background: isActive ? '#cce0ff' : '#f3f4f6',
                       borderBottom:'1px solid #e5e7eb',
-                      borderTop: isActive ? '2px solid #7c3aed' : '2px solid transparent',
+                      borderTop: isActive ? '2px solid #1877f2' : '2px solid transparent',
                       userSelect:'none'
                     }}>
                       {c.label}
@@ -1346,10 +1567,10 @@ function TabControlInventario() {
                   }
                   const inputSt = {
                     ...base,
-                    border: `1px solid ${isActive ? '#a78bfa' : '#d1d5db'}`,
-                    background: isActive ? '#f5f3ff' : '#fff',
+                    border: `1px solid ${isActive ? '#6babf5' : '#d1d5db'}`,
+                    background: isActive ? '#e7f3ff' : '#fff',
                     color:'#374151',
-                    boxShadow: isActive ? '0 0 0 2px #ede9fe' : 'none',
+                    boxShadow: isActive ? '0 0 0 2px #cce0ff' : 'none',
                   }
                   const selSt = { ...inputSt, cursor:'pointer', paddingRight:4 }
                   return (
@@ -1377,7 +1598,7 @@ function TabControlInventario() {
                             <button onClick={() => setColFilter(c.key, '')}
                               style={{ position:'absolute', right:4, top:'50%', transform:'translateY(-50%)',
                                 background:'none', border:'none', cursor:'pointer', padding:0,
-                                color:'#a78bfa', fontSize:13, lineHeight:1, display:'flex' }}>×</button>
+                                color:'#6babf5', fontSize:13, lineHeight:1, display:'flex' }}>×</button>
                           )}
                         </div>
                       ) : (
@@ -1410,7 +1631,7 @@ function TabControlInventario() {
                     )
                     if (c.key === 'sap') return (
                       <td key={c.key} style={{ padding:'6px 12px', fontFamily:'monospace',
-                        fontWeight:700, color:'#7c3aed', whiteSpace:'nowrap',
+                        fontWeight:700, color:'#1877f2', whiteSpace:'nowrap',
                         cursor:'pointer', textDecoration:'underline', textDecorationStyle:'dotted',
                         textUnderlineOffset:3 }}
                         onClick={()=>setViewItem(row)}>{v||'—'}</td>
@@ -1434,7 +1655,7 @@ function TabControlInventario() {
                     <div style={{ display:'flex', gap:4 }}>
                       <button onClick={()=>setEditItem(row)}
                         style={{ background:'none', border:'none', cursor:'pointer',
-                          color:'#7c3aed', padding:4, borderRadius:6 }}>
+                          color:'#1877f2', padding:4, borderRadius:6 }}>
                         <Edit2 size={13}/>
                       </button>
                       <button onClick={()=>handleDelete(row.id)}
@@ -1492,7 +1713,7 @@ function ViewSpareModal({ item, onClose, onEdit }) {
   const SECTIONS = [
     {
       title: 'Identificación SAP',
-      color: '#7c3aed',
+      color: '#1877f2',
       fields: [
         ['SAP',          item.sap],
         ['Part Number',  item.part_number],
@@ -1551,7 +1772,7 @@ function ViewSpareModal({ item, onClose, onEdit }) {
             <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>
               Detalle del Spare
             </p>
-            <p style={{ margin:0, fontWeight:800, color:'#7c3aed', fontFamily:'monospace', fontSize:15 }}>
+            <p style={{ margin:0, fontWeight:800, color:'#1877f2', fontFamily:'monospace', fontSize:15 }}>
               {item.sap || '—'}
               {item.serial_number ? <span style={{ fontSize:12, color:'#6b7280', fontWeight:400 }}> · {item.serial_number}</span> : ''}
             </p>
@@ -1559,7 +1780,7 @@ function ViewSpareModal({ item, onClose, onEdit }) {
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             <button onClick={onEdit}
               style={{ fontSize:12, padding:'5px 12px', borderRadius:8,
-                background:'#f5f3ff', color:'#7c3aed', border:'1px solid #ede9fe',
+                background:'#e7f3ff', color:'#1877f2', border:'1px solid #cce0ff',
                 cursor:'pointer', fontWeight:600 }}>✏️ Editar</button>
             <button onClick={onClose}
               style={{ background:'#f3f4f6', border:'none', borderRadius:8,
@@ -1744,7 +1965,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
           display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
           <div>
             <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>{isNew ? 'Nuevo Spare' : 'Editar Spare'}</p>
-            <p style={{ margin:0, fontWeight:700, color:'#7c3aed', fontFamily:'monospace', fontSize:13 }}>{item.sap || '—'}{item.serial_number ? ` · ${item.serial_number}` : ''}</p>
+            <p style={{ margin:0, fontWeight:700, color:'#1877f2', fontFamily:'monospace', fontSize:13 }}>{item.sap || '—'}{item.serial_number ? ` · ${item.serial_number}` : ''}</p>
           </div>
           <button onClick={onClose} style={{ background:'none', border:'1px solid #e5e7eb',
             borderRadius:8, width:28, height:28, cursor:'pointer', fontSize:15, color:'#6b7280',
@@ -1776,7 +1997,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
               <input ref={refs.sap} className="input" defaultValue={item.sap||''}
                 onChange={handleSapChange} placeholder="Ingresa SAP..." />
               {sapLoading && <span style={{ position:'absolute', right:8, bottom:8,
-                fontSize:11, color:'#7c3aed' }}>🔍</span>}
+                fontSize:11, color:'#1877f2' }}>🔍</span>}
             </div>
             <div>
               {lbl('Part Number')}<AutoBadge val={autoData.part_number}/>

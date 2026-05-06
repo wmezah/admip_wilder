@@ -23,7 +23,7 @@ const STATUS_META = {
 }
 
 const RED_COLOR = {
-  'IPRAN':'#7c3aed', 'ACCESO':'#2563eb', 'METRO':'#0891b2', 'CORE':'#dc2626',
+  'IPRAN':'#1877f2', 'ACCESO':'#2563eb', 'METRO':'#0891b2', 'CORE':'#dc2626',
 }
 
 function Badge({ status }) {
@@ -75,11 +75,11 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
   }
 
   return (
-    <div className="card p-4" style={{ marginBottom:16, border:'1px solid #c4b5fd40' }}>
+    <div className="card p-4" style={{ marginBottom:16, border:'1px solid #90bef740' }}>
       <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
         marginBottom: result ? 12 : 0 }}>
         <label style={{ display:'inline-flex', alignItems:'center', gap:8,
-          background:'#7c3aed', color:'#fff', padding:'7px 14px', borderRadius:8,
+          background:'#1877f2', color:'#fff', padding:'7px 14px', borderRadius:8,
           cursor:'pointer', fontSize:13, fontWeight:600, whiteSpace:'nowrap' }}>
           <Upload size={14} />
           {uploading ? 'Importando...' : 'Seleccionar XLSX'}
@@ -228,7 +228,7 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
                     placeholder="Ingresa SAP para autocompletar..." />
                   {sapLoading && (
                     <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
-                      fontSize:11, color:'#7c3aed', pointerEvents:'none' }}>🔍 Buscando...</span>
+                      fontSize:11, color:'#1877f2', pointerEvents:'none' }}>🔍 Buscando...</span>
                   )}
                 </div>
               ) : f.key === 'centro' && withCentroAlmacen ? (
@@ -312,9 +312,9 @@ function ColumnSelector({ allCols, visibleCols, onChange }) {
       <button onClick={() => setOpen(v => !v)} style={{
         display:'inline-flex', alignItems:'center', gap:6,
         padding:'7px 14px', borderRadius:8,
-        border:`1.5px solid ${open ? '#c4b5fd' : '#e5e7eb'}`,
-        background: open ? '#f5f3ff' : '#fff',
-        color: open ? '#7c3aed' : '#374151',
+        border:`1.5px solid ${open ? '#90bef7' : '#e5e7eb'}`,
+        background: open ? '#e7f3ff' : '#fff',
+        color: open ? '#1877f2' : '#374151',
         fontSize:13, fontWeight:600, cursor:'pointer'
       }}>
         <Columns size={14} /> Columnas
@@ -338,14 +338,14 @@ function ColumnSelector({ allCols, visibleCols, onChange }) {
                     onChange([...visibleCols, col.key])
                   }
                 }}
-                style={{ accentColor:'#7c3aed', width:14, height:14 }} />
+                style={{ accentColor:'#1877f2', width:14, height:14 }} />
               {col.label}
             </label>
           ))}
           <div style={{ borderTop:'1px solid #f3f4f6', margin:'6px 0 2px' }} />
           <button onClick={() => onChange(allCols.map(c => c.key))}
             style={{ width:'100%', padding:'6px 14px', background:'none', border:'none',
-              fontSize:12, color:'#7c3aed', cursor:'pointer', textAlign:'left', fontWeight:600 }}>
+              fontSize:12, color:'#1877f2', cursor:'pointer', textAlign:'left', fontWeight:600 }}>
             Mostrar todas
           </button>
           <button onClick={() => onChange(allCols.filter(c => c.default).map(c => c.key))}
@@ -397,7 +397,7 @@ function TabAsignado() {
   const [page, setPage] = useState(1)
   const debRef = useRef(null)
   const PER_PAGE = 50
-  const C = { primary:'#7c3aed', border:'#e5e7eb', muted:'#6b7280' }
+  const C = { primary:'#1877f2', border:'#e5e7eb', muted:'#6b7280' }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -513,7 +513,7 @@ function TabAsignado() {
       {/* KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:16 }}>
         {[
-          ['Total',filtered.length,'#7c3aed'],
+          ['Total',filtered.length,'#1877f2'],
           ['Concluido',filtered.filter(r=>r.status_folio==='Concluido').length,'#15803d'],
           ['Aprobado',filtered.filter(r=>r.status_folio==='Aprobado').length,'#2563eb'],
           ['No se Utilizó',filtered.filter(r=>r.status_folio==='No se Utilizó').length,'#ca8a04'],
@@ -581,7 +581,7 @@ function TabAsignado() {
               )}
               {shown.map((row,i)=>(
                 <tr key={row.id||i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fafafa' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#f5f3ff'}
+                  onMouseEnter={e=>e.currentTarget.style.background='#e7f3ff'}
                   onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
                   {activeCols.map(col=>{
                     const v = row[col.key]
@@ -1057,7 +1057,7 @@ function TabUpgrades() {
           <p style={{ fontSize:24, fontWeight:800, color:'#0891b2', margin:0 }}>{filtered.length}</p>
         </div>
         {proveedores.map((prov,i)=>{
-          const colors = ['#7c3aed','#2563eb','#15803d','#ca8a04']
+          const colors = ['#1877f2','#2563eb','#15803d','#ca8a04']
           return (
             <div key={prov} className="card p-4" style={{ borderLeft:`4px solid ${colors[i]}` }}>
               <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prov}</p>
@@ -1201,7 +1201,7 @@ function TabProveedor() {
   const [page, setPage] = useState(1)
   const debRef = useRef(null)
   const PER_PAGE = 50
-  const C = { primary:'#7c3aed', border:'#e5e7eb', muted:'#6b7280' }
+  const C = { primary:'#1877f2', border:'#e5e7eb', muted:'#6b7280' }
 
   const ESTADOS = ['EN PROCESO','CERRADO','PENDIENTE']
   const ESTADO_COLOR = { 'EN PROCESO':'#2563eb', 'CERRADO':'#15803d', 'PENDIENTE':'#ca8a04' }
@@ -1313,10 +1313,10 @@ function TabProveedor() {
 
       {/* KPIs */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:16 }}>
-        <div className="card p-4" style={{ borderLeft:'4px solid #7c3aed', cursor:'pointer' }}
+        <div className="card p-4" style={{ borderLeft:'4px solid #1877f2', cursor:'pointer' }}
           onClick={()=>{ setFE(''); setPage(1) }}>
           <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>Total</p>
-          <p style={{ fontSize:24, fontWeight:800, color:'#7c3aed', margin:0 }}>{filtered.length}</p>
+          <p style={{ fontSize:24, fontWeight:800, color:'#1877f2', margin:0 }}>{filtered.length}</p>
         </div>
         {ESTADOS.map(e=>(
           <div key={e} className="card p-4" style={{ borderLeft:`4px solid ${ESTADO_COLOR[e]}`, cursor:'pointer' }}
@@ -1373,7 +1373,7 @@ function TabProveedor() {
               )}
               {shown.map((row,i)=>(
                 <tr key={row.id||i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fafafa' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#f5f3ff'}
+                  onMouseEnter={e=>e.currentTarget.style.background='#e7f3ff'}
                   onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
                   {activeCols.map(col=>{
                     const v = row[col.key]
@@ -1463,9 +1463,9 @@ export default function SeguimientoPage() {
           <button key={t.key} onClick={() => setTab(t.key)} style={{
             display:'flex', alignItems:'center', gap:6,
             padding:'10px 20px', background:'none', border:'none',
-            borderBottom:`2px solid ${tab===t.key ? '#7c3aed' : 'transparent'}`,
+            borderBottom:`2px solid ${tab===t.key ? '#1877f2' : 'transparent'}`,
             fontSize:13, fontWeight: tab===t.key ? 600 : 400,
-            color: tab===t.key ? '#7c3aed' : '#6b7280',
+            color: tab===t.key ? '#1877f2' : '#6b7280',
             cursor:'pointer', fontFamily:'inherit', marginBottom:-1,
             whiteSpace:'nowrap'
           }}>

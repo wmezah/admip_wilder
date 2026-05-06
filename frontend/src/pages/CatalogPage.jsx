@@ -104,7 +104,7 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
       <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:700,
         boxShadow:'0 20px 60px rgba(0,0,0,0.15)',overflow:'hidden'}}>
 
-        <div style={{padding:'14px 20px',background:'linear-gradient(135deg,#7c3aed,#a78bfa)',
+        <div style={{padding:'14px 20px',background:'linear-gradient(135deg,#1877f2,#6babf5)',
           display:'flex',justifyContent:'space-between',alignItems:'center'}}>
           <p style={{margin:0,fontSize:14,fontWeight:700,color:'#fff'}}>Importar Excel — {title}</p>
           <button onClick={onClose} style={{background:'rgba(255,255,255,0.2)',border:'none',
@@ -124,17 +124,17 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
           ) : (
             <>
               {/* Template download */}
-              <div style={{background:'#f5f3ff',borderRadius:8,padding:'10px 14px',
+              <div style={{background:'#e7f3ff',borderRadius:8,padding:'10px 14px',
                 marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
-                  <p style={{margin:0,fontSize:12,fontWeight:600,color:'#7c3aed'}}>📋 Plantilla Excel</p>
+                  <p style={{margin:0,fontSize:12,fontWeight:600,color:'#1877f2'}}>📋 Plantilla Excel</p>
                   <p style={{margin:'2px 0 0',fontSize:11,color:'#6b7280'}}>
                     Columnas: {columns.map(c=>c.label+(c.required?' *':'')).join(', ')}
                   </p>
                 </div>
                 <button onClick={downloadTemplate}
-                  style={{fontSize:11,padding:'6px 12px',border:'1px solid #7c3aed',
-                    borderRadius:7,background:'#fff',color:'#7c3aed',cursor:'pointer',fontWeight:600}}>
+                  style={{fontSize:11,padding:'6px 12px',border:'1px solid #1877f2',
+                    borderRadius:7,background:'#fff',color:'#1877f2',cursor:'pointer',fontWeight:600}}>
                   Descargar plantilla
                 </button>
               </div>
@@ -143,10 +143,10 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
               <div onClick={()=>fileRef.current.click()}
                 style={{border:'2px dashed #d8b4fe',borderRadius:10,padding:'24px',
                   textAlign:'center',cursor:'pointer',marginBottom:16,background:'#faf5ff'}}
-                onMouseEnter={e=>e.currentTarget.style.borderColor='#7c3aed'}
+                onMouseEnter={e=>e.currentTarget.style.borderColor='#1877f2'}
                 onMouseLeave={e=>e.currentTarget.style.borderColor='#d8b4fe'}>
-                <FileUp size={24} color="#a78bfa" style={{margin:'0 auto 8px'}}/>
-                <p style={{margin:0,fontSize:13,fontWeight:600,color:'#7c3aed'}}>Seleccionar archivo Excel (.xlsx)</p>
+                <FileUp size={24} color="#6babf5" style={{margin:'0 auto 8px'}}/>
+                <p style={{margin:0,fontSize:13,fontWeight:600,color:'#1877f2'}}>Seleccionar archivo Excel (.xlsx)</p>
                 <p style={{margin:'4px 0 0',fontSize:11,color:'#9ca3af'}}>Haz clic para buscar</p>
                 <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{display:'none'}} onChange={handleFile}/>
               </div>
@@ -319,7 +319,7 @@ function SAPTab() {
                 <tr style={{ background:'#faf9ff', borderBottom:'1px solid #e5e7eb' }}>
                   {SAP_FIELDS.map(c => (
                     <td key={c.key} style={{ padding:'5px 8px' }}>
-                      <input style={{ width:'100%', border:'1px solid #c4b5fd', borderRadius:5,
+                      <input style={{ width:'100%', border:'1px solid #90bef7', borderRadius:5,
                         padding:'4px 7px', fontSize:11, fontFamily:'inherit', outline:'none', background:'#fefcff' }}
                         placeholder={c.label} value={newRow[c.key] || ''}
                         onChange={e => setNewRow(n => ({...n, [c.key]: e.target.value}))} />
@@ -327,7 +327,7 @@ function SAPTab() {
                   ))}
                   <td style={{ padding:'5px 8px' }}>
                     <div style={{ display:'flex', gap:4 }}>
-                      <button onClick={handleAdd} style={{ background:'#7c3aed', border:'none', color:'#fff', borderRadius:5, padding:'4px 10px', cursor:'pointer' }}>
+                      <button onClick={handleAdd} style={{ background:'#1877f2', border:'none', color:'#fff', borderRadius:5, padding:'4px 10px', cursor:'pointer' }}>
                         <Check size={12}/>
                       </button>
                       <button onClick={() => { setShowAdd(false); setNewRow({}) }} style={{ background:'#f3f4f6', border:'none', borderRadius:5, padding:'4px 8px', cursor:'pointer', color:'#6b7280' }}>
@@ -355,11 +355,11 @@ function SAPTab() {
                     <td key={c.key} style={{ padding:'8px 12px', maxWidth:c.width, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
                       title={row[c.key] || ''}>
                       {editId === row.id
-                        ? <input style={{ width:'100%', border:'1px solid #c4b5fd', borderRadius:4,
+                        ? <input style={{ width:'100%', border:'1px solid #90bef7', borderRadius:4,
                             padding:'3px 6px', fontSize:11, fontFamily:'inherit', outline:'none', background:'#faf9ff' }}
                             value={editRow[c.key] || ''}
                             onChange={e => setEditRow(r => ({...r, [c.key]: e.target.value}))} />
-                        : <span style={c.key==='sap' ? {fontWeight:700, color:'#7c3aed', fontFamily:'monospace'} : {color:'#374151'}}>
+                        : <span style={c.key==='sap' ? {fontWeight:700, color:'#1877f2', fontFamily:'monospace'} : {color:'#374151'}}>
                             {row[c.key] || ''}
                           </span>
                       }
@@ -368,13 +368,13 @@ function SAPTab() {
                   <td style={{ padding:'8px 12px' }}>
                     {editId === row.id
                       ? <div style={{ display:'flex', gap:4 }}>
-                          <button onClick={saveEdit} style={{ background:'#7c3aed', border:'none', color:'#fff', borderRadius:5, padding:'4px 8px', cursor:'pointer' }}><Check size={11}/></button>
+                          <button onClick={saveEdit} style={{ background:'#1877f2', border:'none', color:'#fff', borderRadius:5, padding:'4px 8px', cursor:'pointer' }}><Check size={11}/></button>
                           <button onClick={() => setEditId(null)} style={{ background:'#f3f4f6', border:'none', borderRadius:5, padding:'4px 8px', cursor:'pointer', color:'#6b7280' }}><X size={11}/></button>
                         </div>
                       : <div style={{ display:'flex', gap:3 }}>
                           <button onClick={() => { setEditId(row.id); setEditRow({...row}) }}
                             style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
-                            onMouseEnter={e => e.currentTarget.style.color='#7c3aed'}
+                            onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
                             onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
                           <button onClick={() => handleDelete(row.id)}
                             style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
@@ -546,14 +546,14 @@ function CentrosTab() {
                   </>
                 ) : (
                   <>
-                    <td style={{ padding:'10px 14px', fontWeight:700, fontFamily:'monospace', color:'#7c3aed', fontSize:14 }}>{row.centro}</td>
+                    <td style={{ padding:'10px 14px', fontWeight:700, fontFamily:'monospace', color:'#1877f2', fontSize:14 }}>{row.centro}</td>
                     <td style={{ padding:'10px 14px', fontFamily:'monospace', fontSize:14 }}>{row.almacen}</td>
                     <td style={{ padding:'10px 14px', fontSize:12, color:'#6b7280' }}>{row.denom_almacen || '—'}</td>
                     <td style={{ padding:'10px 14px' }}>
                       <div style={{ display:'flex', gap:4 }}>
                         <button onClick={() => { setEditId(row.id); setEditRow({ centro:row.centro, almacen:row.almacen, denom_almacen:row.denom_almacen||'' }) }}
                           style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
-                          onMouseEnter={e => e.currentTarget.style.color='#7c3aed'}
+                          onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
                           onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={14}/></button>
                         <button onClick={() => handleDelete(row.id)}
                           style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
@@ -785,7 +785,7 @@ function PartNumbersTab() {
                   {COLS.map(col => (
                     <td key={col.key} style={{ padding:'9px 12px', fontSize:12,
                       fontFamily: col.key==='sap'||col.key==='part_number' ? 'monospace' : 'inherit',
-                      color: col.key==='part_number' ? '#7c3aed' : col.key==='sap' ? '#6b7280' : '#374151',
+                      color: col.key==='part_number' ? '#1877f2' : col.key==='sap' ? '#6b7280' : '#374151',
                       fontWeight: col.key==='part_number' ? 700 : 400,
                       maxWidth: col.key==='descripcion'||col.key==='comentarios' ? 180 : undefined,
                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
@@ -814,7 +814,7 @@ function PartNumbersTab() {
                       <div style={{ display:'flex', gap:4 }}>
                         <button onClick={() => { setEditId(row.id); setEditRow({...row}) }}
                           style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
-                          onMouseEnter={e => e.currentTarget.style.color='#7c3aed'}
+                          onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
                           onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
                         <button onClick={() => handleDelete(row.id)}
                           style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
@@ -944,7 +944,7 @@ function StockSAPTab() {
   }
 
   const COLS = [
-    { key:'material',      label:'Material',     mono:true, color:'#7c3aed' },
+    { key:'material',      label:'Material',     mono:true, color:'#1877f2' },
     { key:'descripcion',   label:'Descripción',  wide:true },
     { key:'stock',         label:'Stock',        num:true  },
     { key:'lote',          label:'Lote'                    },
@@ -1111,9 +1111,9 @@ export default function CatalogPage() {
         {[['sap','Maestro de Materiales'],['centros','Centros / Almacenes'],['partnumbers','Código SAP IP'],['stock','Stock SAP Logon']].map(([k,l]) => (
           <button key={k} onClick={() => setTab(k)} style={{
             padding:'8px 20px', background:'none', border:'none',
-            borderBottom:`2px solid ${tab===k ? '#7c3aed' : 'transparent'}`,
+            borderBottom:`2px solid ${tab===k ? '#1877f2' : 'transparent'}`,
             fontSize:13, fontWeight: tab===k ? 600 : 400,
-            color: tab===k ? '#7c3aed' : '#6b7280',
+            color: tab===k ? '#1877f2' : '#6b7280',
             cursor:'pointer', fontFamily:'inherit', marginBottom:-1
           }}>{l}</button>
         ))}

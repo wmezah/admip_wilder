@@ -29,34 +29,34 @@ export default function LoginPage({ onLogin }) {
 
   return (
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center',
-      justifyContent:'center', background:'linear-gradient(135deg,#f5f3ff 0%,#ede9fe 100%)' }}>
+      justifyContent:'center', background:'linear-gradient(135deg,#e7f3ff 0%,#cce0ff 100%)' }}>
       <div style={{ width:'100%', maxWidth:400, padding:'0 20px' }}>
 
         {/* Logo */}
         <div style={{ textAlign:'center', marginBottom:32 }}>
           <div style={{ width:56, height:56, borderRadius:16, margin:'0 auto 16px',
-            background:'linear-gradient(135deg,#7c3aed,#a78bfa)',
+            background:'linear-gradient(135deg,#1877f2,#42a5f5)',
             display:'flex', alignItems:'center', justifyContent:'center',
-            boxShadow:'0 8px 24px rgba(124,58,237,0.3)' }}>
+            boxShadow:'0 8px 24px rgba(24,119,242,0.3)' }}>
             <Zap size={28} color="white" strokeWidth={2.5} />
           </div>
           <h1 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:28,
-            color:'#1f2937', margin:'0 0 6px' }}>AdmIP</h1>
-          <p style={{ color:'#6b7280', fontSize:14, margin:0 }}>
+            color:'#1c1e21', margin:'0 0 6px' }}>AdmIP</h1>
+          <p style={{ color:'#65676b', fontSize:14, margin:0 }}>
             Gestión de Inventario de Spares
           </p>
         </div>
 
         {/* Card */}
         <div style={{ background:'#fff', borderRadius:20, padding:32,
-          boxShadow:'0 20px 60px rgba(0,0,0,0.1)', border:'1px solid #f3f4f6' }}>
-          <h2 style={{ fontWeight:700, fontSize:18, color:'#1f2937',
+          boxShadow:'0 20px 60px rgba(0,0,0,0.1)', border:'1px solid #f0f2f5' }}>
+          <h2 style={{ fontWeight:700, fontSize:18, color:'#1c1e21',
             margin:'0 0 24px', textAlign:'center' }}>Iniciar Sesión</h2>
 
           {/* Usuario */}
           <div style={{ marginBottom:16 }}>
             <label style={{ display:'block', fontSize:12, fontWeight:600,
-              color:'#374151', marginBottom:6, textTransform:'uppercase',
+              color:'#1c1e21', marginBottom:6, textTransform:'uppercase',
               letterSpacing:'.5px' }}>Usuario</label>
             <input
               className="input"
@@ -73,7 +73,7 @@ export default function LoginPage({ onLogin }) {
           {/* Contraseña */}
           <div style={{ marginBottom:24 }}>
             <label style={{ display:'block', fontSize:12, fontWeight:600,
-              color:'#374151', marginBottom:6, textTransform:'uppercase',
+              color:'#1c1e21', marginBottom:6, textTransform:'uppercase',
               letterSpacing:'.5px' }}>Contraseña</label>
             <div style={{ position:'relative' }}>
               <input
@@ -88,7 +88,7 @@ export default function LoginPage({ onLogin }) {
               <button onClick={() => setShowPass(v => !v)}
                 style={{ position:'absolute', right:12, top:'50%',
                   transform:'translateY(-50%)', background:'none', border:'none',
-                  cursor:'pointer', color:'#9ca3af', padding:0 }}>
+                  cursor:'pointer', color:'#8a8d91', padding:0 }}>
                 {showPass ? <EyeOff size={16}/> : <Eye size={16}/>}
               </button>
             </div>
@@ -108,13 +108,13 @@ export default function LoginPage({ onLogin }) {
             onClick={handleSubmit}
             disabled={loading}
             style={{ width:'100%', padding:'12px', borderRadius:10, border:'none',
-              background: loading ? '#a78bfa' : 'linear-gradient(135deg,#7c3aed,#6d28d9)',
+              background: loading ? '#6babf5' : 'linear-gradient(135deg,#1877f2,#1565c0)',
               color:'#fff', fontSize:15, fontWeight:700, cursor: loading ? 'default' : 'pointer',
-              boxShadow:'0 4px 14px rgba(124,58,237,0.4)', transition:'all .2s' }}>
+              boxShadow:'0 4px 14px rgba(24,119,242,0.4)', transition:'all .2s' }}>
             {loading ? 'Ingresando...' : 'Ingresar'}
           </button>
 
-          <p style={{ textAlign:'center', fontSize:12, color:'#9ca3af',
+          <p style={{ textAlign:'center', fontSize:12, color:'#8a8d91',
             marginTop:20, marginBottom:0 }}>
             ¿Problemas para ingresar? Contacta al administrador.
           </p>

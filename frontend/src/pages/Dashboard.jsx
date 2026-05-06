@@ -6,7 +6,7 @@ import {
 import { getDashboardStats, getDashboardTimeline, getFilterOptions } from '../services/api'
 import { Package, CheckCircle, XCircle, Clock, AlertTriangle, ArrowRight, Filter, X, RefreshCw } from 'lucide-react'
 
-const PALETTE = ['#7c3aed','#16a34a','#dc2626','#d97706','#0891b2','#6b7280']
+const PALETTE = ['#1877f2','#16a34a','#dc2626','#d97706','#0891b2','#6b7280']
 
 /* ── KPI card ── */
 function KpiCard({ label, value, icon: Icon, color, bg }) {
@@ -32,7 +32,7 @@ const ChartTooltip = ({ active, payload, label }) => {
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
       padding: '8px 12px', fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}>
       <p style={{ color: '#6b7280' }}>{label}</p>
-      <p style={{ color: '#7c3aed', fontWeight: 600, marginTop: 2 }}>{payload[0].value?.toLocaleString()}</p>
+      <p style={{ color: '#1877f2', fontWeight: 600, marginTop: 2 }}>{payload[0].value?.toLocaleString()}</p>
     </div>
   )
 }
@@ -101,7 +101,7 @@ export default function Dashboard() {
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300 }}>
       <div style={{ width: 32, height: 32, borderRadius: '50%',
-        border: '2.5px solid #e5e7eb', borderTopColor: '#7c3aed',
+        border: '2.5px solid #e5e7eb', borderTopColor: '#1877f2',
         animation: 'spin 0.7s linear infinite' }} />
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
@@ -114,7 +114,7 @@ export default function Dashboard() {
       <div style={{ marginBottom: 40 }}>
         <h1 style={{ fontFamily: "'Syne', sans-serif", fontSize: 32, fontWeight: 800,
           color: '#111827', letterSpacing: '-0.02em', lineHeight: 1.15, marginBottom: 14 }}>
-          AdmIP{' '}<span style={{ color: '#7c3aed' }}>Gestión de Spares</span>
+          AdmIP{' '}<span style={{ color: '#1877f2' }}>Gestión de Spares</span>
         </h1>
         <p style={{ fontSize: 15, color: '#374151', maxWidth: 580, lineHeight: 1.6, marginBottom: 22 }}>
           Gestión integral de equipos spare — importa desde SAP, registra RMAs, hace seguimiento en campo y monitorea KPIs en tiempo real.
@@ -131,10 +131,10 @@ export default function Dashboard() {
         Resumen general
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12, marginBottom: 36 }}>
-        <KpiCard label="Total spares"  value={stats?.total}     icon={Package}       color="#7c3aed" bg="#f5f3ff" />
+        <KpiCard label="Total spares"  value={stats?.total}     icon={Package}       color="#1877f2" bg="#e7f3ff" />
         <KpiCard label="Operativo"     value={stats?.operativo} icon={CheckCircle}   color="#16a34a" bg="#f0fdf4" />
         <KpiCard label="Utilizado"     value={stats?.utilizado} icon={XCircle}       color="#dc2626" bg="#fef2f2" />
-        <KpiCard label="Asignado"      value={stats?.asignado}  icon={Package}       color="#7c3aed" bg="#f5f3ff" />
+        <KpiCard label="Asignado"      value={stats?.asignado}  icon={Package}       color="#1877f2" bg="#e7f3ff" />
         <KpiCard label="Pendiente"     value={stats?.pendiente} icon={Clock}         color="#d97706" bg="#fffbeb" />
         <KpiCard label="En revisión"   value={stats?.revision}  icon={AlertTriangle} color="#0891b2" bg="#f0f9ff" />
       </div>
@@ -174,7 +174,7 @@ export default function Dashboard() {
               <XAxis type="number" tick={{ fontSize: 10.5, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" width={82} tick={{ fontSize: 10.5, fill: '#6b7280' }} axisLine={false} tickLine={false} />
               <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} fill="#7c3aed" opacity={0.8} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} fill="#1877f2" opacity={0.8} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -191,8 +191,8 @@ export default function Dashboard() {
               <XAxis dataKey="mes" tick={{ fontSize: 10.5, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 10.5, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
               <Tooltip content={<ChartTooltip />} />
-              <Line type="monotone" dataKey="cantidad" stroke="#7c3aed"
-                strokeWidth={2} dot={{ fill: '#7c3aed', r: 3 }} activeDot={{ r: 5 }} />
+              <Line type="monotone" dataKey="cantidad" stroke="#1877f2"
+                strokeWidth={2} dot={{ fill: '#1877f2', r: 3 }} activeDot={{ r: 5 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>

@@ -128,13 +128,20 @@ class SpareViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='filter-options')
     def filter_options(self, request):
-        estatus = list(Spare.objects.exclude(estatus__isnull=True)
-            .values_list('estatus', flat=True).distinct().order_by('estatus'))
-        tipo = list(Spare.objects.exclude(tipo__isnull=True)
-            .values_list('tipo', flat=True).distinct().order_by('tipo'))
-        centro = list(Spare.objects.exclude(centro__isnull=True)
-            .values_list('centro', flat=True).distinct().order_by('centro'))
-        return Response({'estatus': estatus, 'tipo': tipo, 'centro': centro})
+        """Devuelve opciones únicas para los dropdowns de filtro.
+        Optimizado: una sola pasada por campo en lugar de N queries independientes.
+        """
+        fields = ['estatus', 'tipo', 'centro', 'almacen', 'proveedor',
+                  'modelo', 'procedencia', 'zona']
+        result = {}
+        for field in fields:
+            result[field] = list(
+                Spare.objects.exclude(**{f'{field}__isnull': True})
+                             .exclude(**{field: ''})
+                             .values_list(field, flat=True)
+                             .distinct().order_by(field)
+            )
+        return Response(result)
 
     @action(detail=False, methods=['delete'], url_path='clear_all')
     def clear_all(self, request):
@@ -921,93 +928,148 @@ class SeguimientoProveedorViewSet(viewsets.ModelViewSet):
 
 # ─── Dashboard ────────────────────────────────────────────────────────────────
 class DashboardStatsView(APIView):
+    """
+    Dashboard optimizado:
+    - Un solo COUNT con condicionales en lugar de 6 queries separadas
+    - antiguedad_detalle usa solo los campos necesarios (sin traer todo el modelo)
+    - Soporta filtros por cualquier campo del SpareFilter via query params
+    - Limita by_sap y by_oc a top 10 para reducir payload
+    """
     def get(self, request):
+        from django.db.models import Case, When, IntegerField, Value
+        from datetime import date
+
         qs = Spare.objects.all()
 
-        # ── Filtros opcionales por query param ──────────────────────────────
-        for field in ('centro', 'almacen', 'zona', 'proveedor', 'tipo', 'estatus'):
+        # ── Filtros opcionales (mismo set que SpareFilter) ──────────────────
+        FILTER_FIELDS_ICONTAINS = ('estatus', 'tipo', 'proveedor', 'modelo',
+                                   'sap', 'orden_compra', 'serial_number',
+                                   'procedencia', 'motivo_asignacion', 'zona')
+        FILTER_FIELDS_IEXACT    = ('centro', 'almacen')
+
+        for field in FILTER_FIELDS_ICONTAINS:
+            val = request.query_params.get(field, '').strip()
+            if val:
+                qs = qs.filter(**{f'{field}__icontains': val})
+        for field in FILTER_FIELDS_IEXACT:
             val = request.query_params.get(field, '').strip()
             if val:
                 qs = qs.filter(**{f'{field}__iexact': val})
+
         search = request.query_params.get('search', '').strip()
         if search:
             from django.db.models import Q as Q2
             qs = qs.filter(
                 Q2(sap__icontains=search) | Q2(descripcion__icontains=search) |
-                Q2(serial_number__icontains=search) | Q2(modelo__icontains=search)
+                Q2(serial_number__icontains=search) | Q2(modelo__icontains=search) |
+                Q2(orden_compra__icontains=search)
             )
-        # ────────────────────────────────────────────────────────────────────
 
-        total = qs.count()
+        # Rango fechas
+        fi_desde = request.query_params.get('fecha_ingreso_desde', '').strip()
+        fi_hasta = request.query_params.get('fecha_ingreso_hasta', '').strip()
+        if fi_desde:
+            qs = qs.filter(fecha_ingreso__gte=fi_desde)
+        if fi_hasta:
+            qs = qs.filter(fecha_ingreso__lte=fi_hasta)
 
-        def count_status(*terms):
-            q = Q()
-            for t in terms:
-                q |= Q(estatus__icontains=t)
-            return qs.filter(q).count()
+        # ── Totales por estatus en UNA sola query ───────────────────────────
+        agg = qs.aggregate(
+            total=Count('id'),
+            operativo=Count(Case(When(estatus__icontains='operativo', then=1), output_field=IntegerField())),
+            utilizado=Count(Case(When(estatus__icontains='utilizado', then=1), output_field=IntegerField())),
+            asignado =Count(Case(When(estatus__icontains='asignado',  then=1), output_field=IntegerField())),
+            pendiente=Count(Case(When(estatus__icontains='pendiente', then=1), output_field=IntegerField())),
+            revision =Count(Case(When(estatus__icontains='revision',  then=1), output_field=IntegerField())),
+            baja     =Count(Case(When(estatus__icontains='baja',      then=1), output_field=IntegerField())),
+        )
 
+        # ── Agrupaciones con slicing para limitar payload ───────────────────
         by_tipo = dict(
-            qs.exclude(tipo__isnull=True)
+            qs.exclude(tipo__isnull=True).exclude(tipo='')
             .values('tipo').annotate(c=Count('id'))
             .order_by('-c').values_list('tipo', 'c')[:10]
         )
         by_centro = dict(
-            qs.exclude(centro__isnull=True)
+            qs.exclude(centro__isnull=True).exclude(centro='')
             .values('centro').annotate(c=Count('id'))
             .values_list('centro', 'c')
         )
-        # by_sap: desglose por estatus para cada SAP
-        sap_rows = (
-            qs.exclude(sap__isnull=True).exclude(sap='')
-            .values('sap', 'estatus').annotate(c=Count('id'))
-            .order_by('sap', 'estatus')
-        )
-        by_sap = {}
-        for row in sap_rows:
-            sap = row['sap']
-            est = row['estatus'] or 'Sin estatus'
-            if sap not in by_sap:
-                by_sap[sap] = {}
-            by_sap[sap][est] = row['c']
-        # by_oc: desglose por estatus para cada OC
-        oc_rows = (
-            qs.exclude(orden_compra__isnull=True).exclude(orden_compra='')
-            .values('orden_compra', 'estatus').annotate(c=Count('id'))
-            .order_by('orden_compra', 'estatus')
-        )
-        by_oc = {}
-        for row in oc_rows:
-            oc  = row['orden_compra']
-            est = row['estatus'] or 'Sin estatus'
-            if oc not in by_oc:
-                by_oc[oc] = {}
-            by_oc[oc][est] = row['c']
-        # by_proveedor
         by_proveedor = dict(
             qs.exclude(proveedor__isnull=True).exclude(proveedor='')
             .values('proveedor').annotate(c=Count('id'))
             .order_by('-c').values_list('proveedor', 'c')[:10]
         )
 
-        # by_antiguedad: detalle por serie con dias/meses/años
-        from datetime import date
+        # by_sap: top 10 SAP por volumen, con desglose por estatus
+        top_saps = list(
+            qs.exclude(sap__isnull=True).exclude(sap='')
+            .values('sap').annotate(c=Count('id'))
+            .order_by('-c').values_list('sap', flat=True)[:10]
+        )
+        by_sap = {}
+        if top_saps:
+            sap_rows = (
+                qs.filter(sap__in=top_saps)
+                .values('sap', 'estatus').annotate(c=Count('id'))
+            )
+            for row in sap_rows:
+                sap = row['sap']
+                est = row['estatus'] or 'Sin estatus'
+                if sap not in by_sap:
+                    by_sap[sap] = {}
+                by_sap[sap][est] = row['c']
+
+        # by_oc: top 10 OC por volumen, con desglose por estatus
+        top_ocs = list(
+            qs.exclude(orden_compra__isnull=True).exclude(orden_compra='')
+            .values('orden_compra').annotate(c=Count('id'))
+            .order_by('-c').values_list('orden_compra', flat=True)[:10]
+        )
+        by_oc = {}
+        if top_ocs:
+            oc_rows = (
+                qs.filter(orden_compra__in=top_ocs)
+                .values('orden_compra', 'estatus').annotate(c=Count('id'))
+            )
+            for row in oc_rows:
+                oc  = row['orden_compra']
+                est = row['estatus'] or 'Sin estatus'
+                if oc not in by_oc:
+                    by_oc[oc] = {}
+                by_oc[oc][est] = row['c']
+
+        # ── Por procedencia ─────────────────────────────────────────────────
+        by_procedencia = dict(
+            qs.exclude(procedencia__isnull=True).exclude(procedencia='')
+            .values('procedencia').annotate(c=Count('id'))
+            .order_by('-c').values_list('procedencia', 'c')[:10]
+        )
+
+        # ── Top precios por SAP ──────────────────────────────────────────────
+        from django.db.models import Max
+        top_precios = list(
+            qs.exclude(precio__isnull=True).exclude(sap__isnull=True).exclude(sap='')
+            .values('sap').annotate(precio=Max('precio'))
+            .order_by('-precio').values('sap', 'precio')[:10]
+        )
+
+        # ── Antigüedad: solo registros con fecha, campos mínimos ────────────
         hoy = date.today()
         antiguedad_detalle = []
-        for row in qs.values('id', 'serial_number', 'sap', 'modelo', 'proveedor', 'centro', 'almacen', 'estatus', 'fecha_ingreso'):
-            fi = row['fecha_ingreso']
-            dias = (hoy - fi).days if fi else None
-            if dias is not None:
-                anos  = dias // 365
-                meses = (dias % 365) // 30
-                if anos >= 1:
-                    label = f'{anos}a {meses}m'
-                elif meses >= 1:
-                    label = f'{meses} mes{"es" if meses > 1 else ""}'
-                else:
-                    label = f'{dias} días'
+        for row in qs.exclude(fecha_ingreso__isnull=True).values(
+                'id', 'serial_number', 'sap', 'modelo', 'proveedor',
+                'centro', 'almacen', 'estatus', 'fecha_ingreso'):
+            fi   = row['fecha_ingreso']
+            dias = (hoy - fi).days
+            anos  = dias // 365
+            meses = (dias % 365) // 30
+            if anos >= 1:
+                label = f'{anos}a {meses}m'
+            elif meses >= 1:
+                label = f'{meses} mes{"es" if meses > 1 else ""}'
             else:
-                label = 'Sin fecha'
-                dias  = -1
+                label = f'{dias} días'
             antiguedad_detalle.append({
                 'id':            row['id'],
                 'serial_number': row['serial_number'] or '',
@@ -1017,27 +1079,28 @@ class DashboardStatsView(APIView):
                 'centro':        row['centro'] or '',
                 'almacen':       row['almacen'] or '',
                 'estatus':       row['estatus'] or '',
-                'fecha_ingreso': str(fi) if fi else '',
+                'fecha_ingreso': str(fi),
                 'antiguedad':    label,
                 'dias':          dias,
             })
         antiguedad_detalle.sort(key=lambda x: x['dias'], reverse=True)
-        antiguedad = {}  # kept for backward compat
 
         data = {
-            'total':        total,
-            'operativo':    count_status('operativo'),
-            'utilizado':    count_status('utilizado'),
-            'asignado':     count_status('asignado'),
-            'pendiente':    count_status('pendiente'),
-            'revision':     count_status('revision'),
-            'baja':         count_status('baja'),
-            'by_tipo':      by_tipo,
-            'by_centro':    by_centro,
-            'by_sap':       by_sap,
-            'by_oc':        by_oc,
-            'by_proveedor': by_proveedor,
-            'by_antiguedad':    antiguedad,
+            'total':              agg['total'],
+            'operativo':          agg['operativo'],
+            'utilizado':          agg['utilizado'],
+            'asignado':           agg['asignado'],
+            'pendiente':          agg['pendiente'],
+            'revision':           agg['revision'],
+            'baja':               agg['baja'],
+            'by_tipo':            by_tipo,
+            'by_centro':          by_centro,
+            'by_sap':             by_sap,
+            'by_oc':              by_oc,
+            'by_proveedor':       by_proveedor,
+            'by_procedencia':     by_procedencia,
+            'top_precios':        top_precios,
+            'by_antiguedad':      {},
             'antiguedad_detalle': antiguedad_detalle,
         }
         return Response(DashboardStatsSerializer(data).data)

@@ -66,6 +66,8 @@ class DashboardStatsSerializer(serializers.Serializer):
     by_proveedor  = serializers.DictField(child=serializers.IntegerField())
     by_antiguedad       = serializers.DictField(child=serializers.IntegerField())
     antiguedad_detalle  = serializers.ListField(child=serializers.DictField())
+    by_procedencia      = serializers.DictField(child=serializers.IntegerField())
+    top_precios         = serializers.ListField(child=serializers.DictField())
 
 
 class PartNumberSerializer(serializers.ModelSerializer):
