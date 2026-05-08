@@ -733,8 +733,21 @@ function PartNumbersTab() {
             {COLS.map(col => (
               <div key={col.key}>
                 <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>{col.label}</label>
-                <input className="input" value={form[col.key]} placeholder={col.label}
-                  onChange={e => setF(col.key, e.target.value)} />
+                {col.key === 'precio' ? (
+                  <input className="input" placeholder="$ 0.00"
+                    value={form._precioRaw !== undefined && form._precioRaw !== '' ? form._precioRaw
+                      : form.precio ? `$ ${Number(form.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : ''}
+                    onChange={e => setForm(f => ({...f, _precioRaw: e.target.value}))}
+                    onFocus={e => { const raw = String(form.precio||'').replace(/[^0-9.]/g,''); e.target.value = raw; setForm(f=>({...f,_precioRaw:raw})) }}
+                    onBlur={e => {
+                      const num = parseFloat(e.target.value.replace(/[^0-9.]/g,''))
+                      setForm(f => ({...f, precio: isNaN(num) ? '' : String(num), _precioRaw: ''}))
+                    }}
+                  />
+                ) : (
+                  <input className="input" value={form[col.key]||''} placeholder={col.label}
+                    onChange={e => setF(col.key, e.target.value)} />
+                )}
               </div>
             ))}
           </div>
@@ -792,7 +805,13 @@ function PartNumbersTab() {
                       title={row[col.key]||''}>
                       {editId === row.id ? (
                         <input className="input" style={{ fontSize:11 }} value={editRow[col.key]||''}
-                          onChange={e => setEditRow(r => ({...r, [col.key]: e.target.value}))} />
+                          onChange={e => setEditRow(r => ({...r, [col.key]: e.target.value}))}
+                          onFocus={e => { if(col.key==='precio'){ e.target.value = String(editRow[col.key]||'').replace(/[^0-9.]/g,'') }}}
+                          onBlur={e => { if(col.key==='precio'){
+                            const num = parseFloat(e.target.value.replace(/[^0-9.]/g,''))
+                            setEditRow(r => ({...r, precio: isNaN(num) ? '' : String(num)}))
+                          }}}
+                        />
                       ) : (
                         col.key==='proveedor' ? (
                           <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:600,
@@ -800,6 +819,10 @@ function PartNumbersTab() {
                             color: PROVEEDOR_STYLE[row.proveedor]?.color || '#6b7280' }}>
                             {row[col.key] || '—'}
                           </span>
+                        ) : col.key==='precio' ? (
+                          row.precio != null && row.precio !== ''
+                            ? `$ ${Number(row.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+                            : '—'
                         ) : row[col.key] || '—'
                       )}
                     </td>
