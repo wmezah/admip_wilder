@@ -363,7 +363,7 @@ function SpareImportModal({ onClose, onDone }) {
 
 
 const ESTATUS_LIST = [
-  'Operativo','Utilizado','Asignado','PENDIENTE','REVISION','BAJA'
+  'Operativo','Utilizado'
 ]
 
 const EMPTY = {
@@ -597,7 +597,38 @@ function SpareModal({ spare, onClose, onSaved }) {
             <AF label="Modelo"      k="modelo" />
             <AF label="Proveedor"   k="proveedor" />
             <AF label="Descripción" k="descripcion" />
-            <AF label="Precio"      k="precio" type="number" />
+            <div>
+              <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>
+                Precio
+                {autoFields.precio && <span style={{ marginLeft:5, fontSize:9, padding:'1px 6px', borderRadius:10,
+                  background:'#f0fdf4', color:'#16a34a', border:'1px solid #bbf7d0', fontWeight:700 }}>AUTO</span>}
+              </label>
+              <input className="input"
+                value={autoFields.precio ? `$ ${Number(autoFields.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : autoFields._precioRaw || ''}
+                placeholder="$ 0.00"
+                onChange={e => {
+                  const raw = e.target.value.replace(/[^0-9.]/g,'')
+                  setAutoFields(f => ({...f, precio: raw, _precioRaw: e.target.value}))
+                }}
+                onFocus={e => {
+                  const raw = String(autoFields.precio || '').replace(/[^0-9.]/g,'')
+                  setAutoFields(f => ({...f, _precioRaw: raw}))
+                  e.target.value = raw
+                }}
+                onBlur={e => {
+                  const raw = e.target.value.replace(/[^0-9.]/g,'')
+                  const num = parseFloat(raw)
+                  if (!isNaN(num)) {
+                    setAutoFields(f => ({...f, precio: String(num), _precioRaw: ''}))
+                  } else {
+                    setAutoFields(f => ({...f, precio: '', _precioRaw: ''}))
+                  }
+                }}
+                style={{ background: autoFields.precio ? '#f0fdf4' : undefined,
+                  borderColor: autoFields.precio ? '#bbf7d0' : undefined,
+                  color: autoFields.precio ? '#166534' : undefined }}
+              />
+            </div>
           </div>
 
           <Section title="Ubicación" />
@@ -732,52 +763,49 @@ function ColumnSelector({ visibleCols, onChange, allCols }) {
 
 
 // ── PivotChart ────────────────────────────────────────────────────────────────
-const PIVOT_PALETTE = [
-  '#1877f2','#16a34a','#d97706','#dc2626','#0891b2','#42a5f5','#0d47a1','#6b7280','#1565c0','#90bef7'
-]
+// Colores fijos por proveedor: HUAWEI=rojo, ZTE=azul, resto por índice
+const PROV_COLORS = { 'HUAWEI':'#1877f2', 'ZTE':'#16a34a' }
+const PIVOT_PALETTE = ['#d97706','#16a34a','#0891b2','#8b5cf6','#f59e0b','#059669','#6366f1','#ec4899']
+const provColor = (name, idx) => PROV_COLORS[name] || PALETTE_FALLBACK[idx % PALETTE_FALLBACK.length]
+const PALETTE_FALLBACK = PIVOT_PALETTE
 
 function PivotRow({ row, provs, maxTotal, isActive, hasFilter, onFilter, activeFilter }) {
-  // Ocultar fila si hay filtro de proveedor y esta zona no tiene ese proveedor
   const provFilter = activeFilter && provs.includes(activeFilter)
   if (provFilter && !row.values[activeFilter]) return null
-
   const displayTotal = provFilter ? (row.values[activeFilter] || 0) : row.total
 
   return (
     <div
-      onClick={() => onFilter(isActive ? '' : row.label)}
-      style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+      onClick={(e) => { e.stopPropagation(); onFilter(isActive ? '' : row.label) }}
+      style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', minWidth:0,
         opacity: hasFilter && !isActive && !provFilter ? 0.4 : 1,
         transition:'opacity .15s' }}>
-      <span style={{ fontSize:10, width:90, flexShrink:0, textAlign:'right',
+      <span style={{ fontSize:10, width:80, flexShrink:0, textAlign:'right',
         overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
         color: isActive ? '#1877f2' : '#65676b', fontWeight: isActive ? 600 : 400 }}>
         {row.label}
       </span>
-      <div style={{ flex:1, display:'flex', borderRadius:3, overflow:'hidden', height:10,
+      <div style={{ flex:1, minWidth:0, background:'#f0f2f5', borderRadius:3, overflow:'hidden', height:10, position:'relative',
         boxShadow: isActive ? '0 0 0 1.5px #1877f2' : 'none' }}>
+        <div style={{ position:'absolute', inset:0, display:'flex' }}>
         {provs.map((p, pi) => {
           const val = row.values[p] || 0
           if (val === 0) return null
           const pct = (val / maxTotal) * 100
+          const color = provColor(p, pi)
           return (
             <div key={p} title={p + ': ' + val}
-              style={{ width: pct + '%',
-                background: PIVOT_PALETTE[pi % PIVOT_PALETTE.length],
+              style={{ width: pct + '%', height:'100%',
+                background: color,
                 opacity: activeFilter && activeFilter !== p ? 0.15 : 1,
-                minWidth: 2, position:'relative', flexShrink:0,
-                display:'flex', alignItems:'center', justifyContent:'center',
-                transition:'opacity .2s' }}>
-              {pct > 5 && (
-                <span style={{ fontSize:9, color:'#fff', fontWeight:700,
-                  whiteSpace:'nowrap', pointerEvents:'none', lineHeight:1 }}>{val}</span>
-              )}
-            </div>
+                minWidth: 2, flexShrink:1,
+                transition:'opacity .2s' }}
+            />
           )
         })}
-        <div style={{ flex:1, background:'#f0f2f5' }}/>
+        </div>
       </div>
-      <span style={{ fontSize:10, width:28, textAlign:'right', fontWeight:600, flexShrink:0,
+      <span style={{ fontSize:10, minWidth:24, textAlign:'right', fontWeight:600, flexShrink:0,
         color: isActive ? '#1877f2' : '#65676b' }}>
         {displayTotal}
       </span>
@@ -786,7 +814,7 @@ function PivotRow({ row, provs, maxTotal, isActive, hasFilter, onFilter, activeF
 }
 
 
-function PivotChart({ items, onFilter, activeFilter }) {
+function PivotChart({ items, onFilter, activeFilter, compact }) {
   const pivot = useMemo(() => {
     if (!items || items.length === 0) return null
     const provSet = new Set()
@@ -817,11 +845,9 @@ function PivotChart({ items, onFilter, activeFilter }) {
   const { provs, rows, grand } = pivot
   const maxTotal = Math.max(...rows.map(r => r.total), 1)
 
-  return (
-    <div style={{ background:'#fff', border:'0.5px solid #dadde1', borderRadius:12, padding:'14px 16px', marginBottom:10 }}>
-      <p style={{ fontSize:12.5, fontWeight:600, color:'#1c1e21', margin:'0 0 2px' }}>Zona por proveedor</p>
-      <p style={{ fontSize:11, color:'#8a8d91', margin:'0 0 12px' }}>
-        Top 10 zonas ·{' '}
+  const inner = (
+    <>
+      <p style={{ fontSize:11, color:'#8a8d91', margin:'0 0 10px' }}>
         {activeFilter && provs.includes(activeFilter)
           ? rows.reduce((s,r) => s+(r.values[activeFilter]||0), 0).toLocaleString() + ' de '
           : ''}{grand.toLocaleString()} spares total
@@ -844,20 +870,30 @@ function PivotChart({ items, onFilter, activeFilter }) {
         {provs.map((p, pi) => {
           const tot = rows.reduce((s,r) => s+(r.values[p]||0), 0)
           const isActive = activeFilter === p
+          const color = provColor(p, pi)
           return tot > 0 ? (
-            <div key={p} onClick={() => onFilter(isActive ? '' : p)}
+            <div key={p} onClick={(e) => { e.stopPropagation(); onFilter(isActive ? '' : p) }}
               style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, cursor:'pointer',
-                color: isActive ? PIVOT_PALETTE[pi%PIVOT_PALETTE.length] : '#65676b',
+                color: isActive ? color : '#65676b',
                 fontWeight: isActive ? 700 : 400,
                 opacity: activeFilter && !isActive ? 0.4 : 1, transition:'opacity .15s' }}>
-              <span style={{ width:8, height:8, borderRadius:'50%', background:PIVOT_PALETTE[pi%PIVOT_PALETTE.length],
+              <span style={{ width:8, height:8, borderRadius:'50%', background:color,
                 display:'inline-block', flexShrink:0,
-                boxShadow: isActive ? '0 0 0 2px ' + PIVOT_PALETTE[pi%PIVOT_PALETTE.length] : 'none' }}/>
-              {p}
+                boxShadow: isActive ? '0 0 0 2px ' + color : 'none' }}/>
+              {p}{isActive ? ` (${rows.reduce((s,r) => s+(r.values[p]||0), 0)})` : ''}
             </div>
           ) : null
         })}
       </div>
+    </>
+  )
+
+  if (compact) return inner
+
+  return (
+    <div style={{ background:'#fff', border:'0.5px solid #dadde1', borderRadius:12, padding:'14px 16px', marginBottom:10 }}>
+      <p style={{ fontSize:12.5, fontWeight:600, color:'#1c1e21', margin:'0 0 2px' }}>Zona por proveedor</p>
+      {inner}
     </div>
   )
 }
@@ -904,8 +940,24 @@ function TabControlInventario() {
   const [importMsg, setImportMsg] = useState(null)
   const fileRef = useRef()
   const token = localStorage.getItem('access_token')
+  const [isAdmin, setIsAdmin] = useState(false)
+
+  useEffect(() => {
+    // Obtener rol del usuario actual desde la API
+    fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        const username = localStorage.getItem('username')
+        const users = Array.isArray(data) ? data : (data.results || [])
+        const me = users.find(u => u.username === username)
+        if (me?.role === 'admin') setIsAdmin(true)
+      })
+      .catch(() => {})
+  }, [token])
 
   // ── Filtros de columna (client-side) ─────────────────────────────────────
+  const [expandedCard, setExpandedCard] = useState(null) // null | 'mes'|'zona'|'prov'|'sap'|'oc'|'precio'
+
   const [colFilters, setColFilters] = useState({})
   const setColFilter = (key, val) => {
     setColFilters(prev => ({ ...prev, [key]: val }))
@@ -941,6 +993,7 @@ function TabControlInventario() {
           return true
         }
         const cell = String(row[key] || '').toLowerCase()
+        if (key === 'estatus') return cell.includes(val.toLowerCase())
         if (DROPDOWN_COLS.includes(key)) return cell === val.toLowerCase()
         return cell.includes(val.toLowerCase())
       })
@@ -980,7 +1033,7 @@ function TabControlInventario() {
     rows.forEach(r => {
       if (r.precio == null || r.precio === '' || !r.sap) return
       const p = Number(r.precio)
-      if (!preciosBySAP[r.sap] || p > preciosBySAP[r.sap]) preciosBySAP[r.sap] = p
+      if (!isNaN(p)) preciosBySAP[r.sap] = (preciosBySAP[r.sap] || 0) + p
     })
     const topPrecios = Object.entries(preciosBySAP)
       .sort((a,b) => b[1]-a[1])
@@ -1017,9 +1070,15 @@ function TabControlInventario() {
 
   // Click en dashboard → aplica filtro en tabla
   const handleDashClick = (key, val) => {
-    setColFilters(prev => ({ ...prev, [key]: prev[key] === val ? '' : val }))
+    // Para estatus, buscar el valor exacto tal como está en los datos
+    let exactVal = val
+    if (key === 'estatus' && val) {
+      const found = [...new Set(items.map(r => r.estatus).filter(Boolean))]
+        .find(v => v.toLowerCase() === val.toLowerCase())
+      if (found) exactVal = found
+    }
+    setColFilters(prev => ({ ...prev, [key]: prev[key] === exactVal ? '' : exactVal }))
     setPage(1)
-    // scroll suave a la tabla
     setTimeout(() => {
       document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' })
     }, 100)
@@ -1078,34 +1137,33 @@ function TabControlInventario() {
   }
 
   return (
-    <div>
+    <div style={{ background:'#eef1f6', borderRadius:14, padding:'16px', marginBottom:12 }}>
       {/* ══════════════ DASHBOARD ══════════════ */}
-      <div style={{ background:'#f9fafb', borderBottom:'2px solid #e5e7eb', padding:'12px 0 10px', marginBottom:12 }}>
+      <div style={{ marginBottom:14 }}>
 
         {/* KPIs */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:8, marginBottom:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16 }}>
           {[
-            { label:'Total spares', val:dashStats.total,     color:'#1877f2', bg:'#e7f3ff', est:null },
-            { label:'Operativo',    val:dashStats.operativo,  color:'#16a34a', bg:'#f0fdf4', est:'operativo' },
-            { label:'Utilizado',    val:dashStats.utilizado,  color:'#dc2626', bg:'#fef2f2', est:'utilizado' },
-            { label:'Asignado',     val:dashStats.asignado,   color:'#1877f2', bg:'#e7f3ff', est:'asignado' },
-            { label:'Pendiente',    val:dashStats.pendiente,  color:'#d97706', bg:'#fffbeb', est:'pendiente' },
-            { label:'En revisión',  val:dashStats.revision,   color:'#0891b2', bg:'#f0f9ff', est:'revision' },
+            { label:'Total spares', val:dashStats.total,    color:'#1877f2', bg:'#e7f3ff', est:null },
+            { label:'Operativo',   val:dashStats.operativo, color:'#16a34a', bg:'#f0fdf4', est:'operativo' },
+            { label:'Utilizado',   val:dashStats.utilizado, color:'#dc2626', bg:'#fef2f2', est:'utilizado' },
           ].map(k => (
             <div key={k.label}
               onClick={() => k.est && handleDashClick('estatus', k.est)}
-              style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12,
-                padding:'10px 12px', display:'flex', alignItems:'center', gap:10,
+              style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:14,
+                padding:'14px 18px', display:'flex', alignItems:'center', gap:14,
                 cursor: k.est ? 'pointer' : 'default',
-                boxShadow: k.est && colFilters.estatus?.toLowerCase().includes(k.est) ? `0 0 0 2px ${k.color}` : 'none',
-                transition:'box-shadow .15s' }}>
-              <div style={{ width:32, height:32, borderRadius:8, background:k.bg,
+                boxShadow: k.est && colFilters.estatus?.toLowerCase().includes(k.est) ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)',
+                transition:'box-shadow .15s, transform .15s' }}
+              onMouseEnter={e=>{ if(k.est){ e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow=`0 6px 18px rgba(0,0,0,0.1)` }}}
+              onMouseLeave={e=>{ e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow= k.est && colFilters.estatus?.toLowerCase().includes(k.est) ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)' }}>
+              <div style={{ width:44, height:44, borderRadius:12, background:k.bg,
                 display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <span style={{ fontSize:14, color:k.color }}>●</span>
+                <span style={{ fontSize:20, color:k.color }}>●</span>
               </div>
               <div>
-                <div style={{ fontSize:22, fontWeight:600, color:'#111827', lineHeight:1 }}>{k.val.toLocaleString()}</div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>{k.label}</div>
+                <div style={{ fontSize:26, fontWeight:700, color:'#111827', lineHeight:1 }}>{k.val.toLocaleString()}</div>
+                <div style={{ fontSize:12, color:'#6b7280', marginTop:3 }}>{k.label}</div>
               </div>
             </div>
           ))}
@@ -1115,346 +1173,328 @@ function TabControlInventario() {
           Distribución y tendencias {(hasColFilters || search) && <span style={{ background:'#1877f2', color:'#fff', borderRadius:8, padding:'1px 8px', marginLeft:6, fontSize:9 }}>filtrado</span>}
         </div>
 
-        {/* Fila 1: Dona + Top tipos */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
-          {/* Dona estatus */}
-          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
-            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Por estatus</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 12px' }}>Distribución actual del inventario</p>
-            <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-              {/* Dona SVG */}
-              <svg viewBox="0 0 80 80" style={{ width:80, height:80, flexShrink:0 }}>
-                {(() => {
-                  const slices = [
-                    { label:'operativo', val:dashStats.operativo, color:'#1877f2' },
-                    { label:'utilizado', val:dashStats.utilizado, color:'#dc2626' },
-                    { label:'asignado',  val:dashStats.asignado,  color:'#d97706' },
-                    { label:'pendiente', val:dashStats.pendiente, color:'#0891b2' },
-                    { label:'revision',  val:dashStats.revision,  color:'#6b7280' },
-                  ].filter(s => s.val > 0)
-                  const tot = slices.reduce((s,x)=>s+x.val,0) || 1
-                  const C = 2*Math.PI*28
-                  let offset = 0
-                  return slices.map((s,i) => {
-                    const dash = (s.val/tot)*C
-                    const el = (
-                      <circle key={i} cx="40" cy="40" r="28" fill="none"
-                        stroke={s.color} strokeWidth="14"
-                        strokeDasharray={`${dash-1} ${C-dash+1}`}
-                        strokeDashoffset={-offset+C/4}
-                        style={{ cursor:'pointer', opacity: colFilters.estatus?.toLowerCase().includes(s.label) ? 1 : 0.85 }}
-                        onClick={() => handleDashClick('estatus', s.label)}
-                      />
-                    )
-                    offset += dash
-                    return el
-                  })
-                })()}
-              </svg>
-              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-                {[
-                  { label:'Operativo', val:dashStats.operativo, color:'#1877f2', est:'operativo' },
-                  { label:'Utilizado', val:dashStats.utilizado, color:'#dc2626', est:'utilizado' },
-                  { label:'Asignado',  val:dashStats.asignado,  color:'#d97706', est:'asignado' },
-                  { label:'Pendiente', val:dashStats.pendiente, color:'#0891b2', est:'pendiente' },
-                  { label:'Revisión',  val:dashStats.revision,  color:'#6b7280', est:'revision' },
-                ].map(s => (
-                  <div key={s.label} onClick={() => handleDashClick('estatus', s.est)}
-                    style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer',
-                      opacity: colFilters.estatus && !colFilters.estatus.toLowerCase().includes(s.est) ? .4 : 1 }}>
-                    <span style={{ width:10, height:10, borderRadius:'50%', background:s.color, flexShrink:0, display:'inline-block' }}/>
-                    <span style={{ fontSize:11, color:'#6b7280' }}>{s.label}</span>
-                    <span style={{ fontSize:11, fontWeight:600, color:'#374151', marginLeft:4 }}>{s.val.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
 
-          {/* Top tipos */}
-          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
-            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top tipos</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 12px' }}>Los 10 tipos más frecuentes</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              {dashStats.byTipo.map(([tipo, cnt]) => {
-                const max = dashStats.byTipo[0]?.[1] || 1
-                const active = colFilters.tipo === tipo
-                return (
-                  <div key={tipo} onClick={() => handleDashClick('tipo', tipo)}
-                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
-                      opacity: colFilters.tipo && !active ? .4 : 1 }}>
-                    <span style={{ fontSize:10, color:'#6b7280', width:80, flexShrink:0, textAlign:'right',
-                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{tipo}</span>
-                    <div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:10 }}>
-                      <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background: active ? '#1251aa' : '#1877f2', borderRadius:3, opacity:.85 }}/>
-                    </div>
-                    <span style={{ fontSize:10, color:'#6b7280', width:24, textAlign:'right', fontWeight:600 }}>{cnt}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
 
-        {/* Línea ingresos por mes */}
-        {dashStats.byMes.length > 0 && (() => {
-          const data = dashStats.byMes
-          const maxV = Math.max(...data.map(d=>d[1]), 1)
-          const W = 620, H = 130, padL = 32, padR = 12, padT = 16, padB = 24
-          const chartW = W - padL - padR
-          const chartH = H - padT - padB
-          const pts = data.map((d,i) => ({
-            x: padL + (i/(data.length-1||1))*chartW,
-            y: padT + chartH - (d[1]/maxV)*chartH,
-            mes: d[0], val: d[1]
-          }))
-          const pStr = pts.map(p => p.x+','+p.y).join(' ')
-          const ticks = [0, Math.round(maxV/2), maxV]
-          const activeMes = colFilters.fecha_ingreso || ''
-          return (
-            <div style={{ background:'#fff', border:'0.5px solid #dadde1', borderRadius:12, padding:'14px 16px', marginBottom:10 }}>
-              <p style={{ fontSize:12.5, fontWeight:600, color:'#1c1e21', margin:'0 0 2px' }}>Ingresos por mes</p>
-              <p style={{ fontSize:11, color:'#8a8d91', margin:'0 0 10px' }}>Evolución histórica de entradas al almacén · clic en punto para filtrar</p>
-              <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:'auto', display:'block' }}>
-                {ticks.map((t,i) => {
-                  const y = padT + chartH - (t/maxV)*chartH
+        {/* ── Grid uniforme 3×2 con zoom modal al hacer clic ── */}
+        {(() => {
+          const cardContent = (id, expanded) => {
+            const fs  = expanded ? 14 : 11
+            const fsT = expanded ? 16 : 12
+            const barH = expanded ? 14 : 9
+            const gap  = expanded ? 10 : 5
+
+            if (id === 'mes') return (
+              <>
+                <p style={{ fontSize:fsT, fontWeight:700, color:'#374151', margin:'0 0 3px' }}>Ingresos por mes</p>
+                <p style={{ fontSize:fs-1, color:'#9ca3af', margin:'0 0 10px' }}>Evolución histórica · clic en punto para filtrar</p>
+                <div style={{ flex:1, minHeight:0 }}>
+                {dashStats.byMes.length > 0 ? (() => {
+                  const data = dashStats.byMes
+                  const maxV = Math.max(...data.map(d=>d[1]), 1)
+                  const W = 400, H = expanded ? 260 : 120
+                  const padL = 34, padR = 10, padT = 14, padB = 26
+                  const chartW = W-padL-padR, chartH = H-padT-padB
+                  const pts = data.map((d,i) => ({
+                    x: padL+(i/(data.length-1||1))*chartW,
+                    y: padT+chartH-(d[1]/maxV)*chartH,
+                    mes: d[0], val: d[1]
+                  }))
+                  const pStr = pts.map(p=>p.x+','+p.y).join(' ')
+                  const ticks = [0, Math.round(maxV/2), maxV]
+                  const activeMes = colFilters.fecha_ingreso || ''
                   return (
-                    <g key={i}>
-                      <line x1={padL} y1={y} x2={W-padR} y2={y} stroke="#f0f2f5" strokeWidth="1"/>
-                      <text x={padL-4} y={y+4} fontSize="7" fill="#8a8d91" textAnchor="end">{t}</text>
-                    </g>
+                    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:'100%', display:'block' }}>
+                      {ticks.map((t,i) => {
+                        const y = padT+chartH-(t/maxV)*chartH
+                        return (
+                          <g key={i}>
+                            <line x1={padL} y1={y} x2={W-padR} y2={y} stroke="#f0f2f5" strokeWidth="1"/>
+                            <text x={padL-5} y={y+4} fontSize={expanded?10:8} fill="#8a8d91" textAnchor="end">{t}</text>
+                          </g>
+                        )
+                      })}
+                      <line x1={padL} y1={padT+chartH} x2={W-padR} y2={padT+chartH} stroke="#dadde1" strokeWidth="0.5"/>
+                      <polyline points={pStr} fill="none" stroke="#1877f2" strokeWidth="2.5" strokeLinejoin="round"/>
+                      {pts.map((p,i) => {
+                        const isActive = !!activeMes && p.mes === activeMes
+                        return (
+                          <g key={i} style={{ cursor:'pointer' }} onClick={e => { e.stopPropagation()
+                            setColFilters(prev => ({ ...prev, fecha_ingreso: isActive ? '' : p.mes }))
+                            setPage(1)
+                            setTimeout(() => document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' }), 100)
+                          }}>
+                            <circle cx={p.x} cy={p.y} r="9" fill="transparent"/>
+                            <circle cx={p.x} cy={p.y} r={isActive ? 6 : 4} fill={isActive ? '#1251aa' : '#1877f2'} stroke={isActive ? '#cce0ff' : 'none'} strokeWidth="2"/>
+                            {(isActive || expanded) && <text x={p.x} y={p.y-9} fontSize={expanded?10:8} fill="#1877f2" textAnchor="middle" fontWeight="700">{p.val}</text>}
+                          </g>
+                        )
+                      })}
+                      {[0, Math.floor(data.length/4), Math.floor(data.length/2), Math.floor(data.length*3/4), data.length-1]
+                        .filter((v,i,a) => a.indexOf(v)===i && data[v])
+                        .map(i => (
+                          <text key={i} x={pts[i].x} y={H-5} fontSize={expanded?10:7} fill="#8a8d91" textAnchor="middle">{data[i][0]}</text>
+                        ))}
+                    </svg>
                   )
-                })}
-                <line x1={padL} y1={padT+chartH} x2={W-padR} y2={padT+chartH} stroke="#dadde1" strokeWidth="0.5"/>
-                <polyline points={pStr} fill="none" stroke="#1877f2" strokeWidth="2" strokeLinejoin="round"/>
-                {pts.map((p,i) => {
-                  const isActive = !!activeMes && p.mes === activeMes
-                  return (
-                    <g key={i} style={{ cursor:'pointer' }}
-                      onClick={() => {
-                        setColFilters(prev => ({
-                          ...prev,
-                          fecha_ingreso: isActive ? '' : p.mes
-                        }))
-                        setPage(1)
-                        setTimeout(() => {
-                          document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' })
-                        }, 100)
-                      }}>
-                      <circle cx={p.x} cy={p.y} r="8" fill="transparent"/>
-                      <circle cx={p.x} cy={p.y} r={isActive ? 5 : 3} fill={isActive ? '#1251aa' : '#1877f2'}
-                        stroke={isActive ? '#e7f3ff' : 'none'} strokeWidth="2"/>
-                      {isActive && <text x={p.x} y={p.y-8} fontSize="8" fill="#1877f2" textAnchor="middle" fontWeight="600">{p.val}</text>}
-                    </g>
-                  )
-                })}
-                {[0, Math.floor(data.length/4), Math.floor(data.length/2), Math.floor(data.length*3/4), data.length-1]
-                  .filter((v,i,a) => a.indexOf(v)===i && data[v])
-                  .map(i => (
-                    <text key={i} x={pts[i].x} y={H-4} fontSize="7" fill="#8a8d91" textAnchor="middle">{data[i][0]}</text>
-                  ))}
-              </svg>
-            </div>
-          )
-        })()}
+                })() : <p style={{ fontSize:fs, color:'#d1d5db', textAlign:'center', paddingTop:40 }}>Sin datos</p>}
+                </div>
+              </>
+            )
 
-        {/* Zona por proveedor */}
-        <PivotChart
-          items={filteredItems}
-          activeFilter={colFilters.zona || colFilters.almacen || colFilters.centro || colFilters.proveedor || ''}
-          onFilter={(val) => {
-            // If val matches a zona/almacen/centro → filter by location
-            // If val matches a proveedor → filter by proveedor
-            const isZona = items.some(i => (i.zona || i.almacen || i.centro) === val)
-            const isProv = items.some(i => i.proveedor === val)
-            if (isProv && !isZona) {
-              setColFilters(prev => ({ ...prev, proveedor: prev.proveedor === val ? '' : val }))
-            } else {
-              const hasZona = items.some(i => i.zona)
-              const hasAlmacen = items.some(i => i.almacen)
-              const field = hasZona ? 'zona' : hasAlmacen ? 'almacen' : 'centro'
-              setColFilters(prev => ({ ...prev, [field]: val }))
-            }
-            setPage(1)
-            setTimeout(() => {
-              document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' })
-            }, 100)
-          }}
-        />
+            if (id === 'zona') return (
+              <>
+                <p style={{ fontSize:fsT, fontWeight:700, color:'#374151', margin:'0 0 3px' }}>Zona por proveedor</p>
+                <p style={{ fontSize:fs-1, color:'#9ca3af', margin:'0 0 10px' }}>Top 10 zonas</p>
+                <div style={{ flex:1, minHeight:0, overflow:'hidden' }}>
+                  <PivotChart
+                    items={filteredItems}
+                    activeFilter={colFilters.zona || colFilters.almacen || colFilters.centro || colFilters.proveedor || ''}
+                    onFilter={(val) => {
+                      const isZona = items.some(i => (i.zona||i.almacen||i.centro) === val)
+                      const isProv = items.some(i => i.proveedor === val)
+                      if (isProv && !isZona) setColFilters(prev => ({ ...prev, proveedor: prev.proveedor===val ? '' : val }))
+                      else {
+                        const field = items.some(i=>i.zona) ? 'zona' : items.some(i=>i.almacen) ? 'almacen' : 'centro'
+                        setColFilters(prev => ({ ...prev, [field]: val }))
+                      }
+                      setPage(1)
+                      setTimeout(() => document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' }), 100)
+                    }}
+                    compact
+                  />
+                </div>
+              </>
+            )
 
-        {/* Fila 2: Top SAP + Top OC */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
-          {/* Top SAP */}
-          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
-            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top SAP</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Top 10 por cantidad</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              {dashStats.bySAP.map(([sap, breakdown]) => {
-                const tot = Object.values(breakdown).reduce((s,v)=>s+v,0)
-                const active = colFilters.sap === sap
-                return (
-                  <div key={sap} onClick={() => handleDashClick('sap', sap)}
-                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
-                      opacity: colFilters.sap && !active ? .4 : 1 }}>
-                    <span style={{ fontSize:10, fontFamily:'monospace', color: active ? '#1251aa' : '#1877f2',
-                      fontWeight:600, width:58, flexShrink:0 }}>{sap}</span>
-                    <div style={{ flex:1, display:'flex', borderRadius:3, overflow:'hidden', height:10 }}>
-                      {Object.entries(breakdown).map(([est,cnt],i) => (
-                        <div key={i} style={{ width:`${(cnt/tot)*100}%`, background:estColor(est), opacity:.85 }}/>
-                      ))}
-                    </div>
-                    <span style={{ fontSize:10, color:'#6b7280', width:20, textAlign:'right', fontWeight:600 }}>{tot}</span>
-                  </div>
-                )
-              })}
-            </div>
-            <div style={{ display:'flex', gap:10, marginTop:8, flexWrap:'wrap' }}>
-              {Object.entries(EST_COLORS).map(([est,color]) => {
-                const isActive = colFilters.estatus?.toLowerCase().includes(est)
-                return (
-                  <span key={est} onClick={() => handleDashClick('estatus', isActive ? '' : est)}
-                    style={{ display:'flex', alignItems:'center', gap:3, fontSize:9, cursor:'pointer',
-                      color: isActive ? color : '#65676b', fontWeight: isActive ? 700 : 400,
-                      opacity: colFilters.estatus && !isActive ? 0.4 : 1, transition:'opacity .15s' }}>
-                    <span style={{ width:8, height:8, background:color, borderRadius:2, display:'inline-block',
-                      boxShadow: isActive ? '0 0 0 2px ' + color : 'none' }}/>
-                    {est.charAt(0).toUpperCase()+est.slice(1)}
-                  </span>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Top OC */}
-          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
-            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top Orden de Compra</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Top 10 por cantidad</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              {dashStats.byOC.map(([oc, breakdown]) => {
-                const tot = Object.values(breakdown).reduce((s,v)=>s+v,0)
-                const active = colFilters.orden_compra === oc
-                return (
-                  <div key={oc} onClick={() => handleDashClick('orden_compra', oc)}
-                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
-                      opacity: colFilters.orden_compra && !active ? .4 : 1 }}>
-                    <span style={{ fontSize:10, fontFamily:'monospace', color:'#6b7280',
-                      width:72, flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{oc}</span>
-                    <div style={{ flex:1, display:'flex', borderRadius:3, overflow:'hidden', height:10 }}>
-                      {Object.entries(breakdown).map(([est,cnt],i) => (
-                        <div key={i} style={{ width:`${(cnt/tot)*100}%`, background:estColor(est), opacity:.85 }}/>
-                      ))}
-                    </div>
-                    <span style={{ fontSize:10, color:'#6b7280', width:20, textAlign:'right', fontWeight:600 }}>{tot}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Fila 3: Proveedores + Antigüedad + Top Precios */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
-
-          {/* Proveedores + Centros */}
-          <div style={{ background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
-            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top proveedores</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Spares por proveedor</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              {dashStats.byProveedor.slice(0,5).map(([prov,cnt]) => {
-                const max = dashStats.byProveedor[0]?.[1]||1
-                const active = colFilters.proveedor === prov
-                return (
-                  <div key={prov} onClick={() => handleDashClick('proveedor', prov)}
-                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
-                      opacity: colFilters.proveedor && !active ? .4 : 1 }}>
-                    <span style={{ fontSize:10, color:'#6b7280', width:60, flexShrink:0, textAlign:'right',
-                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prov}</span>
-                    <div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:10 }}>
-                      <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background: active ? '#065f46' : '#0891b2', borderRadius:3, opacity:.85 }}/>
-                    </div>
-                    <span style={{ fontSize:10, color:'#6b7280', width:24, textAlign:'right', fontWeight:600 }}>{cnt}</span>
-                  </div>
-                )
-              })}
-            </div>
-            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'12px 0 2px' }}>Antigüedad</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Días / meses / años desde ingreso</p>
-            {(() => {
-              const hoy = new Date()
-              let gt2=0, gt1=0, lt1=0
-              filteredItems.forEach(r => {
-                if (!r.fecha_ingreso) return
-                const dias = Math.floor((hoy - new Date(r.fecha_ingreso))/86400000)
-                if (dias > 730) gt2++
-                else if (dias > 365) gt1++
-                else lt1++
-              })
-              const max = Math.max(gt2,gt1,lt1,1)
-              const activeAnt = colFilters._antiguedad || ''
-              const handleAntClick = (key) => {
-                setColFilters(prev => ({ ...prev, _antiguedad: prev._antiguedad === key ? '' : key }))
-                setPage(1)
-                setTimeout(() => document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' }), 100)
-              }
-              return (
-                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                  {[
-                    {label:'+2 años', val:gt2, color:'#dc2626', key:'gt2'},
-                    {label:'1-2 años',val:gt1, color:'#d97706', key:'gt1'},
-                    {label:'<1 año',  val:lt1, color:'#16a34a', key:'lt1'},
-                  ].map(b => {
-                    const isActive = activeAnt === b.key
+            if (id === 'prov') return (
+              <>
+                <p style={{ fontSize:fsT, fontWeight:700, color:'#374151', margin:'0 0 3px' }}>Top proveedores</p>
+                <p style={{ fontSize:fs-1, color:'#9ca3af', margin:'0 0 10px' }}>Spares por proveedor</p>
+                <div style={{ display:'flex', flexDirection:'column', gap }}>
+                  {dashStats.byProveedor.slice(0, expanded ? 10 : 5).map(([prov,cnt], pi) => {
+                    const max = dashStats.byProveedor[0]?.[1]||1
+                    const active = colFilters.proveedor === prov
+                    const color = provColor(prov, pi)
                     return (
-                      <div key={b.label} onClick={() => handleAntClick(b.key)}
-                        style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
-                          opacity: activeAnt && !isActive ? 0.4 : 1, transition:'opacity .15s' }}>
-                        <span style={{ fontSize:10, width:44, flexShrink:0, textAlign:'right',
-                          color: isActive ? b.color : '#65676b', fontWeight: isActive ? 700 : 400 }}>
-                          {b.label}
-                        </span>
-                        <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:10,
-                          boxShadow: isActive ? '0 0 0 1.5px ' + b.color : 'none' }}>
-                          <div style={{ width:(b.val/max)*100+'%', height:'100%', background:b.color, borderRadius:3, opacity: isActive ? 1 : .8 }}/>
+                      <div key={prov} onClick={e=>{e.stopPropagation();handleDashClick('proveedor',prov)}}
+                        style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', opacity: colFilters.proveedor && !active ? .4 : 1 }}>
+                        <span style={{ fontSize:fs, color: active ? color : '#6b7280', width:70, flexShrink:0, textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontWeight: active ? 700 : 400 }}>{prov}</span>
+                        <div style={{ flex:1, background:'#f3f4f6', borderRadius:4, height:barH }}>
+                          <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background: color, borderRadius:4, opacity: active ? 1 : .8 }}/>
                         </div>
-                        <span style={{ fontSize:10, fontWeight:700, color:b.color, width:28, textAlign:'right' }}>{b.val}</span>
+                        <span style={{ fontSize:fs, color:'#374151', width:28, textAlign:'right', fontWeight:700 }}>{cnt}</span>
                       </div>
                     )
                   })}
                 </div>
-              )
-            })()}
-          </div>
-
-          {/* Top 10 Mayor Precio — 2 columnas */}
-          <div style={{ gridColumn:'span 2', background:'#fff', border:'0.5px solid #e5e7eb', borderRadius:12, padding:'14px 16px' }}>
-            <p style={{ fontSize:12, fontWeight:600, color:'#374151', margin:'0 0 2px' }}>Top 10 — mayor precio</p>
-            <p style={{ fontSize:11, color:'#9ca3af', margin:'0 0 10px' }}>Spares con mayor valor unitario registrado</p>
-            {dashStats.topPrecios.length === 0 ? (
-              <p style={{ fontSize:11, color:'#9ca3af', textAlign:'center', padding:'20px 0' }}>Sin datos de precio registrados</p>
-            ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-                {dashStats.topPrecios.map(({ sap, precio }) => {
-                  const pct = (precio/dashStats.maxPrecio)*100
-                  const active = colFilters.sap === sap
+                <p style={{ fontSize:expanded?14:11, fontWeight:700, color:'#374151', margin:'14px 0 8px' }}>Antigüedad</p>
+                {(() => {
+                  const hoy = new Date()
+                  let gt2=0, gt1=0, lt1=0
+                  filteredItems.forEach(r => {
+                    if (!r.fecha_ingreso) return
+                    const dias = Math.floor((hoy - new Date(r.fecha_ingreso))/86400000)
+                    if (dias > 730) gt2++; else if (dias > 365) gt1++; else lt1++
+                  })
+                  const max = Math.max(gt2,gt1,lt1,1)
+                  const activeAnt = colFilters._antiguedad || ''
                   return (
-                    <div key={sap} onClick={() => handleDashClick('sap', sap)}
-                      style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer',
-                        opacity: colFilters.sap && !active ? .4 : 1 }}>
-                      <span style={{ fontSize:10, fontFamily:'monospace', color: active ? '#1251aa' : '#1877f2',
-                        fontWeight:600, width:58, flexShrink:0 }}>{sap}</span>
-                      <div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:10, position:'relative' }}>
-                        <div style={{ width:`${pct}%`, height:'100%', background: active ? '#92400e' : '#d97706', borderRadius:3, opacity:.85 }}/>
-                      </div>
-                      <span style={{ fontSize:10, fontWeight:600, color:'#854f0b', width:80, textAlign:'right', flexShrink:0 }}>
-                        $ {precio.toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})}
-                      </span>
+                    <div style={{ display:'flex', flexDirection:'column', gap }}>
+                      {[{label:'+2 años',val:gt2,color:'#dc2626',key:'gt2'},{label:'1-2 años',val:gt1,color:'#d97706',key:'gt1'},{label:'< 1 año',val:lt1,color:'#16a34a',key:'lt1'}].map(b => {
+                        const isActive = activeAnt === b.key
+                        return (
+                          <div key={b.key} onClick={e=>{e.stopPropagation();setColFilters(prev=>({...prev,_antiguedad:prev._antiguedad===b.key?'':b.key}));setPage(1)}}
+                            style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', opacity: activeAnt && !isActive ? 0.4 : 1 }}>
+                            <span style={{ fontSize:fs, width:70, flexShrink:0, textAlign:'right', color: isActive ? b.color : '#65676b', fontWeight: isActive ? 700 : 400 }}>{b.label}</span>
+                            <div style={{ flex:1, background:'#f0f2f5', borderRadius:4, height:barH, boxShadow: isActive ? '0 0 0 1.5px '+b.color : 'none' }}>
+                              <div style={{ width:(b.val/max)*100+'%', height:'100%', background:b.color, borderRadius:4, opacity: isActive ? 1 : .8 }}/>
+                            </div>
+                            <span style={{ fontSize:fs, fontWeight:700, color:b.color, width:28, textAlign:'right' }}>{b.val}</span>
+                          </div>
+                        )
+                      })}
                     </div>
                   )
-                })}
+                })()}
+              </>
+            )
+
+            if (id === 'sap') return (
+              <>
+                <p style={{ fontSize:fsT, fontWeight:700, color:'#374151', margin:'0 0 3px' }}>Top SAP</p>
+                <p style={{ fontSize:fs-1, color:'#9ca3af', margin:'0 0 10px' }}>Top 10 por cantidad</p>
+                <div style={{ flex:1, display:'flex', flexDirection:'column', gap }}>
+                  {(() => {
+                    const maxTot = Math.max(...dashStats.bySAP.map(([,b]) => Object.values(b).reduce((s,v)=>s+v,0)), 1)
+                    return dashStats.bySAP.map(([sap, breakdown]) => {
+                      const tot   = Object.values(breakdown).reduce((s,v)=>s+v,0)
+                      const op    = Object.entries(breakdown).filter(([e]) => e.toLowerCase().includes('operativo')).reduce((s,[,v])=>s+v,0)
+                      const util  = Object.entries(breakdown).filter(([e]) => e.toLowerCase().includes('utilizado')).reduce((s,[,v])=>s+v,0)
+                      const active = colFilters.sap === sap
+                      const barW  = (tot / maxTot) * 100
+                      return (
+                        <div key={sap} onClick={e=>{e.stopPropagation();handleDashClick('sap',sap)}}
+                          style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', opacity: colFilters.sap && !active ? .4 : 1 }}>
+                          <span style={{ fontSize:fs, fontFamily:'monospace', color: active ? '#1251aa' : '#1877f2', fontWeight:600, width:62, flexShrink:0 }}>{sap}</span>
+                          <div style={{ flex:1, background:'#f0f2f5', borderRadius:4, overflow:'hidden', height:barH }}>
+                            <div style={{ width:`${barW}%`, height:'100%', display:'flex', borderRadius:4, overflow:'hidden' }}>
+                              {op   > 0 && <div style={{ width:`${(op/tot)*100}%`,   height:'100%', background:'#16a34a' }}/>}
+                              {util > 0 && <div style={{ width:`${(util/tot)*100}%`, height:'100%', background:'#dc2626' }}/>}
+                            </div>
+                          </div>
+                          <span style={{ fontSize:fs, color:'#374151', width:22, textAlign:'right', fontWeight:700 }}>{tot}</span>
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
+                <div style={{ display:'flex', gap:10, marginTop:10 }}>
+                  {[{est:'operativo',color:'#16a34a',label:'Operativo'},{est:'utilizado',color:'#dc2626',label:'Utilizado'}].map(({est,color,label}) => {
+                    const isActive = colFilters.estatus?.toLowerCase().includes(est)
+                    return (
+                      <span key={est} onClick={e=>{e.stopPropagation();handleDashClick('estatus', isActive ? '' : est)}}
+                        style={{ display:'flex', alignItems:'center', gap:4, fontSize:expanded?12:9, cursor:'pointer',
+                          color: isActive ? color : '#65676b', fontWeight: isActive ? 700 : 400 }}>
+                        <span style={{ width:8, height:8, background:color, borderRadius:2, display:'inline-block' }}/>
+                        {label}
+                      </span>
+                    )
+                  })}
+                </div>
+              </>
+            )
+
+            if (id === 'oc') return (
+              <>
+                <p style={{ fontSize:fsT, fontWeight:700, color:'#374151', margin:'0 0 3px' }}>Top Orden de Compra</p>
+                <p style={{ fontSize:fs-1, color:'#9ca3af', margin:'0 0 8px' }}>Top 10 · equipos recibidos vs utilizados</p>
+                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:5, paddingBottom:5, borderBottom:'1px solid #f3f4f6' }}>
+                  <span style={{ fontSize:expanded?11:9, color:'#9ca3af', width:80, flexShrink:0, fontWeight:700, textTransform:'uppercase' }}>OC</span>
+                  <span style={{ flex:1, fontSize:expanded?11:9, color:'#9ca3af', fontWeight:700, textTransform:'uppercase' }}>Distribución</span>
+                  <span style={{ fontSize:expanded?11:9, color:'#16a34a', width:42, textAlign:'right', fontWeight:700, flexShrink:0 }}>Total</span>
+                  <span style={{ fontSize:expanded?11:9, color:'#dc2626', width:48, textAlign:'right', fontWeight:700, flexShrink:0 }}>Utilizados</span>
+                </div>
+                <div style={{ flex:1, display:'flex', flexDirection:'column', gap }}>
+                  {(() => {
+                    const maxTot = Math.max(...dashStats.byOC.map(([,b]) => Object.values(b).reduce((s,v)=>s+v,0)), 1)
+                    return dashStats.byOC.map(([oc, breakdown]) => {
+                      const tot  = Object.values(breakdown).reduce((s,v)=>s+v,0)
+                      const op   = Object.entries(breakdown).filter(([e]) => e.toLowerCase().includes('operativo')).reduce((s,[,v])=>s+v,0)
+                      const util = Object.entries(breakdown).filter(([e]) => e.toLowerCase().includes('utilizado')).reduce((s,[,v])=>s+v,0)
+                      const active = colFilters.orden_compra === oc
+                      const barW = (tot / maxTot) * 100
+                      return (
+                        <div key={oc} onClick={e=>{e.stopPropagation();handleDashClick('orden_compra',oc)}}
+                          style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', opacity: colFilters.orden_compra && !active ? .4 : 1 }}>
+                          <span style={{ fontSize:fs, fontFamily:'monospace', color: active ? '#1251aa' : '#6b7280', fontWeight: active ? 700 : 400,
+                            width:80, flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{oc}</span>
+                          <div style={{ flex:1, background:'#f0f2f5', borderRadius:4, overflow:'hidden', height:barH }}>
+                            <div style={{ width:`${barW}%`, height:'100%', display:'flex', borderRadius:4, overflow:'hidden' }}>
+                              {op   > 0 && <div style={{ width:`${(op/tot)*100}%`,   height:'100%', background:'#16a34a' }}/>}
+                              {util > 0 && <div style={{ width:`${(util/tot)*100}%`, height:'100%', background:'#dc2626' }}/>}
+                            </div>
+                          </div>
+                          <span style={{ fontSize:fs, color:'#16a34a', width:42, textAlign:'right', fontWeight:700, flexShrink:0 }}>{tot}</span>
+                          <span style={{ fontSize:fs, color: util > 0 ? '#dc2626' : '#d1d5db', width:48, textAlign:'right', fontWeight:700, flexShrink:0 }}>{util}</span>
+                        </div>
+                      )
+                    })
+                  })()}
+                </div>
+                <div style={{ display:'flex', gap:10, marginTop:10 }}>
+                  {[{est:'operativo',color:'#16a34a',label:'Operativo'},{est:'utilizado',color:'#dc2626',label:'Utilizado'}].map(({est,color,label}) => {
+                    const isActive = colFilters.estatus?.toLowerCase().includes(est)
+                    return (
+                      <span key={est} onClick={e=>{e.stopPropagation();handleDashClick('estatus', isActive ? '' : est)}}
+                        style={{ display:'flex', alignItems:'center', gap:4, fontSize:expanded?12:9, cursor:'pointer',
+                          color: isActive ? color : '#65676b', fontWeight: isActive ? 700 : 400 }}>
+                        <span style={{ width:8, height:8, background:color, borderRadius:2, display:'inline-block' }}/>
+                        {label}
+                      </span>
+                    )
+                  })}
+                </div>
+              </>
+            )
+
+            if (id === 'precio') return (
+              <>
+                <p style={{ fontSize:fsT, fontWeight:700, color:'#374151', margin:'0 0 3px' }}>Top 10 — mayor valor acumulado</p>
+                <p style={{ fontSize:fs-1, color:'#9ca3af', margin:'0 0 10px' }}>Suma total de precios por SAP</p>
+                {dashStats.topPrecios.length === 0 ? (
+                  <p style={{ fontSize:fs, color:'#9ca3af', textAlign:'center', padding:'20px 0' }}>Sin datos de precio</p>
+                ) : (
+                  <div style={{ flex:1, display:'flex', flexDirection:'column', gap }}>
+                    {dashStats.topPrecios.map(({ sap, precio }) => {
+                      const pct = (precio/dashStats.maxPrecio)*100
+                      const active = colFilters.sap === sap
+                      return (
+                        <div key={sap} onClick={e=>{e.stopPropagation();handleDashClick('sap',sap)}}
+                          style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', opacity: colFilters.sap && !active ? .4 : 1 }}>
+                          <span style={{ fontSize:fs, fontFamily:'monospace', color: active ? '#1251aa' : '#1877f2', fontWeight:600, width:62, flexShrink:0 }}>{sap}</span>
+                          <div style={{ flex:1, background:'#f3f4f6', borderRadius:4, height:barH }}>
+                            <div style={{ width:`${pct}%`, height:'100%', background: active ? '#92400e' : '#d97706', borderRadius:4, opacity:.85 }}/>
+                          </div>
+                          <span style={{ fontSize:fs, fontWeight:700, color:'#854f0b', width:expanded?110:90, textAlign:'right', flexShrink:0 }}>
+                            ${precio.toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})}
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )
+            return null
+          }
+
+          const CARDS = ['mes','zona','prov','sap','oc','precio']
+
+          const zoomModal = expandedCard && createPortal(
+            <div onClick={() => setExpandedCard(null)}
+              style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:2000,
+                display:'flex', alignItems:'center', justifyContent:'center', padding:32 }}>
+              <div onClick={e => e.stopPropagation()}
+                style={{ background:'#fff', borderRadius:16, padding:'24px 28px',
+                  width:'min(820px,90vw)', maxHeight:'85vh', overflowY:'auto',
+                  display:'flex', flexDirection:'column', gap:4,
+                  boxShadow:'0 24px 64px rgba(0,0,0,0.25)',
+                  animation:'cardZoomIn .18s ease' }}>
+                <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:4 }}>
+                  <button onClick={() => setExpandedCard(null)}
+                    style={{ background:'#f3f4f6', border:'none', borderRadius:8, width:32, height:32,
+                      cursor:'pointer', fontSize:20, color:'#6b7280', display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}>×</button>
+                </div>
+                {cardContent(expandedCard, true)}
               </div>
-            )}
-          </div>
-        </div>
+            </div>,
+            document.body
+          )
+
+          return (
+            <>
+              <style>{`@keyframes cardZoomIn{from{transform:scale(.93);opacity:0}to{transform:scale(1);opacity:1}}`}</style>
+              {zoomModal}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gridAutoRows:'260px', gap:10, alignItems:'stretch' }}>
+                {CARDS.map(id => (
+                  <div key={id}
+                    onClick={() => setExpandedCard(id)}
+                    title="Clic para ampliar"
+                    style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12,
+                      padding:'14px 16px', display:'flex', flexDirection:'column', overflow:'hidden', minWidth:0,
+                      cursor:'zoom-in', transition:'box-shadow .15s, border-color .15s, transform .15s',
+                      boxShadow:'0 2px 8px rgba(0,0,0,0.06)'
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.boxShadow='0 6px 20px rgba(24,119,242,.14)'; e.currentTarget.style.borderColor='#b0c4f0'; e.currentTarget.style.transform='translateY(-2px)' }}
+                    onMouseLeave={e => { e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'; e.currentTarget.style.borderColor='#dde3ee'; e.currentTarget.style.transform='none' }}
+                  >
+                    {cardContent(id, false)}
+                  </div>
+                ))}
+              </div>
+            </>
+          )
+        })()}{/* fin grid uniforme */}
       </div>
 
       {/* ══════════════ TABLA ══════════════ */}
@@ -1493,6 +1533,7 @@ function TabControlInventario() {
             onClick={load}>
             <RefreshCw size={14}/> Actualizar
           </button>
+          {isAdmin && (
           <button onClick={async ()=>{
               if (!confirm(`¿Eliminar todos los ${total.toLocaleString()} registros? Esta acción no se puede deshacer.`)) return
               await fetch('/api/spare/items/clear_all/', { method:'DELETE', headers:{ Authorization:`Bearer ${token}` } })
@@ -1505,6 +1546,7 @@ function TabControlInventario() {
               cursor: total===0 ? 'default' : 'pointer', fontWeight:600 }}>
             <Trash2 size={14}/> Limpiar todo
           </button>
+          )}
           <ColumnSelector visibleCols={visibleCols} onChange={setVisibleCols} allCols={CONTROL_COLS} />
           <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
             onClick={()=>setShowNew(true)}>
@@ -1620,8 +1662,13 @@ function TabControlInventario() {
                   {items.length === 0 ? 'Sin registros' : 'Sin resultados con los filtros aplicados'}
                 </td></tr>
               ) : filteredItems.slice((page-1)*50, page*50).map((row, i) => (
-                <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6',
-                  background: i%2===0 ? '#fff' : '#fafafa' }}>
+                <tr key={row.id}
+                  style={{ borderBottom:'1px solid #dadde1',
+                    background: i%2===0 ? '#ffffff' : '#f0f2f5',
+                    transition:'background .12s' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#e7f3ff'}
+                  onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#ffffff' : '#f0f2f5'}
+                >
                   {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c => {
                     const v = row[c.key]
                     if (c.key === 'estatus') return (
@@ -1825,6 +1872,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
 
   const [centro,    setCentro]    = useState(item.centro    || '')
   const [almacen,   setAlmacen]   = useState(item.almacen   || '')
+  const [estatusVal, setEstatusVal] = useState(item.estatus  || '')
   const [autoData,  setAutoData]  = useState({
     part_number: item.part_number || '',
     tipo:        item.tipo        || '',
@@ -1905,7 +1953,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
         zona:             refs.zona.current?.value             || '',
         serial_number:    refs.serial_number.current?.value    || '',
         valor_lote:       refs.valor_lote.current?.value       || '',
-        estatus:          refs.estatus.current?.value          || '',
+        estatus:          estatusVal                             || '',
         fecha_ingreso:    refs.fecha_ingreso.current?.value    || null,
         fecha_asignacion: refs.fecha_asignacion.current?.value || null,
         motivo_asignacion:refs.motivo_asignacion.current?.value|| '',
@@ -1913,7 +1961,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
         procedencia:      refs.procedencia.current?.value      || '',
         pedido_traslado:  refs.pedido_traslado.current?.value  || '',
         comentario:       refs.comentario.current?.value       || '',
-        precio:           refs.precio.current?.value ? parseFloat(refs.precio.current.value) : null,
+        precio:           refs.precio.current?.value ? parseFloat(refs.precio.current.value.replace(/[^0-9.]/g,'')) || null : null,
         descripcion:      refs.descripcion.current?.value      || autoData.descripcion || '',
         part_number:      autoData.part_number,
         tipo:             autoData.tipo,
@@ -2024,14 +2072,29 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
                 style={autoStyle(autoData.proveedor)}/>
             </div>
             <div>{lbl('Lote')}<input ref={refs.valor_lote} className="input" defaultValue={item.valor_lote||''}/></div>
-            <div>{lbl('Estatus')}<input ref={refs.estatus} className="input" defaultValue={item.estatus||''}/></div>
+            <div>{lbl('Estatus')}
+              <select ref={refs.estatus} className="input" value={estatusVal} onChange={e=>setEstatusVal(e.target.value)}>
+                <option value="">— seleccionar —</option>
+                {ESTATUS_LIST.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
             <div>{lbl('Orden Compra')}<input ref={refs.orden_compra} className="input" defaultValue={item.orden_compra||''}/></div>
             <div>{lbl('F. Ingreso')}<input ref={refs.fecha_ingreso} type="date" className="input" defaultValue={item.fecha_ingreso||''}/></div>
             <div>{lbl('F. Asignación')}<input ref={refs.fecha_asignacion} type="date" className="input" defaultValue={item.fecha_asignacion||''}/></div>
             <div>{lbl('Procedencia')}<input ref={refs.procedencia} className="input" defaultValue={item.procedencia||''}/></div>
             <div>{lbl('Pedido Traslado')}<input ref={refs.pedido_traslado} className="input" defaultValue={item.pedido_traslado||''}/></div>
             <div>{lbl('Comentario')}<input ref={refs.comentario} className="input" defaultValue={item.comentario||''}/></div>
-            <div>{lbl('Precio')}<input ref={refs.precio} type="number" step="0.01" className="input" defaultValue={item.precio||''}/></div>
+            <div>{lbl('Precio')}
+              <input ref={refs.precio} className="input" placeholder="$ 0.00"
+                defaultValue={item.precio ? `$ ${Number(item.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : ''}
+                onFocus={e => { const raw = e.target.value.replace(/[^0-9.]/g,''); e.target.value = raw }}
+                onBlur={e => {
+                  const raw = e.target.value.replace(/[^0-9.]/g,'')
+                  const num = parseFloat(raw)
+                  e.target.value = !isNaN(num) ? `$ ${num.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : ''
+                }}
+              />
+            </div>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:10 }}>
             <div>
