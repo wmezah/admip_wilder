@@ -211,6 +211,90 @@ function BulkImportModal({ title, columns, onImport, onClose }) {
   )
 }
 
+
+// ── CatalogNewModal — modal unificado estilo SpareList ─────────────────────────
+function CatalogNewModal({ title, fields, onSave, onClose }) {
+  const [form, setForm] = useState(() => Object.fromEntries(fields.map(f => [f.key, ''])))
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const handleSave = async () => {
+    const missing = fields.filter(f => f.required && !form[f.key]?.trim())
+    if (missing.length) { setErr(`Requerido: ${missing.map(f=>f.label).join(', ')}`); return }
+    setSaving(true); setErr(null)
+    try {
+      const payload = {...form}
+      // strip currency formatting from precio if present
+      if (payload.precio) payload.precio = parseFloat(String(payload.precio).replace(/[^0-9.]/g,'')) || null
+      await onSave(payload)
+      onClose()
+    } catch(e) {
+      setErr(e.response?.data ? JSON.stringify(e.response.data) : e.message)
+    } finally { setSaving(false) }
+  }
+
+  return createPortal(
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:3000,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'#fff', borderRadius:16,
+        width:'min(680px,92vw)', maxHeight:'85vh', overflowY:'auto',
+        boxShadow:'0 24px 60px rgba(0,0,0,0.22)', animation:'fadeSlideIn .18s ease' }}>
+        {/* Header */}
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+          padding:'16px 20px', borderBottom:'1px solid #dadde1' }}>
+          <div>
+            <p style={{ fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px', margin:0 }}>Catálogos</p>
+            <p style={{ fontSize:15, fontWeight:700, color:'#1c1e21', margin:0 }}>{title}</p>
+          </div>
+          <button onClick={onClose} style={{ background:'#f0f2f5', border:'none', borderRadius:8,
+            width:32, height:32, cursor:'pointer', fontSize:18, color:'#65676b',
+            display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1 }}>×</button>
+        </div>
+        {/* Body */}
+        <div style={{ padding:'20px', display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14 }}>
+          {fields.map(f => (
+            <div key={f.key} style={{ gridColumn: f.wide ? 'span 3' : f.medium ? 'span 2' : 'span 1' }}>
+              <label style={{ fontSize:11, fontWeight:600, color:'#65676b', display:'block', marginBottom:4, textTransform:'uppercase', letterSpacing:'.3px' }}>
+                {f.label}{f.required && <span style={{ color:'#dc2626', marginLeft:2 }}>*</span>}
+              </label>
+              {f.key === 'precio' ? (
+                <input className="input"
+                  placeholder="$ 0.00"
+                  value={form._precioRaw !== undefined && form._precioRaw !== '' ? form._precioRaw
+                    : form.precio ? `$ ${Number(form.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : ''}
+                  onChange={e => setForm(v => ({...v, _precioRaw: e.target.value}))}
+                  onFocus={e => { const raw = String(form.precio||'').replace(/[^0-9.]/g,''); e.target.value = raw; setForm(v=>({...v,_precioRaw:raw})) }}
+                  onBlur={e => {
+                    const num = parseFloat(e.target.value.replace(/[^0-9.]/g,''))
+                    setForm(v => ({...v, precio: isNaN(num) ? '' : String(num), _precioRaw: ''}))
+                  }}
+                />
+              ) : (
+                <input className="input" placeholder={f.placeholder || f.label}
+                  value={form[f.key] || ''}
+                  onChange={e => setForm(v => ({...v, [f.key]: e.target.value}))} />
+              )}
+            </div>
+          ))}
+        </div>
+        {err && (
+          <div style={{ margin:'0 20px 16px', padding:'8px 12px', borderRadius:8,
+            background:'#fef2f2', border:'1px solid #fecaca', color:'#dc2626', fontSize:12 }}>{err}</div>
+        )}
+        {/* Footer */}
+        <div style={{ display:'flex', justifyContent:'flex-end', gap:8, padding:'12px 20px',
+          borderTop:'1px solid #dadde1' }}>
+          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 // ── SAP Tab ───────────────────────────────────────────────────────────────────
 function SAPTab() {
   const [items, setItems]         = useState([])
@@ -223,8 +307,14 @@ function SAPTab() {
   const [importResult, setImportResult] = useState(null)
   const [editId, setEditId]       = useState(null)
   const [editRow, setEditRow]     = useState({})
-  const [newRow, setNewRow]       = useState({})
-  const [showAdd, setShowAdd]     = useState(false)
+  const [editItem, setEditItem]   = useState(null)
+  const [showModal, setShowModal] = useState(false)
+  const [colF, setColF]           = useState({})
+
+  const handleAdd = async (data) => {
+    if (!data.sap) throw new Error('El código SAP es requerido')
+    await createSAPItem(data); load()
+  }
 
   const load = useCallback(() => {
     setLoading(true); setError(null)
@@ -255,16 +345,43 @@ function SAPTab() {
     if (!confirm('¿Eliminar este registro?')) return
     await deleteSAPItem(id); load()
   }
-  const handleAdd = async () => {
-    if (!newRow.sap) { alert('El código SAP es requerido'); return }
-    try { await createSAPItem(newRow); setNewRow({}); setShowAdd(false); load() }
-    catch(e) { alert('Error: ' + JSON.stringify(e.response?.data || e.message)) }
-  }
+
+  const filteredItems = useMemo(() => items.filter(row =>
+    SAP_FIELDS.every(f => {
+      const v = colF[f.key]
+      if (!v) return true
+      return String(row[f.key]||'').toLowerCase().includes(v.toLowerCase())
+    })
+  ), [items, colF])
 
   const pages = Math.ceil(count / PAGE_SIZE) || 1
 
+  const filterRow = (
+    <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
+      {SAP_FIELDS.map(f => (
+        <td key={f.key} style={{ padding:'3px 6px' }}>
+          <input value={colF[f.key]||''} onChange={e => setColF(p=>({...p,[f.key]:e.target.value}))}
+            style={{ width:'100%', border:`1px solid ${colF[f.key] ? '#1877f2' : '#dadde1'}`,
+              borderRadius:4, padding:'3px 6px', fontSize:10, outline:'none',
+              background: colF[f.key] ? '#e7f3ff' : '#fff', fontFamily:'inherit' }}
+            placeholder="Filtrar…" />
+        </td>
+      ))}
+      <td style={{ padding:'3px 6px' }}>
+        {Object.values(colF).some(Boolean) && (
+          <button onClick={()=>setColF({})} title="Limpiar filtros"
+            style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4,
+              padding:'3px 8px', fontSize:10, color:'#dc2626', cursor:'pointer' }}>✕</button>
+        )}
+      </td>
+    </tr>
+  )
+
   return (
     <div>
+      {editItem && (
+        <EditSAPModal item={editItem} onClose={()=>setEditItem(null)} onSaved={()=>{setEditItem(null);load()}} />
+      )}
       <div className="card p-3 mb-4" style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
         <div style={{ position:'relative', flex:1, minWidth:200 }}>
           <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }} />
@@ -278,10 +395,19 @@ function SAPTab() {
             onChange={e => { if (e.target.files[0]) handleImport(e.target.files[0]); e.target.value='' }} />
         </label>
         <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={() => setShowAdd(s => !s)}>
-          <Plus size={14}/> Añadir
+          onClick={() => setShowModal(true)}>
+          <Plus size={14}/> Nuevo
         </button>
       </div>
+
+      {showModal && (
+        <CatalogNewModal
+          title="Nuevo — Maestro de Materiales"
+          fields={SAP_FIELDS.map(f => ({...f, required: f.key==='sap'}))}
+          onSave={handleAdd}
+          onClose={() => setShowModal(false)}
+        />
+      )}
 
       {importResult && (
         <div className="card p-3 mb-3" style={{ fontSize:13,
@@ -302,7 +428,7 @@ function SAPTab() {
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
-              <tr style={{ background:'#f9fafb', borderBottom:'1px solid #e5e7eb' }}>
+              <tr style={{ background:'#f0f2f5', borderBottom:'1px solid #dadde1' }}>
                 {SAP_FIELDS.map(c => (
                   <th key={c.key} style={{ padding:'9px 12px', textAlign:'left', whiteSpace:'nowrap',
                     minWidth:c.width, fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>
@@ -313,75 +439,44 @@ function SAPTab() {
                   Acciones
                 </th>
               </tr>
+              {filterRow}
             </thead>
             <tbody>
-              {showAdd && (
-                <tr style={{ background:'#faf9ff', borderBottom:'1px solid #e5e7eb' }}>
-                  {SAP_FIELDS.map(c => (
-                    <td key={c.key} style={{ padding:'5px 8px' }}>
-                      <input style={{ width:'100%', border:'1px solid #90bef7', borderRadius:5,
-                        padding:'4px 7px', fontSize:11, fontFamily:'inherit', outline:'none', background:'#fefcff' }}
-                        placeholder={c.label} value={newRow[c.key] || ''}
-                        onChange={e => setNewRow(n => ({...n, [c.key]: e.target.value}))} />
-                    </td>
-                  ))}
-                  <td style={{ padding:'5px 8px' }}>
-                    <div style={{ display:'flex', gap:4 }}>
-                      <button onClick={handleAdd} style={{ background:'#1877f2', border:'none', color:'#fff', borderRadius:5, padding:'4px 10px', cursor:'pointer' }}>
-                        <Check size={12}/>
-                      </button>
-                      <button onClick={() => { setShowAdd(false); setNewRow({}) }} style={{ background:'#f3f4f6', border:'none', borderRadius:5, padding:'4px 8px', cursor:'pointer', color:'#6b7280' }}>
-                        <X size={12}/>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )}
               {loading && (
                 <tr><td colSpan={SAP_FIELDS.length+1} style={{ textAlign:'center', padding:'48px', color:'#6b7280' }}>
                   Cargando…
                 </td></tr>
               )}
-              {!loading && !error && items.length === 0 && (
+              {!loading && !error && filteredItems.length === 0 && (
                 <tr><td colSpan={SAP_FIELDS.length+1} style={{ textAlign:'center', padding:'48px', color:'#9ca3af', fontSize:13 }}>
-                  Sin registros — usa <strong>Importar Excel SAP</strong> o <strong>Añadir</strong>.
+                  Sin registros — usa <strong>Importar Excel SAP</strong> o <strong>Nuevo</strong>.
                 </td></tr>
               )}
-              {!loading && items.map(row => (
-                <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6' }}
-                  onMouseEnter={e => e.currentTarget.style.background='#fafafa'}
-                  onMouseLeave={e => e.currentTarget.style.background=''}>
+              {!loading && filteredItems.map((row, i) => (
+                <tr key={row.id} style={{ borderBottom:'1px solid #dadde1',
+                  background: i%2===0 ? '#ffffff' : '#f0f2f5',
+                  transition:'background .12s' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#e7f3ff'}
+                  onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#ffffff' : '#f0f2f5'}>
                   {SAP_FIELDS.map(c => (
                     <td key={c.key} style={{ padding:'8px 12px', maxWidth:c.width, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
                       title={row[c.key] || ''}>
-                      {editId === row.id
-                        ? <input style={{ width:'100%', border:'1px solid #90bef7', borderRadius:4,
-                            padding:'3px 6px', fontSize:11, fontFamily:'inherit', outline:'none', background:'#faf9ff' }}
-                            value={editRow[c.key] || ''}
-                            onChange={e => setEditRow(r => ({...r, [c.key]: e.target.value}))} />
-                        : <span style={c.key==='sap' ? {fontWeight:700, color:'#1877f2', fontFamily:'monospace'} : {color:'#374151'}}>
-                            {row[c.key] || ''}
-                          </span>
-                      }
+                      <span style={c.key==='sap' ? {fontWeight:700, color:'#1877f2', fontFamily:'monospace'} : {color:'#374151'}}>
+                        {row[c.key] || ''}
+                      </span>
                     </td>
                   ))}
                   <td style={{ padding:'8px 12px' }}>
-                    {editId === row.id
-                      ? <div style={{ display:'flex', gap:4 }}>
-                          <button onClick={saveEdit} style={{ background:'#1877f2', border:'none', color:'#fff', borderRadius:5, padding:'4px 8px', cursor:'pointer' }}><Check size={11}/></button>
-                          <button onClick={() => setEditId(null)} style={{ background:'#f3f4f6', border:'none', borderRadius:5, padding:'4px 8px', cursor:'pointer', color:'#6b7280' }}><X size={11}/></button>
-                        </div>
-                      : <div style={{ display:'flex', gap:3 }}>
-                          <button onClick={() => { setEditId(row.id); setEditRow({...row}) }}
-                            style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
-                            onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
-                            onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
-                          <button onClick={() => handleDelete(row.id)}
-                            style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
-                            onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
-                            onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>
-                        </div>
-                    }
+                    <div style={{ display:'flex', gap:3 }}>
+                      <button onClick={() => setEditItem(row)}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
+                        onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
+                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
+                      <button onClick={() => handleDelete(row.id)}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
+                        onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
+                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -408,12 +503,16 @@ function CentrosTab() {
   const [loading, setLoading] = useState(true)
   const [editId, setEditId]   = useState(null)
   const [editRow, setEditRow] = useState({ centro:'', almacen:'', denom_almacen:'' })
-  const [centro, setCentro]   = useState('')
-  const [almacen, setAlmacen] = useState('')
-  const [denom, setDenom]     = useState('')
-  const [adding, setAdding]   = useState(false)
-  const [addMsg, setAddMsg]   = useState(null)
-  const [showBulk, setShowBulk] = useState(false)
+  const [editItem, setEditItem] = useState(null)
+  const [showModal, setShowModal] = useState(false)
+  const [showBulk, setShowBulk]   = useState(false)
+  const [colF, setColF]           = useState({})
+
+  const handleAdd = async (data) => {
+    if (!data.centro?.trim() || !data.almacen?.trim()) throw new Error('Completa Centro y Almacén')
+    await createCentroAlm({ centro: data.centro.trim(), almacen: data.almacen.trim(), denom_almacen: data.denom_almacen?.trim() || null })
+    load()
+  }
 
   const load = () => {
     setLoading(true)
@@ -426,23 +525,6 @@ function CentrosTab() {
       .finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
-
-  const handleAdd = async () => {
-    setAddMsg(null)
-    const c = centro.trim()
-    const a = almacen.trim()
-    if (!c || !a) { setAddMsg({ type:'err', text:'Completa Centro y Almacén' }); return }
-    setAdding(true)
-    try {
-      await createCentroAlm({ centro: c, almacen: a, denom_almacen: denom.trim() || null })
-      setCentro(''); setAlmacen(''); setDenom('')
-      setAddMsg({ type:'ok', text:`✓ ${c} / ${a} añadido` })
-      load()
-    } catch(e) {
-      const msg = e.response?.data ? JSON.stringify(e.response.data) : e.message
-      setAddMsg({ type:'err', text:`Error ${e.response?.status || ''}: ${msg}` })
-    } finally { setAdding(false) }
-  }
 
   const handleSaveEdit = async () => {
     try { await updateCentroAlm(editId, editRow); setEditId(null); load() }
@@ -457,112 +539,92 @@ function CentrosTab() {
 
   return (
     <div style={{ maxWidth:560 }}>
-      <div className="card p-4 mb-4">
-        <p style={{ fontSize:12, fontWeight:600, color:'#374151', marginBottom:10 }}>Nuevo Centro / Almacén</p>
-        <div style={{ display:'flex', gap:10, alignItems:'flex-end', flexWrap:'wrap' }}>
-          <div style={{ flex:1, minWidth:100 }}>
-            <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>Centro</label>
-            <input className="input" placeholder="P008" value={centro}
-              onChange={e => { setCentro(e.target.value); setAddMsg(null) }}
-              onKeyDown={e => e.key==='Enter' && handleAdd()} />
-          </div>
-          <div style={{ flex:1, minWidth:100 }}>
-            <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>Almacén</label>
-            <input className="input" placeholder="U000" value={almacen}
-              onChange={e => { setAlmacen(e.target.value); setAddMsg(null) }}
-              onKeyDown={e => e.key==='Enter' && handleAdd()} />
-          </div>
-          <div style={{ flex:2, minWidth:180 }}>
-            <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>Denom. Almacén</label>
-            <input className="input" placeholder="Descripción del almacén" value={denom}
-              onChange={e => { setDenom(e.target.value); setAddMsg(null) }}
-              onKeyDown={e => e.key==='Enter' && handleAdd()} />
-          </div>
-          <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}
-            onClick={()=>setShowBulk(true)}>
-            <Upload size={14}/> Importar Excel
-          </button>
-          <button className="btn-primary" style={{ display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}
-            onClick={handleAdd} disabled={adding}>
-            <Plus size={14}/> {adding ? 'Guardando…' : 'Añadir'}
-          </button>
-        </div>
-        {addMsg && (
-          <p style={{ marginTop:8, fontSize:12,
-            color: addMsg.type==='ok' ? '#16a34a' : '#dc2626',
-            background: addMsg.type==='ok' ? '#f0fdf4' : '#fef2f2',
-            padding:'6px 10px', borderRadius:6,
-            border: `1px solid ${addMsg.type==='ok' ? '#bbf7d0' : '#fecaca'}` }}>
-            {addMsg.text}
-          </p>
-        )}
+      {editItem && (
+        <EditCentroModal item={editItem} onClose={()=>setEditItem(null)} onSaved={()=>{setEditItem(null);load()}} />
+      )}
+      {showModal && (
+        <CatalogNewModal
+          title="Nuevo — Centro / Almacén"
+          fields={[
+            { key:'centro',        label:'Centro',         required:true,  placeholder:'P008' },
+            { key:'almacen',       label:'Almacén',        required:true,  placeholder:'U000' },
+            { key:'denom_almacen', label:'Denom. Almacén', required:false, medium:true, placeholder:'Descripción del almacén' },
+          ]}
+          onSave={handleAdd}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+      <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginBottom:12 }}>
+        <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={() => setShowBulk(true)}>
+          <Upload size={14}/> Importar Excel
+        </label>
+        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={() => setShowModal(true)}>
+          <Plus size={14}/> Nuevo
+        </button>
       </div>
 
       <div className="card overflow-hidden">
         <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
           <thead>
-            <tr style={{ background:'#f9fafb', borderBottom:'1px solid #e5e7eb' }}>
+            <tr style={{ background:'#f0f2f5', borderBottom:'1px solid #dadde1' }}>
               <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', width:40 }}>#</th>
               <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>Centro</th>
               <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>Almacén</th>
               <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>Denom. Almacén</th>
               <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', width:90 }}>Acciones</th>
             </tr>
+            <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
+              <td/>
+              {['centro','almacen','denom_almacen'].map(k => (
+                <td key={k} style={{ padding:'3px 6px' }}>
+                  <input value={colF[k]||''} onChange={e=>setColF(p=>({...p,[k]:e.target.value}))}
+                    style={{ width:'100%', border:`1px solid ${colF[k]?'#1877f2':'#dadde1'}`, borderRadius:4,
+                      padding:'3px 6px', fontSize:10, outline:'none',
+                      background: colF[k]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
+                    placeholder="Filtrar…"/>
+                </td>
+              ))}
+              <td style={{ padding:'3px 6px' }}>
+                {Object.values(colF).some(Boolean) && (
+                  <button onClick={()=>setColF({})} style={{ background:'#fef2f2', border:'1px solid #fecaca',
+                    borderRadius:4, padding:'3px 8px', fontSize:10, color:'#dc2626', cursor:'pointer' }}>✕</button>
+                )}
+              </td>
+            </tr>
           </thead>
           <tbody>
             {loading && (
               <tr><td colSpan={5} style={{ textAlign:'center', padding:'30px', color:'#6b7280' }}>Cargando…</td></tr>
             )}
-            {!loading && items.length === 0 && (
+            {!loading && items.filter(r=>['centro','almacen','denom_almacen'].every(k=>!colF[k]||String(r[k]||'').toLowerCase().includes(colF[k].toLowerCase()))).length === 0 && (
               <tr><td colSpan={5} style={{ textAlign:'center', padding:'30px', color:'#9ca3af', fontSize:12 }}>
-                Sin registros aún. Usa el formulario de arriba para añadir.
+                Sin resultados.
               </td></tr>
             )}
-            {!loading && items.map((row, i) => (
-              <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6' }}
-                onMouseEnter={e => e.currentTarget.style.background='#fafafa'}
-                onMouseLeave={e => e.currentTarget.style.background=''}>
+            {!loading && items.filter(r=>['centro','almacen','denom_almacen'].every(k=>!colF[k]||String(r[k]||'').toLowerCase().includes(colF[k].toLowerCase()))).map((row, i) => (
+              <tr key={row.id} style={{ borderBottom:'1px solid #dadde1',
+                background: i%2===0 ? '#ffffff' : '#f0f2f5',
+                transition:'background .12s' }}
+                onMouseEnter={e => e.currentTarget.style.background='#e7f3ff'}
+                onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#ffffff' : '#f0f2f5'}>
                 <td style={{ padding:'10px 14px', color:'#9ca3af', fontSize:11 }}>{i+1}</td>
-                {editId === row.id ? (
-                  <>
-                    <td style={{ padding:'6px 10px' }}>
-                      <input className="input" value={editRow.centro}
-                        onChange={e => setEditRow(r => ({...r, centro:e.target.value}))} />
-                    </td>
-                    <td style={{ padding:'6px 10px' }}>
-                      <input className="input" value={editRow.almacen}
-                        onChange={e => setEditRow(r => ({...r, almacen:e.target.value}))} />
-                    </td>
-                    <td style={{ padding:'6px 10px' }}>
-                      <input className="input" value={editRow.denom_almacen||''}
-                        onChange={e => setEditRow(r => ({...r, denom_almacen:e.target.value}))} />
-                    </td>
-                    <td style={{ padding:'6px 10px' }}>
-                      <div style={{ display:'flex', gap:4 }}>
-                        <button className="btn-primary" style={{ padding:'4px 10px' }} onClick={handleSaveEdit}><Check size={12}/></button>
-                        <button className="btn-ghost"   style={{ padding:'4px 8px'  }} onClick={() => setEditId(null)}><X size={12}/></button>
-                      </div>
-                    </td>
-                  </>
-                ) : (
-                  <>
-                    <td style={{ padding:'10px 14px', fontWeight:700, fontFamily:'monospace', color:'#1877f2', fontSize:14 }}>{row.centro}</td>
-                    <td style={{ padding:'10px 14px', fontFamily:'monospace', fontSize:14 }}>{row.almacen}</td>
-                    <td style={{ padding:'10px 14px', fontSize:12, color:'#6b7280' }}>{row.denom_almacen || '—'}</td>
-                    <td style={{ padding:'10px 14px' }}>
-                      <div style={{ display:'flex', gap:4 }}>
-                        <button onClick={() => { setEditId(row.id); setEditRow({ centro:row.centro, almacen:row.almacen, denom_almacen:row.denom_almacen||'' }) }}
-                          style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
-                          onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
-                          onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={14}/></button>
-                        <button onClick={() => handleDelete(row.id)}
-                          style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
-                          onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
-                          onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={14}/></button>
-                      </div>
-                    </td>
-                  </>
-                )}
+                <td style={{ padding:'10px 14px', fontWeight:700, fontFamily:'monospace', color:'#1877f2', fontSize:14 }}>{row.centro}</td>
+                <td style={{ padding:'10px 14px', fontFamily:'monospace', fontSize:14 }}>{row.almacen}</td>
+                <td style={{ padding:'10px 14px', fontSize:12, color:'#6b7280' }}>{row.denom_almacen || '—'}</td>
+                <td style={{ padding:'10px 14px' }}>
+                  <div style={{ display:'flex', gap:4 }}>
+                    <button onClick={() => setEditItem(row)}
+                      style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
+                      onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
+                      onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={14}/></button>
+                    <button onClick={() => handleDelete(row.id)}
+                      style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
+                      onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
+                      onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={14}/></button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -609,12 +671,13 @@ function PartNumbersTab() {
   const [loading, setLoading]   = useState(true)
   const [editId, setEditId]     = useState(null)
   const [editRow, setEditRow]   = useState({})
-  const [form, setForm]         = useState({ proveedor:'', modelo_equipo:'', tipo:'', sap:'', part_number:'', descripcion:'', precio:'', comentarios:'' })
-  const [adding, setAdding]     = useState(false)
-  const [showAdd, setShowAdd]   = useState(false)
-  const [msg, setMsg]           = useState(null)
-  const [search, setSearch]     = useState('')
+  const [showModal, setShowModal] = useState(false)
+  const [viewItem, setViewItem]   = useState(null)
+  const [editItem, setEditItem]   = useState(null)
+  const [search, setSearch]       = useState('')
   const [showBulk, setShowBulk] = useState(false)
+  const [colF, setColF]         = useState({})
+  const [dashF, setDashF]       = useState({})  // filtros del dashboard
   const PAGE_SIZE = 50
 
   const load = useCallback(() => {
@@ -631,23 +694,13 @@ function PartNumbersTab() {
 
   useEffect(() => { load() }, [load])
 
-  const setF = (k, v) => setForm(f => ({...f, [k]: v}))
+  const setF = (k, v) => {} // legacy, kept for compat
 
-  const handleAdd = async () => {
-    setMsg(null)
-    if (!form.part_number.trim() || !form.proveedor.trim()) {
-      setMsg({ type:'err', text:'Part Number y Proveedor son requeridos' }); return
-    }
-    setAdding(true)
-    try {
-      await createPartNumber(form)
-      setForm({ proveedor:'', modelo_equipo:'', tipo:'', sap:'', part_number:'', descripcion:'', precio:'', comentarios:'' })
-      setShowAdd(false)
-      setMsg({ type:'ok', text:`✓ ${form.part_number} añadido` })
-      load()
-    } catch(e) {
-      setMsg({ type:'err', text: JSON.stringify(e.response?.data || e.message) })
-    } finally { setAdding(false) }
+  const handleAdd = async (data) => {
+    if (!data.part_number?.trim() || !data.proveedor?.trim())
+      throw new Error('Part Number y Proveedor son requeridos')
+    await createPartNumber(data)
+    load()
   }
 
   const handleSaveEdit = async () => {
@@ -693,9 +746,155 @@ function PartNumbersTab() {
     { key:'comentarios',   label:'Comentarios' },
   ]
 
+  const filteredItems = useMemo(() => items.filter(r =>
+    COLS.every(col => !colF[col.key] || String(r[col.key]||'').toLowerCase().includes(colF[col.key].toLowerCase())) &&
+    Object.entries(dashF).every(([k,v]) => !v || String(r[k]||'').toLowerCase().includes(v.toLowerCase()))
+  ), [items, colF, dashF])
+
+  // ── Dashboard stats ──
+  const dash = useMemo(() => {
+    const src = filteredItems
+    const total = src.length
+    const byProv = {}
+    const byTipo = {}
+    const bySAP  = {}
+    let conPrecio = 0, sinPrecio = 0, sumPrecio = 0
+    src.forEach(r => {
+      const prov = r.proveedor || 'Sin proveedor'
+      byProv[prov] = (byProv[prov] || 0) + 1
+      const tipo = r.tipo || 'Sin tipo'
+      byTipo[tipo] = (byTipo[tipo] || 0) + 1
+      const sap = r.sap || 'Sin SAP'
+      const p = parseFloat(r.precio)
+      if (!isNaN(p) && p > 0) {
+        bySAP[sap] = (bySAP[sap] || 0) + p
+        conPrecio++; sumPrecio += p
+      } else {
+        sinPrecio++
+      }
+    })
+    const topProv = Object.entries(byProv).sort((a,b)=>b[1]-a[1]).slice(0,6)
+    const topTipo = Object.entries(byTipo).sort((a,b)=>b[1]-a[1]).slice(0,8)
+    const topSAP  = Object.entries(bySAP).sort((a,b)=>b[1]-a[1]).slice(0,8)
+    const maxProv = topProv[0]?.[1] || 1
+    const maxTipo = topTipo[0]?.[1] || 1
+    const maxSAP  = topSAP[0]?.[1]  || 1
+    return { total, conPrecio, sinPrecio, sumPrecio, topProv, topTipo, topSAP, maxProv, maxTipo, maxSAP }
+  }, [filteredItems])
+
+  const PROV_COLORS2 = { 'HUAWEI':'#1877f2','Huawei':'#1877f2','ZTE':'#16a34a','ALCATEL':'#d97706' }
+  const provCol2 = (p) => PROV_COLORS2[p] || '#0891b2'
+
   return (
     <div>
-      {/* Toolbar */}
+      {/* ── Dashboard ── */}
+      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
+        {/* KPIs */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:12 }}>
+          {[
+            { label:'Total registros', val:dash.total,      color:'#1877f2', bg:'#e7f3ff' },
+            { label:'Con precio',      val:dash.conPrecio,  color:'#16a34a', bg:'#f0fdf4' },
+            { label:'Valor acumulado', val:`$ ${dash.sumPrecio.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`, color:'#d97706', bg:'#fffbeb', raw:true },
+          ].map(k => (
+            <div key={k.label} style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12,
+              padding:'12px 16px', display:'flex', alignItems:'center', gap:12,
+              boxShadow:'0 2px 6px rgba(0,0,0,0.05)' }}>
+              <div style={{ width:36, height:36, borderRadius:10, background:k.bg,
+                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:16, color:k.color }}>●</span>
+              </div>
+              <div>
+                <div style={{ fontSize:20, fontWeight:700, color:'#111827', lineHeight:1 }}>
+                  {k.raw ? k.val : k.val.toLocaleString()}
+                </div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>{k.label}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Charts 3 cols */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+          {/* Por proveedor */}
+          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px' }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por proveedor</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {dash.topProv.map(([prov,cnt]) => (
+                <div key={prov} onClick={()=>setDashF(f=>({...f,proveedor:f.proveedor===prov?'':prov}))}
+                  style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                    opacity: dashF.proveedor && dashF.proveedor!==prov ? .4 : 1 }}>
+                  <span style={{ fontSize:10, width:62, flexShrink:0, textAlign:'right', overflow:'hidden',
+                    textOverflow:'ellipsis', whiteSpace:'nowrap', color: dashF.proveedor===prov ? provCol2(prov) : '#65676b',
+                    fontWeight: dashF.proveedor===prov ? 700 : 400 }}>{prov}</span>
+                  <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
+                    <div style={{ width:`${(cnt/dash.maxProv)*100}%`, height:'100%',
+                      background: provCol2(prov), borderRadius:3, opacity:.85 }}/>
+                  </div>
+                  <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Por tipo */}
+          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px' }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por tipo</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {dash.topTipo.map(([tipo,cnt]) => (
+                <div key={tipo} onClick={()=>setDashF(f=>({...f,tipo:f.tipo===tipo?'':tipo}))}
+                  style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                    opacity: dashF.tipo && dashF.tipo!==tipo ? .4 : 1 }}>
+                  <span style={{ fontSize:10, width:62, flexShrink:0, textAlign:'right', overflow:'hidden',
+                    textOverflow:'ellipsis', whiteSpace:'nowrap', color: dashF.tipo===tipo ? '#1877f2' : '#65676b',
+                    fontWeight: dashF.tipo===tipo ? 700 : 400 }}>{tipo}</span>
+                  <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
+                    <div style={{ width:`${(cnt/dash.maxTipo)*100}%`, height:'100%',
+                      background:'#0891b2', borderRadius:3, opacity:.85 }}/>
+                  </div>
+                  <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Top SAP */}
+          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px' }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 2px' }}>Top SAP — mayor valor</p>
+            <p style={{ fontSize:10, color:'#9ca3af', margin:'0 0 10px' }}>Precio acumulado por SAP</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {dash.topSAP.length === 0
+                ? <p style={{ fontSize:11, color:'#d1d5db', textAlign:'center', padding:'10px 0' }}>Sin datos de precio</p>
+                : dash.topSAP.map(([sap, precio]) => (
+                <div key={sap} onClick={()=>setDashF(f=>({...f,sap:f.sap===sap?'':sap}))}
+                  style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                    opacity: dashF.sap && dashF.sap!==sap ? .4 : 1 }}>
+                  <span style={{ fontSize:10, fontFamily:'monospace', width:62, flexShrink:0, textAlign:'right',
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                    color: dashF.sap===sap ? '#7c3aed' : '#65676b', fontWeight: dashF.sap===sap ? 700 : 400 }}>{sap}</span>
+                  <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
+                    <div style={{ width:`${(precio/dash.maxSAP)*100}%`, height:'100%',
+                      background:'#8b5cf6', borderRadius:3, opacity:.85 }}/>
+                  </div>
+                  <span style={{ fontSize:9, color:'#7c3aed', width:72, textAlign:'right', fontWeight:600, flexShrink:0 }}>
+                    ${precio.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0})}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Limpiar filtros del dashboard */}
+        {Object.values(dashF).some(Boolean) && (
+          <div style={{ marginTop:10, display:'flex', justifyContent:'flex-end' }}>
+            <button onClick={()=>setDashF({})} style={{ fontSize:11, color:'#dc2626',
+              background:'#fef2f2', border:'1px solid #fecaca', borderRadius:6,
+              padding:'4px 12px', cursor:'pointer', fontWeight:600 }}>
+              ✕ Limpiar filtros
+            </button>
+          </div>
+        )}
+      </div>
       <div style={{ display:'flex', gap:10, marginBottom:14, alignItems:'center', flexWrap:'wrap' }}>
         <div style={{ position:'relative', flex:1, minWidth:200 }}>
           <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }}/>
@@ -720,53 +919,42 @@ function PartNumbersTab() {
           <Trash2 size={14}/> Borrar todo
         </button>
         <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={()=>setShowAdd(v=>!v)}>
-          <Plus size={14}/> Añadir
+          onClick={() => setShowModal(true)}>
+          <Plus size={14}/> Nuevo
         </button>
       </div>
 
-      {/* Add form */}
-      {showAdd && (
-        <div className="card p-4 mb-4">
-          <p style={{ fontSize:12, fontWeight:600, color:'#374151', marginBottom:12 }}>Nuevo Registro</p>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
-            {COLS.map(col => (
-              <div key={col.key}>
-                <label style={{ fontSize:11, color:'#6b7280', display:'block', marginBottom:4 }}>{col.label}</label>
-                {col.key === 'precio' ? (
-                  <input className="input" placeholder="$ 0.00"
-                    value={form._precioRaw !== undefined && form._precioRaw !== '' ? form._precioRaw
-                      : form.precio ? `$ ${Number(form.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : ''}
-                    onChange={e => setForm(f => ({...f, _precioRaw: e.target.value}))}
-                    onFocus={e => { const raw = String(form.precio||'').replace(/[^0-9.]/g,''); e.target.value = raw; setForm(f=>({...f,_precioRaw:raw})) }}
-                    onBlur={e => {
-                      const num = parseFloat(e.target.value.replace(/[^0-9.]/g,''))
-                      setForm(f => ({...f, precio: isNaN(num) ? '' : String(num), _precioRaw: ''}))
-                    }}
-                  />
-                ) : (
-                  <input className="input" value={form[col.key]||''} placeholder={col.label}
-                    onChange={e => setF(col.key, e.target.value)} />
-                )}
-              </div>
-            ))}
-          </div>
-          <div style={{ display:'flex', gap:8, marginTop:12, justifyContent:'flex-end' }}>
-            <button className="btn-ghost" onClick={()=>{ setShowAdd(false); setMsg(null) }}>Cancelar</button>
-            <button className="btn-primary" onClick={handleAdd} disabled={adding}>
-              {adding ? 'Guardando…' : 'Guardar'}
-            </button>
-          </div>
-          {msg && (
-            <p style={{ marginTop:8, fontSize:12,
-              color: msg.type==='ok' ? '#16a34a' : '#dc2626',
-              background: msg.type==='ok' ? '#f0fdf4' : '#fef2f2',
-              padding:'6px 10px', borderRadius:6,
-              border: `1px solid ${msg.type==='ok' ? '#bbf7d0' : '#fecaca'}` }}>
-              {msg.text}
-            </p>
-          )}
-        </div>
+      {showModal && (
+        <CatalogNewModal
+          title="Nuevo — Código SAP IP"
+          fields={[
+            { key:'proveedor',     label:'Proveedor',       required:true  },
+            { key:'modelo_equipo', label:'Modelo de Equipo',required:false },
+            { key:'tipo',          label:'Tipo',            required:false },
+            { key:'sap',           label:'SAP',             required:false },
+            { key:'part_number',   label:'Part Number',     required:true  },
+            { key:'precio',        label:'Precio',          required:false },
+            { key:'descripcion',   label:'Descripción',     required:false, medium:true },
+            { key:'comentarios',   label:'Comentarios',     required:false, medium:true },
+          ]}
+          onSave={handleAdd}
+          onClose={() => setShowModal(false)}
+        />
+      )}
+
+      {viewItem && (
+        <ViewPartNumberModal
+          item={viewItem}
+          onClose={() => setViewItem(null)}
+          onEdit={() => { setEditItem(viewItem); setViewItem(null) }}
+        />
+      )}
+      {editItem && (
+        <EditPartNumberModal
+          item={editItem}
+          onClose={() => setEditItem(null)}
+          onSaved={() => { setEditItem(null); load() }}
+        />
       )}
 
       {/* Table */}
@@ -774,7 +962,7 @@ function PartNumbersTab() {
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
-              <tr style={{ background:'#f9fafb', borderBottom:'1px solid #e5e7eb' }}>
+              <tr style={{ background:'#f0f2f5', borderBottom:'1px solid #dadde1' }}>
                 {COLS.map(col => (
                   <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
                     fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', whiteSpace:'nowrap' }}>
@@ -783,37 +971,49 @@ function PartNumbersTab() {
                 ))}
                 <th style={{ padding:'10px 12px', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase' }}>Acciones</th>
               </tr>
+              <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
+                {COLS.map(col => (
+                  <td key={col.key} style={{ padding:'3px 6px' }}>
+                    <input value={colF[col.key]||''} onChange={e=>setColF(p=>({...p,[col.key]:e.target.value}))}
+                      style={{ width:'100%', border:`1px solid ${colF[col.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
+                        padding:'3px 6px', fontSize:10, outline:'none',
+                        background: colF[col.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
+                      placeholder="Filtrar…"/>
+                  </td>
+                ))}
+                <td style={{ padding:'3px 6px' }}>
+                  {Object.values(colF).some(Boolean) && (
+                    <button onClick={()=>setColF({})} style={{ background:'#fef2f2', border:'1px solid #fecaca',
+                      borderRadius:4, padding:'3px 8px', fontSize:10, color:'#dc2626', cursor:'pointer' }}>✕</button>
+                  )}
+                </td>
+              </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={8} style={{ textAlign:'center', padding:30, color:'#6b7280' }}>Cargando…</td></tr>}
-              {!loading && items.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign:'center', padding:30, color:'#9ca3af', fontSize:12 }}>
-                  Sin registros. Usa Añadir o Importar Excel.
+              {loading && <tr><td colSpan={9} style={{ textAlign:'center', padding:30, color:'#6b7280' }}>Cargando…</td></tr>}
+              {!loading && filteredItems.length === 0 && (
+                <tr><td colSpan={9} style={{ textAlign:'center', padding:30, color:'#9ca3af', fontSize:12 }}>
+                  Sin resultados. Usa Nuevo o Importar Excel.
                 </td></tr>
               )}
-              {!loading && items.map(row => (
-                <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6' }}
-                  onMouseEnter={e => e.currentTarget.style.background='#fafafa'}
-                  onMouseLeave={e => e.currentTarget.style.background=''}>
+              {!loading && filteredItems.map((row, i) => (
+                <tr key={row.id} style={{ borderBottom:'1px solid #dadde1',
+                  background: i%2===0 ? '#ffffff' : '#f0f2f5',
+                  transition:'background .12s' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#e7f3ff'}
+                  onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#ffffff' : '#f0f2f5'}>
                   {COLS.map(col => (
                     <td key={col.key} style={{ padding:'9px 12px', fontSize:12,
                       fontFamily: col.key==='sap'||col.key==='part_number' ? 'monospace' : 'inherit',
-                      color: col.key==='part_number' ? '#1877f2' : col.key==='sap' ? '#6b7280' : '#374151',
-                      fontWeight: col.key==='part_number' ? 700 : 400,
+                      color: col.key==='sap' ? '#1877f2' : '#374151',
+                      fontWeight: col.key==='sap' ? 700 : 400,
                       maxWidth: col.key==='descripcion'||col.key==='comentarios' ? 180 : undefined,
-                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
-                      title={row[col.key]||''}>
-                      {editId === row.id ? (
-                        <input className="input" style={{ fontSize:11 }} value={editRow[col.key]||''}
-                          onChange={e => setEditRow(r => ({...r, [col.key]: e.target.value}))}
-                          onFocus={e => { if(col.key==='precio'){ e.target.value = String(editRow[col.key]||'').replace(/[^0-9.]/g,'') }}}
-                          onBlur={e => { if(col.key==='precio'){
-                            const num = parseFloat(e.target.value.replace(/[^0-9.]/g,''))
-                            setEditRow(r => ({...r, precio: isNaN(num) ? '' : String(num)}))
-                          }}}
-                        />
-                      ) : (
-                        col.key==='proveedor' ? (
+                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                      cursor: col.key==='sap' ? 'pointer' : 'default',
+                      textDecoration: col.key==='sap' ? 'underline' : 'none' }}
+                      title={col.key==='sap' ? `Ver detalle de ${row.sap||''}` : (row[col.key]||'')}
+                      onClick={() => col.key==='sap' && setViewItem(row)}>
+                      {col.key==='proveedor' ? (
                           <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:600,
                             background: PROVEEDOR_STYLE[row.proveedor]?.bg || '#f3f4f6',
                             color: PROVEEDOR_STYLE[row.proveedor]?.color || '#6b7280' }}>
@@ -824,27 +1024,20 @@ function PartNumbersTab() {
                             ? `$ ${Number(row.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`
                             : '—'
                         ) : row[col.key] || '—'
-                      )}
+                      }
                     </td>
                   ))}
                   <td style={{ padding:'9px 12px', whiteSpace:'nowrap' }}>
-                    {editId === row.id ? (
-                      <div style={{ display:'flex', gap:4 }}>
-                        <button className="btn-primary" style={{ padding:'4px 10px' }} onClick={handleSaveEdit}><Check size={12}/></button>
-                        <button className="btn-ghost" style={{ padding:'4px 8px' }} onClick={() => setEditId(null)}><X size={12}/></button>
-                      </div>
-                    ) : (
-                      <div style={{ display:'flex', gap:4 }}>
-                        <button onClick={() => { setEditId(row.id); setEditRow({...row}) }}
-                          style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
-                          onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
-                          onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
-                        <button onClick={() => handleDelete(row.id)}
-                          style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
-                          onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
-                          onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>
-                      </div>
-                    )}
+                    <div style={{ display:'flex', gap:4 }}>
+                      <button onClick={() => setEditItem(row)}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
+                        onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
+                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
+                      <button onClick={() => handleDelete(row.id)}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
+                        onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
+                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -892,6 +1085,381 @@ function PartNumbersTab() {
   )
 }
 
+
+// ── EditSAPModal ──────────────────────────────────────────────────────────────
+function EditSAPModal({ item, onClose, onSaved }) {
+  const token = localStorage.getItem('access_token')
+  const [form, setForm] = useState({...item})
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const lbl = (text) => (
+    <label style={{ fontSize:10, fontWeight:700, color:'#65676b', display:'block',
+      marginBottom:3, textTransform:'uppercase', letterSpacing:'.3px' }}>{text}</label>
+  )
+
+  const save = async () => {
+    if (!form.sap?.trim()) { setErr('El código SAP es requerido'); return }
+    setSaving(true); setErr(null)
+    try {
+      const res = await fetch(`/api/spare/sap-catalog/${item.id}/`, {
+        method:'PATCH',
+        headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify(form)
+      })
+      if (!res.ok) { const d = await res.json(); setErr(JSON.stringify(d)); return }
+      onSaved()
+    } catch(e) { setErr('Error al guardar') }
+    finally { setSaving(false) }
+  }
+
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:9999,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target===e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:14, width:'min(860px,95vw)',
+        maxHeight:'85vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+
+        <div style={{ padding:'12px 20px', borderBottom:'1px solid #dadde1',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>Editar — Maestro de Materiales</p>
+            <p style={{ margin:0, fontWeight:700, color:'#1877f2', fontFamily:'monospace', fontSize:13 }}>{item.sap || '—'}</p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'1px solid #dadde1',
+            borderRadius:8, width:28, height:28, cursor:'pointer', fontSize:15, color:'#65676b',
+            display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+        </div>
+
+        <div style={{ overflowY:'auto', padding:'16px 20px', flex:1 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12 }}>
+            {SAP_FIELDS.map(f => (
+              <div key={f.key} style={{ gridColumn: ['texto_breve','descripcion_gpo_art','desc_subcat'].includes(f.key) ? 'span 2' : 'span 1' }}>
+                {lbl(f.label)}
+                <input className="input" value={form[f.key]||''}
+                  onChange={e=>setForm(v=>({...v,[f.key]:e.target.value}))} />
+              </div>
+            ))}
+          </div>
+          {err && <div style={{ marginTop:10, padding:'8px 12px', borderRadius:8,
+            background:'#fef2f2', border:'1px solid #fecaca', color:'#dc2626', fontSize:12 }}>{err}</div>}
+        </div>
+
+        <div style={{ padding:'10px 20px', borderTop:'1px solid #dadde1', flexShrink:0,
+          display:'flex', gap:10, justifyContent:'flex-end' }}>
+          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  , document.body)
+}
+
+// ── EditCentroModal ───────────────────────────────────────────────────────────
+function EditCentroModal({ item, onClose, onSaved }) {
+  const token = localStorage.getItem('access_token')
+  const [form, setForm] = useState({
+    centro:        item.centro        || '',
+    almacen:       item.almacen       || '',
+    denom_almacen: item.denom_almacen || '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const lbl = (text) => (
+    <label style={{ fontSize:10, fontWeight:700, color:'#65676b', display:'block',
+      marginBottom:3, textTransform:'uppercase', letterSpacing:'.3px' }}>{text}</label>
+  )
+
+  const save = async () => {
+    if (!form.centro?.trim() || !form.almacen?.trim()) { setErr('Centro y Almacén son requeridos'); return }
+    setSaving(true); setErr(null)
+    try {
+      const res = await fetch(`/api/spare/centros/${item.id}/`, {
+        method:'PATCH',
+        headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify(form)
+      })
+      if (!res.ok) { const d = await res.json(); setErr(JSON.stringify(d)); return }
+      onSaved()
+    } catch(e) { setErr('Error al guardar') }
+    finally { setSaving(false) }
+  }
+
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:9999,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target===e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:14, width:500,
+        maxHeight:'85vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+
+        <div style={{ padding:'12px 20px', borderBottom:'1px solid #dadde1',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>Editar — Centro / Almacén</p>
+            <p style={{ margin:0, fontWeight:700, color:'#1877f2', fontFamily:'monospace', fontSize:13 }}>
+              {item.centro} · {item.almacen}
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'1px solid #dadde1',
+            borderRadius:8, width:28, height:28, cursor:'pointer', fontSize:15, color:'#65676b',
+            display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+        </div>
+
+        <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:14 }}>
+          {[
+            { key:'centro',        label:'Centro',         placeholder:'P008' },
+            { key:'almacen',       label:'Almacén',        placeholder:'U000' },
+            { key:'denom_almacen', label:'Denom. Almacén', placeholder:'Descripción del almacén' },
+          ].map(f => (
+            <div key={f.key}>
+              <label style={{ fontSize:10, fontWeight:700, color:'#65676b', display:'block',
+                marginBottom:3, textTransform:'uppercase', letterSpacing:'.3px' }}>{f.label}</label>
+              <input className="input" placeholder={f.placeholder} value={form[f.key]}
+                onChange={e=>setForm(v=>({...v,[f.key]:e.target.value}))} />
+            </div>
+          ))}
+          {err && <div style={{ padding:'8px 12px', borderRadius:8,
+            background:'#fef2f2', border:'1px solid #fecaca', color:'#dc2626', fontSize:12 }}>{err}</div>}
+        </div>
+
+        <div style={{ padding:'10px 20px', borderTop:'1px solid #dadde1', flexShrink:0,
+          display:'flex', gap:10, justifyContent:'flex-end' }}>
+          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  , document.body)
+}
+
+// ── EditPartNumberModal ───────────────────────────────────────────────────────
+function EditPartNumberModal({ item, onClose, onSaved }) {
+  const token = localStorage.getItem('access_token')
+  const [form, setForm] = useState({
+    proveedor:     item.proveedor     || '',
+    modelo_equipo: item.modelo_equipo || '',
+    tipo:          item.tipo          || '',
+    sap:           item.sap           || '',
+    part_number:   item.part_number   || '',
+    descripcion:   item.descripcion   || '',
+    precio:        item.precio != null ? String(item.precio) : '',
+    comentarios:   item.comentarios   || '',
+  })
+  const [precioRaw, setPrecioRaw] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const lbl = (text) => (
+    <label style={{ fontSize:10, fontWeight:700, color:'#65676b', display:'block',
+      marginBottom:3, textTransform:'uppercase', letterSpacing:'.3px' }}>{text}</label>
+  )
+
+  const save = async () => {
+    if (!form.part_number.trim() || !form.proveedor.trim()) {
+      setErr('Part Number y Proveedor son requeridos'); return
+    }
+    setSaving(true); setErr(null)
+    try {
+      const payload = { ...form,
+        precio: form.precio ? parseFloat(String(form.precio).replace(/[^0-9.]/g,'')) || null : null
+      }
+      const res = await fetch(`/api/spare/part-numbers/${item.id}/`, {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify(payload)
+      })
+      if (!res.ok) { const d = await res.json(); setErr(JSON.stringify(d)); return }
+      onSaved()
+    } catch(e) { setErr('Error al guardar') }
+    finally { setSaving(false) }
+  }
+
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:9999,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target===e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:14, width:700,
+        maxHeight:'85vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+
+        {/* Header */}
+        <div style={{ padding:'12px 20px', borderBottom:'1px solid #dadde1',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>Editar — Código SAP IP</p>
+            <p style={{ margin:0, fontWeight:700, color:'#1877f2', fontFamily:'monospace', fontSize:13 }}>
+              {item.sap || '—'}{item.part_number ? ` · ${item.part_number}` : ''}
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'1px solid #dadde1',
+            borderRadius:8, width:28, height:28, cursor:'pointer', fontSize:15, color:'#65676b',
+            display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ overflowY:'auto', padding:'16px 20px', flex:1 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
+            {[
+              { key:'sap',           label:'SAP' },
+              { key:'part_number',   label:'Part Number' },
+              { key:'proveedor',     label:'Proveedor' },
+              { key:'modelo_equipo', label:'Modelo de Equipo' },
+              { key:'tipo',          label:'Tipo' },
+            ].map(f => (
+              <div key={f.key}>
+                {lbl(f.label)}
+                <input className="input" value={form[f.key]}
+                  onChange={e => setForm(v=>({...v,[f.key]:e.target.value}))} />
+              </div>
+            ))}
+            <div>
+              {lbl('Precio')}
+              <input className="input" placeholder="$ 0.00"
+                value={precioRaw !== '' ? precioRaw
+                  : form.precio ? `$ ${Number(form.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : ''}
+                onChange={e => setPrecioRaw(e.target.value)}
+                onFocus={e => { const raw = String(form.precio||'').replace(/[^0-9.]/g,''); e.target.value=raw; setPrecioRaw(raw) }}
+                onBlur={e => {
+                  const num = parseFloat(e.target.value.replace(/[^0-9.]/g,''))
+                  setForm(v=>({...v, precio: isNaN(num)?'':String(num)}))
+                  setPrecioRaw('')
+                }}
+              />
+            </div>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:12 }}>
+            <div>
+              {lbl('Descripción')}
+              <input className="input" value={form.descripcion}
+                onChange={e=>setForm(v=>({...v,descripcion:e.target.value}))} />
+            </div>
+            <div>
+              {lbl('Comentarios')}
+              <input className="input" value={form.comentarios}
+                onChange={e=>setForm(v=>({...v,comentarios:e.target.value}))} />
+            </div>
+          </div>
+          {err && (
+            <div style={{ marginTop:10, padding:'8px 12px', borderRadius:8,
+              background:'#fef2f2', border:'1px solid #fecaca', color:'#dc2626', fontSize:12 }}>{err}</div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding:'10px 20px', borderTop:'1px solid #dadde1', flexShrink:0,
+          display:'flex', gap:10, justifyContent:'flex-end' }}>
+          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  , document.body)
+}
+
+// ── ViewPartNumberModal ───────────────────────────────────────────────────────
+function ViewPartNumberModal({ item, onClose, onEdit }) {
+  const SECTIONS = [
+    {
+      title: 'Identificación',
+      color: '#1877f2',
+      fields: [
+        ['SAP',             item.sap],
+        ['Part Number',     item.part_number],
+        ['Proveedor',       item.proveedor],
+        ['Modelo de Equipo',item.modelo_equipo],
+        ['Tipo',            item.tipo],
+      ]
+    },
+    {
+      title: 'Detalle',
+      color: '#0891b2',
+      fields: [
+        ['Descripción',  item.descripcion],
+        ['Precio',       item.precio != null && item.precio !== ''
+          ? `$ ${Number(item.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`
+          : null],
+        ['Comentarios',  item.comentarios],
+      ]
+    },
+  ]
+
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, zIndex:9999,
+      background:'rgba(0,0,0,.55)',
+      display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={e => e.target===e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:14, width:640,
+        maxHeight:'75vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+
+        {/* Header */}
+        <div style={{ padding:'12px 16px', borderBottom:'1px solid #dadde1',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>
+              Código SAP IP
+            </p>
+            <p style={{ margin:0, fontWeight:800, color:'#1877f2', fontFamily:'monospace', fontSize:15 }}>
+              {item.sap || '—'}
+              {item.part_number
+                ? <span style={{ fontSize:12, color:'#6b7280', fontWeight:400 }}> · {item.part_number}</span>
+                : ''}
+            </p>
+          </div>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            {onEdit && (
+              <button onClick={onEdit}
+                style={{ fontSize:12, padding:'5px 12px', borderRadius:8,
+                  background:'#e7f3ff', color:'#1877f2', border:'1px solid #cce0ff',
+                  cursor:'pointer', fontWeight:600 }}>✏️ Editar</button>
+            )}
+            <button onClick={onClose}
+              style={{ background:'#f3f4f6', border:'none', borderRadius:8,
+                width:30, height:30, cursor:'pointer', fontSize:18, color:'#374151',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontWeight:700, lineHeight:1 }}>×</button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ overflowY:'auto', padding:'14px 16px', flex:1,
+          display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          {SECTIONS.map(sec => (
+            <div key={sec.title} style={{ border:'1px solid #e5e7eb', borderRadius:10, overflow:'hidden' }}>
+              <div style={{ background:sec.color, padding:'7px 14px' }}>
+                <p style={{ margin:0, fontSize:10, fontWeight:700, color:'#fff',
+                  textTransform:'uppercase', letterSpacing:'.5px' }}>{sec.title}</p>
+              </div>
+              <div>
+                {sec.fields.filter(([,v]) => v != null && v !== '').map(([label, val]) => (
+                  <div key={label} style={{ display:'flex', padding:'6px 14px',
+                    borderBottom:'1px solid #f9fafb', gap:8 }}>
+                    <span style={{ fontSize:11, color:'#9ca3af', minWidth:130, flexShrink:0 }}>{label}</span>
+                    <span style={{ fontSize:12, color:'#1f2937', fontWeight:500, wordBreak:'break-all' }}>
+                      {String(val)}
+                    </span>
+                  </div>
+                ))}
+                {sec.fields.filter(([,v]) => v != null && v !== '').length === 0 && (
+                  <p style={{ fontSize:11, color:'#d1d5db', textAlign:'center', padding:'10px 0', margin:0 }}>Sin datos</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  , document.body)
+}
 
 // ── Stock SAP Logon Tab ────────────────────────────────────────────────────────
 function StockSAPTab() {
@@ -1024,7 +1592,7 @@ function StockSAPTab() {
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
             <thead>
-              <tr style={{ background:'#f9fafb', borderBottom:'1px solid #e5e7eb' }}>
+              <tr style={{ background:'#f0f2f5', borderBottom:'1px solid #dadde1' }}>
                 {/* Material */}
                 <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:120 }}>
                   Material
@@ -1082,10 +1650,12 @@ function StockSAPTab() {
                   {allItems.length === 0 ? 'Sin registros — importa un archivo Excel SAP Logon.' : 'Sin resultados con los filtros aplicados.'}
                 </td></tr>
               )}
-              {!loading && shown.map((row) => (
-                <tr key={row.id} style={{ borderBottom:'1px solid #f3f4f6' }}
-                  onMouseEnter={e => e.currentTarget.style.background='#fafafa'}
-                  onMouseLeave={e => e.currentTarget.style.background=''}>
+              {!loading && shown.map((row, i) => (
+                <tr key={row.id} style={{ borderBottom:'1px solid #dadde1',
+                  background: i%2===0 ? '#ffffff' : '#f0f2f5',
+                  transition:'background .12s' }}
+                  onMouseEnter={e => e.currentTarget.style.background='#e7f3ff'}
+                  onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#ffffff' : '#f0f2f5'}>
                   {COLS.map(col => (
                     <td key={col.key} style={{
                       padding:'9px 12px',
