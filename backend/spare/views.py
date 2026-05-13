@@ -1218,7 +1218,7 @@ class ImportSpareXLSXView(APIView):
             return Response({'error': f'No se pudo leer el archivo: {e}'}, status=400)
 
         df.columns = [str(col).lstrip('\ufeff').strip() for col in df.columns]
-        created, updated, skipped, errors = 0, 0, 0, []
+        created, updated, skipped, errors, details = 0, 0, 0, [], []
 
         for i, row in df.iterrows():
             row_num = i + 2
@@ -1268,35 +1268,58 @@ class ImportSpareXLSXView(APIView):
 
                 # Buscar registro existente por SAP + serial (case-insensitive, strip)
                 existing = None
+                lookup_used = ''
                 if serial_val:
-                    # Intentar match exacto primero, luego insensible
                     existing = (
                         Spare.objects.filter(sap=sap_val, serial_number=serial_val).first() or
                         Spare.objects.filter(sap=sap_val, serial_number__iexact=serial_val.strip()).first()
                     )
+                    lookup_used = f'sap={sap_val} serial={serial_val}'
+                    # También buscar con .0 al final por si pandas lo guardó así
+                    if not existing:
+                        existing = Spare.objects.filter(sap=sap_val, serial_number=serial_val+'.0').first()
+                    if not existing:
+                        existing = Spare.objects.filter(sap=sap_val).filter(
+                            serial_number__in=[serial_val, serial_val+'.0', str(serial_val).replace('.0','')]
+                        ).first()
                 else:
                     existing = Spare.objects.filter(
                         sap=sap_val,
                         modelo=fields['modelo'],
                         valor_lote=fields['valor_lote']
                     ).first()
+                    lookup_used = f'sap={sap_val} modelo={fields["modelo"]}'
 
                 if existing:
-                    # Actualizar TODOS los campos (incluye vacios para sobreescribir)
                     for k, v in fields.items():
                         setattr(existing, k, v)
                     existing.serial_number = serial_val
                     existing.save()
                     updated += 1
+                    details.append({
+                        'fila': row_num, 'accion': 'actualizado',
+                        'sap': sap_val, 'serie': serial_val,
+                        'db_serie': existing.serial_number,
+                    })
                 else:
                     Spare.objects.create(serial_number=serial_val, **fields)
                     created += 1
+                    details.append({
+                        'fila': row_num, 'accion': 'creado',
+                        'sap': sap_val, 'serie': serial_val,
+                        'lookup': lookup_used,
+                    })
             except Exception as e:
                 errors.append(f'Fila {row_num}: {str(e)}')
+                details.append({
+                    'fila': row_num, 'accion': 'error',
+                    'sap': sap_val, 'serie': serial_val, 'msg': str(e)
+                })
 
         return Response({
             'imported': created, 'updated': updated, 'skipped': skipped,
             'errors': len(errors), 'error_details': errors[:10],
+            'details': details,
         })
 
 

@@ -279,6 +279,43 @@ function SpareImportModal({ onClose, onDone }) {
                   ))}
                 </div>
               )}
+              {result.details?.length>0 && (
+                <div style={{marginTop:14,textAlign:'left',maxHeight:200,overflowY:'auto',
+                  border:'1px solid #e5e7eb',borderRadius:8,fontSize:12}}>
+                  <table style={{width:'100%',borderCollapse:'collapse'}}>
+                    <thead>
+                      <tr style={{background:'#f0f2f5',position:'sticky',top:0}}>
+                        <th style={{padding:'6px 10px',textAlign:'left',fontSize:10,fontWeight:700,color:'#6b7280',textTransform:'uppercase'}}>Fila</th>
+                        <th style={{padding:'6px 10px',textAlign:'left',fontSize:10,fontWeight:700,color:'#6b7280',textTransform:'uppercase'}}>SAP</th>
+                        <th style={{padding:'6px 10px',textAlign:'left',fontSize:10,fontWeight:700,color:'#6b7280',textTransform:'uppercase'}}>N° Serie</th>
+                        <th style={{padding:'6px 10px',textAlign:'left',fontSize:10,fontWeight:700,color:'#6b7280',textTransform:'uppercase'}}>Resultado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.details.map((d,i)=>(
+                        <tr key={i} style={{borderTop:'1px solid #f3f4f6',
+                          background: d.accion==='error' ? '#fef2f2' : i%2===0 ? '#fff' : '#f9fafb'}}>
+                          <td style={{padding:'5px 10px',color:'#6b7280'}}>{d.fila}</td>
+                          <td style={{padding:'5px 10px',fontFamily:'monospace',color:'#1877f2',fontWeight:600}}>{d.sap}</td>
+                          <td style={{padding:'5px 10px',fontFamily:'monospace'}}>{d.serie||'—'}</td>
+                          <td style={{padding:'5px 10px'}}>
+                            <span style={{
+                              padding:'2px 8px',borderRadius:10,fontSize:10,fontWeight:700,
+                              background: d.accion==='creado' ? '#f0fdf4' : d.accion==='actualizado' ? '#e7f3ff' : '#fef2f2',
+                              color: d.accion==='creado' ? '#16a34a' : d.accion==='actualizado' ? '#1877f2' : '#dc2626'
+                            }}>
+                              {d.accion==='creado' ? '✓ Creado' : d.accion==='actualizado' ? '↻ Actualizado' : `✗ ${d.msg}`}
+                            </span>
+                            {d.accion==='creado' && d.lookup && (
+                              <span style={{fontSize:9,color:'#9ca3af',display:'block',marginTop:2}}>{d.lookup}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               <button className="btn-primary" style={{marginTop:16}} onClick={onClose}>Cerrar</button>
             </div>
           ) : (
@@ -1786,7 +1823,7 @@ function TabControlInventario() {
       )}
 
       {showImportModal && createPortal(
-        <SpareImportModal onClose={()=>setShowImportModal(false)} onDone={()=>{ load(); setShowImportModal(false) }} />,
+        <SpareImportModal onClose={()=>setShowImportModal(false)} onDone={()=>{ load() }} />,
         document.body
       )}
 
