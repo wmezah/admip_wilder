@@ -13,16 +13,17 @@ const ROUTE_LABELS = {
   '/usuarios': ['Usuarios',      'Administración de usuarios'],
 }
 
-export default function Topbar({ darkMode, onToggleDark, onLogout }) {
+export default function Topbar({ darkMode, onToggleDark, onLogout, sideWidth = 220 }) {
   const { pathname } = useLocation()
   const [section, page] = ROUTE_LABELS[pathname] ?? ['—', '—']
 
   return (
     <header style={{
-      position:'fixed', top:0, left:220, right:0, height:52, zIndex:20,
+      position:'fixed', top:0, left:sideWidth, right:0, height:52, zIndex:20,
       background:'#ffffff', borderBottom:'1px solid #dadde1',
       display:'flex', alignItems:'center', padding:'0 24px', gap:16,
       fontFamily:"'DM Sans', sans-serif",
+      transition:'left 0.22s cubic-bezier(0.4,0,0.2,1)',
     }}>
       <nav style={{ display:'flex', alignItems:'center', gap:6, flex:1 }}>
         <span style={{ fontSize:13, color:'#65676b', fontWeight:400 }}>{section}</span>

@@ -310,6 +310,7 @@ function SAPTab() {
   const [editItem, setEditItem]   = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [colF, setColF]           = useState({})
+  const [colWidths, setColWidths] = useState({})
 
   const handleAdd = async (data) => {
     if (!data.sap) throw new Error('El código SAP es requerido')
@@ -426,16 +427,22 @@ function SAPTab() {
 
       <div className="card overflow-hidden">
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
+            <colgroup>
+              {SAP_FIELDS.map(f => <col key={f.key} style={{ width: colWidths[f.key] || f.width || 120 }} />)}
+              <col style={{ width:80 }} />
+            </colgroup>
             <thead>
               <tr style={{ background:'#f0f2f5', borderBottom:'1px solid #dadde1' }}>
-                {SAP_FIELDS.map(c => (
-                  <th key={c.key} style={{ padding:'9px 12px', textAlign:'left', whiteSpace:'nowrap',
-                    minWidth:c.width, fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>
-                    {c.label}
+                {SAP_FIELDS.map(f => (
+                  <th key={f.key} style={{ padding:'9px 12px', textAlign:'left', whiteSpace:'nowrap',
+                    fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px',
+                    position:'relative', userSelect:'none', overflow:'visible' }}>
+                    {f.label}
+                    <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[f.key]||f.width||120;const mv=ev=>setColWidths(p=>({...p,[f.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
                   </th>
                 ))}
-                <th style={{ padding:'9px 12px', minWidth:80, fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase' }}>
+                <th style={{ padding:'9px 12px', width:80, fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase' }}>
                   Acciones
                 </th>
               </tr>
@@ -459,7 +466,7 @@ function SAPTab() {
                   onMouseEnter={e => e.currentTarget.style.background='#e7f3ff'}
                   onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#ffffff' : '#f0f2f5'}>
                   {SAP_FIELDS.map(c => (
-                    <td key={c.key} style={{ padding:'8px 12px', maxWidth:c.width, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                    <td key={c.key} style={{ padding:'8px 12px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:0 }}
                       title={row[c.key] || ''}>
                       <span style={c.key==='sap' ? {fontWeight:700, color:'#1877f2', fontFamily:'monospace'} : {color:'#374151'}}>
                         {row[c.key] || ''}
@@ -507,6 +514,7 @@ function CentrosTab() {
   const [showModal, setShowModal] = useState(false)
   const [showBulk, setShowBulk]   = useState(false)
   const [colF, setColF]           = useState({})
+  const [colWidths, setColWidths] = useState({})
 
   const handleAdd = async (data) => {
     if (!data.centro?.trim() || !data.almacen?.trim()) throw new Error('Completa Centro y Almacén')
@@ -566,14 +574,24 @@ function CentrosTab() {
       </div>
 
       <div className="card overflow-hidden">
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13, tableLayout:'fixed' }}>
+          <colgroup>
+            <col style={{ width: colWidths['#'] || 40 }} />
+            {['centro','almacen','denom_almacen'].map(k => <col key={k} style={{ width: colWidths[k] || (k==='denom_almacen'?200:100) }} />)}
+            <col style={{ width:90 }} />
+          </colgroup>
           <thead>
             <tr style={{ background:'#f0f2f5', borderBottom:'1px solid #dadde1' }}>
-              <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', width:40 }}>#</th>
-              <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>Centro</th>
-              <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>Almacén</th>
-              <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>Denom. Almacén</th>
-              <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', width:90 }}>Acciones</th>
+              <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', position:'relative', userSelect:'none' }}>#
+                <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths['#']||40;const mv=ev=>setColWidths(p=>({...p,'#':Math.max(30,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
+              </th>
+              {[{k:'centro',l:'Centro'},{k:'almacen',l:'Almacén'},{k:'denom_almacen',l:'Denom. Almacén'}].map(({k,l}) => (
+                <th key={k} style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', position:'relative', userSelect:'none' }}>
+                  {l}
+                  <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[k]||(k==='denom_almacen'?200:100);const mv=ev=>setColWidths(p=>({...p,[k]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
+                </th>
+              ))}
+              <th style={{ padding:'10px 14px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px' }}>Acciones</th>
             </tr>
             <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
               <td/>
@@ -610,9 +628,9 @@ function CentrosTab() {
                 onMouseEnter={e => e.currentTarget.style.background='#e7f3ff'}
                 onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#ffffff' : '#f0f2f5'}>
                 <td style={{ padding:'10px 14px', color:'#9ca3af', fontSize:11 }}>{i+1}</td>
-                <td style={{ padding:'10px 14px', fontWeight:700, fontFamily:'monospace', color:'#1877f2', fontSize:14 }}>{row.centro}</td>
-                <td style={{ padding:'10px 14px', fontFamily:'monospace', fontSize:14 }}>{row.almacen}</td>
-                <td style={{ padding:'10px 14px', fontSize:12, color:'#6b7280' }}>{row.denom_almacen || '—'}</td>
+                <td style={{ padding:'10px 14px', fontWeight:700, fontFamily:'monospace', color:'#1877f2', fontSize:14, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:0 }} title={row.centro}>{row.centro}</td>
+                <td style={{ padding:'10px 14px', fontFamily:'monospace', fontSize:14, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:0 }} title={row.almacen}>{row.almacen}</td>
+                <td style={{ padding:'10px 14px', fontSize:12, color:'#6b7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:0 }} title={row.denom_almacen||''}>{row.denom_almacen || '—'}</td>
                 <td style={{ padding:'10px 14px' }}>
                   <div style={{ display:'flex', gap:4 }}>
                     <button onClick={() => setEditItem(row)}
@@ -674,15 +692,27 @@ function PartNumbersTab() {
   const [showModal, setShowModal] = useState(false)
   const [viewItem, setViewItem]   = useState(null)
   const [editItem, setEditItem]   = useState(null)
+  const [colWidths, setColWidths] = useState({})
   const [search, setSearch]       = useState('')
   const [showBulk, setShowBulk] = useState(false)
   const [colF, setColF]         = useState({})
   const [dashF, setDashF]       = useState({})  // filtros del dashboard
+  const [allItems, setAllItems] = useState([])  // todos los registros para el dashboard
   const PAGE_SIZE = 50
 
   const load = useCallback(() => {
     setLoading(true)
-    getPartNumbers({ page, page_size: PAGE_SIZE, search: search || undefined })
+    const params = { page, page_size: PAGE_SIZE, search: search || undefined }
+    // Filtros del dashboard
+    if (dashF.proveedor) params.proveedor = dashF.proveedor
+    if (dashF.tipo)      params.tipo      = dashF.tipo
+    if (dashF.sap)       params.sap       = dashF.sap
+    // Filtros de columna
+    if (colF.proveedor)     params.proveedor     = colF.proveedor
+    if (colF.tipo)          params.tipo          = colF.tipo
+    if (colF.sap)           params.sap           = colF.sap
+    if (colF.modelo_equipo) params.modelo_equipo = colF.modelo_equipo
+    getPartNumbers(params)
       .then(r => {
         const d = r.data
         setItems(Array.isArray(d) ? d : (d.results || []))
@@ -690,9 +720,22 @@ function PartNumbersTab() {
       })
       .catch(() => setItems([]))
       .finally(() => setLoading(false))
-  }, [page, search])
+  }, [page, search, dashF, colF])
+
+  // Cargar TODOS los registros para el dashboard (sin paginación)
+  const loadAll = useCallback(() => {
+    getPartNumbers({ page: 1, page_size: 99999 })
+      .then(r => {
+        const d = r.data
+        setAllItems(Array.isArray(d) ? d : (d.results || []))
+      })
+      .catch(() => setAllItems([]))
+  }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadAll() }, [loadAll])
+  useEffect(() => { setPage(1) }, [dashF])
+  useEffect(() => { setPage(1) }, [colF])
 
   const setF = (k, v) => {} // legacy, kept for compat
 
@@ -714,13 +757,21 @@ function PartNumbersTab() {
     catch(e) { alert('Error al eliminar') }
   }
 
+  const hasFilter = Object.values(dashF).some(Boolean) || Object.values(colF).some(Boolean)
+
   const exportXLSX = () => {
+    const src = hasFilter ? dashFiltered : allItems
     const header = COLS.map(c => c.label)
-    const rows = items.map(r => COLS.map(c => r[c.key] || ''))
+    const rows = src.map(r => COLS.map(c => {
+      if (c.key === 'precio' && r[c.key] != null && r[c.key] !== '')
+        return Number(r[c.key])
+      return r[c.key] || ''
+    }))
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Código SAP IP')
-    XLSX.writeFile(wb, 'codigo_sap_ip.xlsx')
+    const filename = hasFilter ? `codigo_sap_ip_filtrado_${src.length}.xlsx` : 'codigo_sap_ip.xlsx'
+    XLSX.writeFile(wb, filename)
   }
 
   const handleDeleteAll = async () => {
@@ -751,14 +802,20 @@ function PartNumbersTab() {
     Object.entries(dashF).every(([k,v]) => !v || String(r[k]||'').toLowerCase().includes(v.toLowerCase()))
   ), [items, colF, dashF])
 
-  // ── Dashboard stats ──
+  // Datos filtrados por AMBOS estados — dashboard y columnas — para KPIs y gráficos reactivos
+  const dashFiltered = useMemo(() => allItems.filter(r =>
+    Object.entries(dashF).every(([k,v]) => !v || String(r[k]||'').toLowerCase().includes(v.toLowerCase())) &&
+    COLS.every(col => !colF[col.key] || String(r[col.key]||'').toLowerCase().includes(colF[col.key].toLowerCase()))
+  ), [allItems, dashF, colF])
+
   const dash = useMemo(() => {
-    const src = filteredItems
-    const total = src.length
+    const src = dashFiltered   // TODO usa el subconjunto filtrado
+
     const byProv = {}
     const byTipo = {}
     const bySAP  = {}
-    let conPrecio = 0, sinPrecio = 0, sumPrecio = 0
+    let conPrecio = 0, sumPrecio = 0
+
     src.forEach(r => {
       const prov = r.proveedor || 'Sin proveedor'
       byProv[prov] = (byProv[prov] || 0) + 1
@@ -769,21 +826,26 @@ function PartNumbersTab() {
       if (!isNaN(p) && p > 0) {
         bySAP[sap] = (bySAP[sap] || 0) + p
         conPrecio++; sumPrecio += p
-      } else {
-        sinPrecio++
       }
     })
+
     const topProv = Object.entries(byProv).sort((a,b)=>b[1]-a[1]).slice(0,6)
     const topTipo = Object.entries(byTipo).sort((a,b)=>b[1]-a[1]).slice(0,8)
     const topSAP  = Object.entries(bySAP).sort((a,b)=>b[1]-a[1]).slice(0,8)
     const maxProv = topProv[0]?.[1] || 1
     const maxTipo = topTipo[0]?.[1] || 1
     const maxSAP  = topSAP[0]?.[1]  || 1
-    return { total, conPrecio, sinPrecio, sumPrecio, topProv, topTipo, topSAP, maxProv, maxTipo, maxSAP }
-  }, [filteredItems])
 
-  const PROV_COLORS2 = { 'HUAWEI':'#1877f2','Huawei':'#1877f2','ZTE':'#16a34a','ALCATEL':'#d97706' }
-  const provCol2 = (p) => PROV_COLORS2[p] || '#0891b2'
+    return { total: src.length, conPrecio, sumPrecio,
+             topProv, topTipo, topSAP, maxProv, maxTipo, maxSAP }
+  }, [dashFiltered])
+
+  // Paleta de colores dinámica por índice de proveedor
+  const PROV_PALETTE = ['#1877f2','#d97706','#dc2626','#8b5cf6','#0891b2','#ec4899','#059669','#f59e0b','#6366f1','#14b8a6']
+  const provCol2 = (prov, idx) => {
+    const fixed = { 'HUAWEI':'#1877f2','Huawei':'#1877f2','ZTE':'#16a34a','ALCATEL':'#d97706','Alcatel':'#d97706' }
+    return fixed[prov] || PROV_PALETTE[(idx + 1) % PROV_PALETTE.length]
+  }
 
   return (
     <div>
@@ -792,22 +854,26 @@ function PartNumbersTab() {
         {/* KPIs */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:12 }}>
           {[
-            { label:'Total registros', val:dash.total,      color:'#1877f2', bg:'#e7f3ff' },
-            { label:'Con precio',      val:dash.conPrecio,  color:'#16a34a', bg:'#f0fdf4' },
-            { label:'Valor acumulado', val:`$ ${dash.sumPrecio.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`, color:'#d97706', bg:'#fffbeb', raw:true },
+            { label:'Total registros', val:dash.total,                    color:'#1877f2', bg:'#e7f3ff' },
+            { label:'Con precio',      val:dash.conPrecio,                color:'#16a34a', bg:'#f0fdf4' },
+            { label:'Sin precio',      val:dash.total - dash.conPrecio,   color:'#dc2626', bg:'#fef2f2' },
           ].map(k => (
-            <div key={k.label} style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12,
+            <div key={k.label} style={{ background:'#fff', border:`1px solid ${(Object.values(dashF).some(Boolean)||Object.values(colF).some(Boolean)) ? k.color+'55' : '#dde3ee'}`, borderRadius:12,
               padding:'12px 16px', display:'flex', alignItems:'center', gap:12,
-              boxShadow:'0 2px 6px rgba(0,0,0,0.05)' }}>
+              boxShadow:'0 2px 6px rgba(0,0,0,0.05)',
+              transition:'border-color .2s' }}>
               <div style={{ width:36, height:36, borderRadius:10, background:k.bg,
                 display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 <span style={{ fontSize:16, color:k.color }}>●</span>
               </div>
               <div>
                 <div style={{ fontSize:20, fontWeight:700, color:'#111827', lineHeight:1 }}>
-                  {k.raw ? k.val : k.val.toLocaleString()}
+                  {k.val.toLocaleString()}
                 </div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>{k.label}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>
+                  {k.label}
+                  {(Object.values(dashF).some(Boolean) || Object.values(colF).some(Boolean)) && <span style={{ marginLeft:5, fontSize:9, background:k.color, color:'#fff', borderRadius:8, padding:'1px 6px', fontWeight:700 }}>filtrado</span>}
+                </div>
               </div>
             </div>
           ))}
@@ -819,16 +885,16 @@ function PartNumbersTab() {
           <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px' }}>
             <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por proveedor</p>
             <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              {dash.topProv.map(([prov,cnt]) => (
+              {dash.topProv.map(([prov,cnt], pi) => (
                 <div key={prov} onClick={()=>setDashF(f=>({...f,proveedor:f.proveedor===prov?'':prov}))}
                   style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
                     opacity: dashF.proveedor && dashF.proveedor!==prov ? .4 : 1 }}>
                   <span style={{ fontSize:10, width:62, flexShrink:0, textAlign:'right', overflow:'hidden',
-                    textOverflow:'ellipsis', whiteSpace:'nowrap', color: dashF.proveedor===prov ? provCol2(prov) : '#65676b',
+                    textOverflow:'ellipsis', whiteSpace:'nowrap', color: dashF.proveedor===prov ? provCol2(prov,pi) : '#65676b',
                     fontWeight: dashF.proveedor===prov ? 700 : 400 }}>{prov}</span>
                   <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
                     <div style={{ width:`${(cnt/dash.maxProv)*100}%`, height:'100%',
-                      background: provCol2(prov), borderRadius:3, opacity:.85 }}/>
+                      background: provCol2(prov,pi), borderRadius:3, opacity:.85 }}/>
                   </div>
                   <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
                 </div>
@@ -860,7 +926,9 @@ function PartNumbersTab() {
           {/* Top SAP */}
           <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px' }}>
             <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 2px' }}>Top SAP — mayor valor</p>
-            <p style={{ fontSize:10, color:'#9ca3af', margin:'0 0 10px' }}>Precio acumulado por SAP</p>
+            <p style={{ fontSize:10, color:'#9ca3af', margin:'0 0 10px' }}>
+              Precio acumulado por SAP · Total: <strong style={{ color:'#7c3aed' }}>${dash.sumPrecio.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0})}</strong>
+            </p>
             <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
               {dash.topSAP.length === 0
                 ? <p style={{ fontSize:11, color:'#d1d5db', textAlign:'center', padding:'10px 0' }}>Sin datos de precio</p>
@@ -885,9 +953,9 @@ function PartNumbersTab() {
         </div>
 
         {/* Limpiar filtros del dashboard */}
-        {Object.values(dashF).some(Boolean) && (
+        {(Object.values(dashF).some(Boolean) || Object.values(colF).some(Boolean)) && (
           <div style={{ marginTop:10, display:'flex', justifyContent:'flex-end' }}>
-            <button onClick={()=>setDashF({})} style={{ fontSize:11, color:'#dc2626',
+            <button onClick={()=>{ setDashF({}); setColF({}) }} style={{ fontSize:11, color:'#dc2626',
               background:'#fef2f2', border:'1px solid #fecaca', borderRadius:6,
               padding:'4px 12px', cursor:'pointer', fontWeight:600 }}>
               ✕ Limpiar filtros
@@ -904,7 +972,8 @@ function PartNumbersTab() {
         <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{count.toLocaleString()} registros</span>
         <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={exportXLSX}>
-          <Download size={14}/> Exportar Excel
+          <Download size={14}/>
+          {hasFilter ? `Exportar filtro (${dashFiltered.length})` : `Exportar Excel (${allItems.length})`}
         </button>
         <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>setShowBulk(true)}>
@@ -960,13 +1029,19 @@ function PartNumbersTab() {
       {/* Table */}
       <div className="card overflow-hidden">
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
+            <colgroup>
+              {COLS.map(col => <col key={col.key} style={{ width: colWidths[col.key] || (col.key==='descripcion'||col.key==='comentarios' ? 160 : 100) }} />)}
+              <col style={{ width:80 }} />
+            </colgroup>
             <thead>
               <tr style={{ background:'#f0f2f5', borderBottom:'1px solid #dadde1' }}>
                 {COLS.map(col => (
                   <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
-                    fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', whiteSpace:'nowrap' }}>
+                    fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px',
+                    whiteSpace:'nowrap', position:'relative', userSelect:'none', overflow:'visible' }}>
                     {col.label}
+                    <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||(col.key==='descripcion'||col.key==='comentarios'?160:100);const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
                   </th>
                 ))}
                 <th style={{ padding:'10px 12px', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase' }}>Acciones</th>
@@ -1007,8 +1082,7 @@ function PartNumbersTab() {
                       fontFamily: col.key==='sap'||col.key==='part_number' ? 'monospace' : 'inherit',
                       color: col.key==='sap' ? '#1877f2' : '#374151',
                       fontWeight: col.key==='sap' ? 700 : 400,
-                      maxWidth: col.key==='descripcion'||col.key==='comentarios' ? 180 : undefined,
-                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                      maxWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
                       cursor: col.key==='sap' ? 'pointer' : 'default',
                       textDecoration: col.key==='sap' ? 'underline' : 'none' }}
                       title={col.key==='sap' ? `Ver detalle de ${row.sap||''}` : (row[col.key]||'')}
@@ -1462,6 +1536,16 @@ function ViewPartNumberModal({ item, onClose, onEdit }) {
 }
 
 // ── Stock SAP Logon Tab ────────────────────────────────────────────────────────
+const STOCK_COLS = [
+  { key:'material',      label:'Material',     mono:true, color:'#1877f2', w:120 },
+  { key:'descripcion',   label:'Descripción',  w:200 },
+  { key:'stock',         label:'Stock',        num:true, w:80 },
+  { key:'lote',          label:'Lote',         w:120 },
+  { key:'centro',        label:'Centro',       mono:true, w:100 },
+  { key:'almacen',       label:'Almacén',      mono:true, w:100 },
+  { key:'unidad_medida', label:'UM',           w:70 },
+]
+
 function StockSAPTab() {
   const [allItems, setAllItems]   = useState([])
   const [loading,  setLoading]    = useState(true)
@@ -1470,18 +1554,13 @@ function StockSAPTab() {
   const [page, setPage]           = useState(1)
 
   // Filtros por columna
-  const [fMaterial,  setFMaterial]  = useState('')
-  const [fDesc,      setFDesc]      = useState('')
-  const [fLote,      setFLote]      = useState('')
-  const [fCentro,    setFCentro]    = useState('')
-  const [fAlmacen,   setFAlmacen]   = useState('')
-  const [fUM,        setFUM]        = useState('')
-
+  const [colF, setColF]  = useState({})
+  const [dashF, setDashF] = useState({})
+  const [colWidths, setColWidths] = useState({})
   const PAGE_SIZE = 50
 
   const load = () => {
     setLoading(true)
-    setAllItems([])
     getStockSAP({ page_size: 10000 })
       .then(r => {
         const d = r.data
@@ -1493,34 +1572,39 @@ function StockSAPTab() {
 
   useEffect(() => { load() }, [])
 
-  // Opciones únicas para dropdowns
-  const loteOpts   = useMemo(() => [...new Set(allItems.map(r=>r.lote).filter(Boolean))].sort(), [allItems])
-  const centroOpts = useMemo(() => [...new Set(allItems.map(r=>r.centro).filter(Boolean))].sort(), [allItems])
-  const almacenOpts = useMemo(() => {
-    const base = fCentro ? allItems.filter(r=>r.centro===fCentro) : allItems
-    return [...new Set(base.map(r=>r.almacen).filter(Boolean))].sort()
-  }, [allItems, fCentro])
-  const umOpts = useMemo(() => [...new Set(allItems.map(r=>r.unidad_medida).filter(Boolean))].sort(), [allItems])
-
-  // Filtrado client-side
+  // Filtrado combinado
   const filtered = useMemo(() => allItems.filter(r => {
-    if (fMaterial && !String(r.material||'').toLowerCase().includes(fMaterial.toLowerCase())) return false
-    if (fDesc && !String(r.descripcion||'').toLowerCase().includes(fDesc.toLowerCase())) return false
-    if (fLote    && r.lote !== fLote) return false
-    if (fCentro  && r.centro !== fCentro) return false
-    if (fAlmacen && r.almacen !== fAlmacen) return false
-    if (fUM      && r.unidad_medida !== fUM) return false
-    return true
-  }), [allItems, fMaterial, fDesc, fLote, fCentro, fAlmacen, fUM])
+    return STOCK_COLS.every(c => !colF[c.key] || String(r[c.key]||'').toLowerCase().includes(colF[c.key].toLowerCase())) &&
+           Object.entries(dashF).every(([k,v]) => !v || String(r[k]||'').toLowerCase().includes(v.toLowerCase()))
+  }), [allItems, colF, dashF])
 
-  const hasFilters = fMaterial || fDesc || fLote || fCentro || fAlmacen || fUM
+  const hasFilters = Object.values(colF).some(Boolean) || Object.values(dashF).some(Boolean)
   const pages = Math.ceil(filtered.length / PAGE_SIZE) || 1
   const shown  = filtered.slice((page-1)*PAGE_SIZE, page*PAGE_SIZE)
 
-  const clearFilters = () => {
-    setFMaterial(''); setFDesc(''); setFLote(''); setFCentro(''); setFAlmacen(''); setFUM('')
-    setPage(1)
-  }
+  const clearFilters = () => { setColF({}); setDashF({}); setPage(1) }
+
+  // Dashboard stats
+  const dash = useMemo(() => {
+    const src = filtered
+    const byCentro = {}, byAlmacen = {}, byLote = {}
+    let totalStock = 0
+    src.forEach(r => {
+      const c = r.centro || 'Sin centro'; byCentro[c] = (byCentro[c]||0) + 1
+      const a = r.almacen || 'Sin almacén'; byAlmacen[a] = (byAlmacen[a]||0) + 1
+      const l = r.lote || 'Sin lote'; byLote[l] = (byLote[l]||0) + 1
+      totalStock += parseFloat(r.stock) || 0
+    })
+    const topCentro  = Object.entries(byCentro).sort((a,b)=>b[1]-a[1]).slice(0,6)
+    const topAlmacen = Object.entries(byAlmacen).sort((a,b)=>b[1]-a[1]).slice(0,6)
+    const topLote    = Object.entries(byLote).sort((a,b)=>b[1]-a[1]).slice(0,6)
+    const maxCentro  = topCentro[0]?.[1]  || 1
+    const maxAlmacen = topAlmacen[0]?.[1] || 1
+    const maxLote    = topLote[0]?.[1]    || 1
+    return { total: src.length, totalStock, topCentro, topAlmacen, topLote, maxCentro, maxAlmacen, maxLote }
+  }, [filtered])
+
+  const PALETTE = ['#1877f2','#16a34a','#d97706','#dc2626','#8b5cf6','#0891b2','#ec4899','#059669']
 
   const handleImport = async (file) => {
     setImporting(true); setImportResult(null)
@@ -1534,44 +1618,95 @@ function StockSAPTab() {
     await clearStockSAP(); load()
   }
 
-  const COLS = [
-    { key:'material',      label:'Material',     mono:true, color:'#1877f2' },
-    { key:'descripcion',   label:'Descripción',  wide:true },
-    { key:'stock',         label:'Stock',        num:true  },
-    { key:'lote',          label:'Lote'                    },
-    { key:'centro',        label:'Centro',       mono:true },
-    { key:'almacen',       label:'Almacén',      mono:true },
-    { key:'unidad_medida', label:'UM'                      },
-  ]
-
-  const inputSt = {
-    width:'100%', border:'0.5px solid #e5e7eb', borderRadius:4,
-    padding:'3px 6px', fontSize:10, background:'#fff',
-    color:'#374151', outline:'none', marginTop:4
+  const exportXLSX = () => {
+    const src = hasFilters ? filtered : allItems
+    const header = COLS.map(c => c.label)
+    const rows = src.map(r => COLS.map(c => r[c.key] ?? ''))
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Stock SAP Logon')
+    XLSX.writeFile(wb, hasFilters ? `stock_sap_filtrado_${src.length}.xlsx` : 'stock_sap_logon.xlsx')
   }
-  const selSt = { ...inputSt, cursor:'pointer' }
 
   return (
     <div>
-      {/* Toolbar */}
-      <div style={{ display:'flex', gap:10, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
-        <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>
-          {filtered.length.toLocaleString()} / {allItems.length.toLocaleString()} registros
-        </span>
+      {/* ── Dashboard ── */}
+      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
+        {/* KPIs */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:12 }}>
+          {[
+            { label:'Total registros',  val:dash.total,                    color:'#1877f2', bg:'#e7f3ff' },
+            { label:'Stock acumulado',  val:dash.totalStock.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}), color:'#16a34a', bg:'#f0fdf4', raw:true },
+            { label:'Centros activos',  val:dash.topCentro.length,         color:'#d97706', bg:'#fffbeb' },
+          ].map(k => (
+            <div key={k.label} style={{ background:'#fff', border:`1px solid ${hasFilters ? k.color+'55' : '#dde3ee'}`, borderRadius:12,
+              padding:'12px 16px', display:'flex', alignItems:'center', gap:12, boxShadow:'0 2px 6px rgba(0,0,0,0.05)' }}>
+              <div style={{ width:36, height:36, borderRadius:10, background:k.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:16, color:k.color }}>●</span>
+              </div>
+              <div>
+                <div style={{ fontSize:20, fontWeight:700, color:'#111827', lineHeight:1 }}>
+                  {k.raw ? k.val : k.val.toLocaleString()}
+                </div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>
+                  {k.label}
+                  {hasFilters && <span style={{ marginLeft:5, fontSize:9, background:k.color, color:'#fff', borderRadius:8, padding:'1px 6px', fontWeight:700 }}>filtrado</span>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Charts */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+          {[
+            { title:'Por centro', data:dash.topCentro, max:dash.maxCentro, key:'centro', palette: PALETTE },
+            { title:'Por almacén', data:dash.topAlmacen, max:dash.maxAlmacen, key:'almacen', palette: PALETTE.slice(2) },
+            { title:'Por lote', data:dash.topLote, max:dash.maxLote, key:'lote', palette: PALETTE.slice(4) },
+          ].map(({title, data, max, key, palette}) => (
+            <div key={key} style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px' }}>
+              <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>{title}</p>
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                {data.map(([val, cnt], i) => (
+                  <div key={val} onClick={()=>setDashF(f=>({...f,[key]:f[key]===val?'':val}))}
+                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer',
+                      opacity: dashF[key] && dashF[key]!==val ? .4 : 1 }}>
+                    <span style={{ fontSize:10, width:62, flexShrink:0, textAlign:'right', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                      color: dashF[key]===val ? palette[i%palette.length] : '#65676b', fontWeight: dashF[key]===val ? 700 : 400 }}>{val}</span>
+                    <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
+                      <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background:palette[i%palette.length], borderRadius:3, opacity:.85 }}/>
+                    </div>
+                    <span style={{ fontSize:10, color:'#374151', width:28, textAlign:'right', fontWeight:600 }}>{cnt}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
         {hasFilters && (
-          <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4 }}
-            onClick={clearFilters}>
-            <X size={12}/> Limpiar filtros
-          </button>
+          <div style={{ marginTop:10, display:'flex', justifyContent:'flex-end' }}>
+            <button onClick={clearFilters} style={{ fontSize:11, color:'#dc2626',
+              background:'#fef2f2', border:'1px solid #fecaca', borderRadius:6, padding:'4px 12px', cursor:'pointer', fontWeight:600 }}>
+              ✕ Limpiar filtros
+            </button>
+          </div>
         )}
+      </div>
+
+      {/* Toolbar */}
+      <div style={{ display:'flex', gap:10, marginBottom:14, alignItems:'center', flexWrap:'wrap' }}>
+        <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>
+          {hasFilters ? `${filtered.length.toLocaleString()} / ${allItems.length.toLocaleString()}` : allItems.length.toLocaleString()} registros
+        </span>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }} onClick={exportXLSX}>
+          <Download size={14}/> {hasFilters ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${allItems.length})`}
+        </button>
         <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}>
           <Upload size={14}/> {importing ? 'Importando…' : 'Importar Excel SAP Logon'}
           <input type="file" accept=".xlsx,.xls" style={{ display:'none' }}
             onChange={e => { if (e.target.files[0]) handleImport(e.target.files[0]); e.target.value='' }} />
         </label>
         {allItems.length > 0 && (
-          <button className="btn-ghost" style={{ fontSize:13, color:'#dc2626', display:'flex', alignItems:'center', gap:5 }}
-            onClick={handleClear}>
+          <button className="btn-ghost" style={{ fontSize:13, color:'#dc2626', display:'flex', alignItems:'center', gap:5 }} onClick={handleClear}>
             <Trash2 size={13}/> Limpiar todo
           </button>
         )}
@@ -1582,91 +1717,67 @@ function StockSAPTab() {
           background: importResult.error ? '#fef2f2' : '#f0fdf4',
           color: importResult.error ? '#dc2626' : '#15803d',
           border: `1px solid ${importResult.error ? '#fecaca' : '#bbf7d0'}` }}>
-          {importResult.error
-            ? `Error: ${importResult.error}`
-            : `✓ ${importResult.imported} registros importados · ${importResult.errors} errores`}
+          {importResult.error ? `Error: ${importResult.error}` : `✓ ${importResult.imported} registros importados · ${importResult.errors} errores`}
         </div>
       )}
 
       <div className="card overflow-hidden">
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
+            <colgroup>
+              {STOCK_COLS.map(c => <col key={c.key} style={{ width: colWidths[c.key] || c.w || 120 }} />)}
+            </colgroup>
             <thead>
+              {/* Header con resize */}
               <tr style={{ background:'#f0f2f5', borderBottom:'1px solid #dadde1' }}>
-                {/* Material */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:120 }}>
-                  Material
-                  <input style={inputSt} placeholder="Filtrar…" value={fMaterial}
-                    onChange={e=>{ setFMaterial(e.target.value); setPage(1) }} />
-                </th>
-                {/* Descripción */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:200 }}>
-                  Descripción
-                  <input style={inputSt} placeholder="Filtrar…" value={fDesc}
-                    onChange={e=>{ setFDesc(e.target.value); setPage(1) }} />
-                </th>
-                {/* Stock */}
-                <th style={{ padding:'8px 12px', textAlign:'right', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:70 }}>
-                  Stock
-                </th>
-                {/* Lote */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:120 }}>
-                  Lote
-                  <select style={selSt} value={fLote} onChange={e=>{ setFLote(e.target.value); setPage(1) }}>
-                    <option value=''>Todos</option>
-                    {loteOpts.map(l=><option key={l} value={l}>{l}</option>)}
-                  </select>
-                </th>
-                {/* Centro */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:100 }}>
-                  Centro
-                  <select style={selSt} value={fCentro} onChange={e=>{ setFCentro(e.target.value); setFAlmacen(''); setPage(1) }}>
-                    <option value=''>Todos</option>
-                    {centroOpts.map(c=><option key={c} value={c}>{c}</option>)}
-                  </select>
-                </th>
-                {/* Almacén */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:100 }}>
-                  Almacén
-                  <select style={selSt} value={fAlmacen} onChange={e=>{ setFAlmacen(e.target.value); setPage(1) }}>
-                    <option value=''>Todos</option>
-                    {almacenOpts.map(a=><option key={a} value={a}>{a}</option>)}
-                  </select>
-                </th>
-                {/* UM */}
-                <th style={{ padding:'8px 12px', textAlign:'left', fontSize:10, fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:'.5px', minWidth:70 }}>
-                  UM
-                  <select style={selSt} value={fUM} onChange={e=>{ setFUM(e.target.value); setPage(1) }}>
-                    <option value=''>Todos</option>
-                    {umOpts.map(u=><option key={u} value={u}>{u}</option>)}
-                  </select>
-                </th>
+                {STOCK_COLS.map(c => (
+                  <th key={c.key} style={{ padding:'9px 12px', textAlign: c.num ? 'right' : 'left', fontSize:10,
+                    fontWeight:600, color: dashF[c.key]||colF[c.key] ? '#1877f2' : '#6b7280',
+                    textTransform:'uppercase', letterSpacing:'.5px',
+                    position:'relative', userSelect:'none', overflow:'visible',
+                    background: dashF[c.key]||colF[c.key] ? '#cce0ff' : '#f0f2f5' }}>
+                    {c.label}
+                    <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[c.key]||c.w||120;const mv=ev=>setColWidths(p=>({...p,[c.key]:Math.max(40,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
+                  </th>
+                ))}
+              </tr>
+              {/* Fila filtros */}
+              <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
+                {STOCK_COLS.map(c => (
+                  <td key={c.key} style={{ padding:'3px 6px' }}>
+                    {c.key==='lote' || c.key==='centro' || c.key==='almacen' || c.key==='unidad_medida' ? (
+                      <select value={colF[c.key]||''} onChange={e=>{setColF(p=>({...p,[c.key]:e.target.value}));setPage(1)}}
+                        style={{ width:'100%', border:`1px solid ${colF[c.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
+                          padding:'3px 6px', fontSize:10, outline:'none', background:colF[c.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}>
+                        <option value=''>Todos</option>
+                        {[...new Set(allItems.map(r=>r[c.key]).filter(Boolean))].sort().map(v=><option key={v} value={v}>{v}</option>)}
+                      </select>
+                    ) : (
+                      <input value={colF[c.key]||''} onChange={e=>{setColF(p=>({...p,[c.key]:e.target.value}));setPage(1)}}
+                        style={{ width:'100%', border:`1px solid ${colF[c.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
+                          padding:'3px 6px', fontSize:10, outline:'none', background:colF[c.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
+                        placeholder="Filtrar…"/>
+                    )}
+                  </td>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan={COLS.length} style={{ textAlign:'center', padding:30, color:'#6b7280' }}>Cargando…</td></tr>}
+              {loading && <tr><td colSpan={STOCK_COLS.length} style={{ textAlign:'center', padding:40, color:'#6b7280' }}>Cargando…</td></tr>}
               {!loading && shown.length === 0 && (
-                <tr><td colSpan={COLS.length} style={{ textAlign:'center', padding:30, color:'#9ca3af', fontSize:12 }}>
-                  {allItems.length === 0 ? 'Sin registros — importa un archivo Excel SAP Logon.' : 'Sin resultados con los filtros aplicados.'}
-                </td></tr>
+                <tr><td colSpan={STOCK_COLS.length} style={{ textAlign:'center', padding:40, color:'#9ca3af', fontSize:12 }}>Sin resultados.</td></tr>
               )}
               {!loading && shown.map((row, i) => (
-                <tr key={row.id} style={{ borderBottom:'1px solid #dadde1',
-                  background: i%2===0 ? '#ffffff' : '#f0f2f5',
-                  transition:'background .12s' }}
-                  onMouseEnter={e => e.currentTarget.style.background='#e7f3ff'}
-                  onMouseLeave={e => e.currentTarget.style.background = i%2===0 ? '#ffffff' : '#f0f2f5'}>
-                  {COLS.map(col => (
-                    <td key={col.key} style={{
-                      padding:'9px 12px',
-                      textAlign: col.num ? 'right' : 'left',
-                      fontFamily: col.mono ? 'monospace' : 'inherit',
-                      color: col.color || (col.num ? '#059669' : '#374151'),
-                      fontWeight: col.key==='material' ? 700 : col.num ? 600 : 400,
-                      maxWidth: col.wide ? 260 : undefined,
-                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap'
-                    }}>
-                      {col.key==='stock' ? Number(row[col.key]).toLocaleString() : (row[col.key] && row[col.key] !== '(en blanco)') ? row[col.key] : '—'}
+                <tr key={row.id} style={{ borderBottom:'1px solid #dadde1', background: i%2===0?'#fff':'#f0f2f5', transition:'background .12s' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#e7f3ff'}
+                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#f0f2f5'}>
+                  {STOCK_COLS.map(c => (
+                    <td key={c.key} style={{ padding:'8px 12px', textAlign: c.num ? 'right' : 'left',
+                      fontFamily: c.mono ? 'monospace' : 'inherit',
+                      color: c.color || '#374151', fontWeight: c.color ? 700 : 400,
+                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:0 }}
+                      title={String(row[c.key]??'')}>
+                      {c.num ? (Number(row[c.key])||0).toLocaleString() : (row[c.key] || '—')}
                     </td>
                   ))}
                 </tr>

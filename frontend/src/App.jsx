@@ -87,6 +87,8 @@ export default function App() {
   const [token,        setToken]        = useState(localStorage.getItem('access_token'))
   const [showWarning,  setShowWarning]  = useState(false)
   const [secondsLeft,  setSecondsLeft]  = useState(60)
+  const [sideCollapsed, setSideCollapsed] = useState(false)
+  const SIDE_W = sideCollapsed ? 52 : 220
 
   const logoutTimer  = useRef(null)
   const warningTimer = useRef(null)
@@ -155,20 +157,22 @@ export default function App() {
         />
       )}
       <div style={{ display: 'flex', minHeight: '100vh', background: '#f9fafb' }}>
-        <Sidebar />
+        <Sidebar collapsed={sideCollapsed} onToggle={() => setSideCollapsed(v => !v)} />
         <Topbar
           darkMode={darkMode}
           onToggleDark={() => setDarkMode(d => !d)}
           onLogout={handleLogout}
+          sideWidth={SIDE_W}
         />
         <main style={{
-          marginLeft: 220,
+          marginLeft: SIDE_W,
           marginTop:  52,
           flex: 1,
           padding: '32px 36px',
           background: '#f9fafb',
           minHeight: 'calc(100vh - 52px)',
           overflowX: 'hidden',
+          transition: 'margin-left 0.22s cubic-bezier(0.4,0,0.2,1)',
         }}>
           <Routes>
             <Route path="/"            element={<Navigate to="/spare" />}  />

@@ -31,7 +31,7 @@ from .serializers import (
     SeguimientoUpgradesSerializer,
     SeguimientoProveedorSerializer,
 )
-from .filters import SpareFilter
+from .filters import SpareFilter, PartNumberFilter
 
 
 # ─── Paginación flexible ──────────────────────────────────────────────────────
@@ -271,8 +271,9 @@ class PartNumberViewSet(viewsets.ModelViewSet):
     queryset         = PartNumber.objects.all()
     serializer_class = PartNumberSerializer
     pagination_class = FlexPagePagination
-    filter_backends  = [SearchFilter]
-    search_fields = ['part_number', 'proveedor', 'descripcion', 'modelo_equipo', 'tipo', 'sap']
+    filter_backends  = [DjangoFilterBackend, SearchFilter]
+    filterset_class  = PartNumberFilter
+    search_fields    = ['part_number', 'proveedor', 'descripcion', 'modelo_equipo', 'tipo', 'sap']
 
     @action(detail=False, methods=['get'], url_path='by-proveedor')
     def by_proveedor(self, request):
@@ -1217,7 +1218,7 @@ class ImportSpareXLSXView(APIView):
             return Response({'error': f'No se pudo leer el archivo: {e}'}, status=400)
 
         df.columns = [str(col).lstrip('\ufeff').strip() for col in df.columns]
-        created, skipped, errors = 0, 0, []
+        created, updated, skipped, errors = 0, 0, 0, []
 
         for i, row in df.iterrows():
             row_num = i + 2
@@ -1239,23 +1240,11 @@ class ImportSpareXLSXView(APIView):
                     skipped += 1
                     continue
 
-                serial_val = safe_str(g('N Serie','serial_number','N° Serie','Serial Number'))
+                serial_raw = g('N Serie','serial_number','N° Serie','Serial Number')
+                serial_val = safe_str(serial_raw)
 
-                # Verificar duplicado por SAP + serial_number
-                if serial_val:
-                    if Spare.objects.filter(sap=sap_val, serial_number=serial_val).exists():
-                        skipped += 1
-                        continue
-                elif Spare.objects.filter(
-                    sap=sap_val,
-                    modelo=safe_str(g('Modelo','modelo')),
-                    valor_lote=safe_str(g('Lote','valor_lote','Valor Lote'))
-                ).exists():
-                    skipped += 1
-                    continue
-
-                Spare.objects.create(
-                    serial_number=serial_val,
+                # Campos a guardar
+                fields = dict(
                     centro            =safe_str(g('Centro','centro')),
                     almacen           =safe_str(g('Almacen','almacen','Almacén')),
                     zona              =safe_str(g('Zona','zona')),
@@ -1265,7 +1254,6 @@ class ImportSpareXLSXView(APIView):
                     sap               =sap_val,
                     part_number       =safe_str(g('Part Number','part_number')),
                     descripcion       =safe_str(g('Descripcion','descripcion','Descripción')),
-
                     valor_lote        =safe_str(g('Lote','valor_lote','Valor Lote')),
                     estatus           =safe_str(g('Estatus','estatus')) or 'Operativo',
                     fecha_ingreso     =safe_date(g('Fecha Ingreso','fecha_ingreso')),
@@ -1277,12 +1265,37 @@ class ImportSpareXLSXView(APIView):
                     comentario        =safe_str(g('Comentario','comentario')),
                     precio            =safe_dec(g('Precio','precio')),
                 )
-                created += 1
+
+                # Buscar registro existente por SAP + serial (case-insensitive, strip)
+                existing = None
+                if serial_val:
+                    # Intentar match exacto primero, luego insensible
+                    existing = (
+                        Spare.objects.filter(sap=sap_val, serial_number=serial_val).first() or
+                        Spare.objects.filter(sap=sap_val, serial_number__iexact=serial_val.strip()).first()
+                    )
+                else:
+                    existing = Spare.objects.filter(
+                        sap=sap_val,
+                        modelo=fields['modelo'],
+                        valor_lote=fields['valor_lote']
+                    ).first()
+
+                if existing:
+                    # Actualizar TODOS los campos (incluye vacios para sobreescribir)
+                    for k, v in fields.items():
+                        setattr(existing, k, v)
+                    existing.serial_number = serial_val
+                    existing.save()
+                    updated += 1
+                else:
+                    Spare.objects.create(serial_number=serial_val, **fields)
+                    created += 1
             except Exception as e:
                 errors.append(f'Fila {row_num}: {str(e)}')
 
         return Response({
-            'imported': created, 'skipped': skipped,
+            'imported': created, 'updated': updated, 'skipped': skipped,
             'errors': len(errors), 'error_details': errors[:10],
         })
 

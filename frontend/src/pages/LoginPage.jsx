@@ -43,7 +43,7 @@ export default function LoginPage({ onLogin }) {
           <h1 style={{ fontFamily:"'Syne',sans-serif", fontWeight:800, fontSize:28,
             color:'#1c1e21', margin:'0 0 6px' }}>AdmIP</h1>
           <p style={{ color:'#65676b', fontSize:14, margin:0 }}>
-            Gestión de Inventario de Spares
+            Administración Transporte IP Nacional
           </p>
         </div>
 

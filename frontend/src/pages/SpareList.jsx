@@ -230,7 +230,7 @@ function SpareImportModal({ onClose, onDone }) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || JSON.stringify(data))
       setResult(data)
-      if (data.imported > 0) onDone()
+      if ((data.imported || 0) + (data.updated || 0) > 0) onDone()
     } catch(e) { setError(e.message) }
     finally { setSaving(false) }
   }
@@ -256,8 +256,12 @@ function SpareImportModal({ onClose, onDone }) {
               <div style={{display:'flex',gap:16,justifyContent:'center',marginTop:10}}>
                 <div style={{textAlign:'center'}}>
                   <p style={{fontSize:22,fontWeight:700,color:'#15803d',margin:0}}>{result.imported||0}</p>
-                  <p style={{fontSize:11,color:'#6b7280',margin:0}}>Importados</p>
+                  <p style={{fontSize:11,color:'#6b7280',margin:0}}>Creados</p>
                 </div>
+                {(result.updated||0) > 0 && <div style={{textAlign:'center'}}>
+                  <p style={{fontSize:22,fontWeight:700,color:'#1877f2',margin:0}}>{result.updated}</p>
+                  <p style={{fontSize:11,color:'#6b7280',margin:0}}>Actualizados</p>
+                </div>}
                 {result.skipped>0 && <div style={{textAlign:'center'}}>
                   <p style={{fontSize:22,fontWeight:700,color:'#b45309',margin:0}}>{result.skipped}</p>
                   <p style={{fontSize:11,color:'#6b7280',margin:0}}>Omitidos</p>
@@ -936,6 +940,7 @@ function TabControlInventario() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [viewItem, setViewItem] = useState(null)
   const [visibleCols, setVisibleCols] = useState(CONTROL_COLS.filter(c=>c.default).map(c=>c.key))
+  const [colWidths, setColWidths] = useState({})
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState(null)
   const fileRef = useRef()
@@ -1128,12 +1133,20 @@ function TabControlInventario() {
   }
 
   const exportXLSX = () => {
+    const hasFilter = hasColFilters || !!search
+    const src = hasFilter ? filteredItems : items
     const header = CONTROL_COLS.map(c => c.label)
-    const rows = items.map(r => CONTROL_COLS.map(c => r[c.key] ?? ''))
+    const rows = src.map(r => CONTROL_COLS.map(c => {
+      if (c.key === 'precio' && r[c.key] != null && r[c.key] !== '') return Number(r[c.key])
+      return r[c.key] ?? ''
+    }))
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Control Inventario')
-    XLSX.writeFile(wb, 'control_inventario_admip.xlsx')
+    const filename = hasFilter
+      ? `spares_filtrado_${src.length}.xlsx`
+      : 'control_inventario_admip.xlsx'
+    XLSX.writeFile(wb, filename)
   }
 
   return (
@@ -1527,7 +1540,10 @@ function TabControlInventario() {
           </button>
           <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
             onClick={exportXLSX}>
-            <Download size={14}/> Exportar Excel
+            <Download size={14}/>
+            {(hasColFilters || search)
+              ? `Exportar filtro (${filteredItems.length})`
+              : `Exportar Excel (${items.length})`}
           </button>
           <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
             onClick={load}>
@@ -1562,14 +1578,20 @@ function TabControlInventario() {
           fontSize:13, color: importMsg.error ? '#dc2626' : '#16a34a' }}>
           {importMsg.error
             ? `Error: ${importMsg.error}`
-            : `✅ ${importMsg.imported} importados, ${importMsg.skipped||0} omitidos`}
+            : `✅ ${importMsg.imported} creados, ${importMsg.updated||0} actualizados, ${importMsg.skipped||0} omitidos`}
         </div>
       )}
 
       {/* Table */}
       <div className="card" style={{ padding:0, overflow:'hidden' }}>
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
+            <colgroup>
+              {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c => (
+                <col key={c.key} style={{ width: colWidths[c.key] || 130 }} />
+              ))}
+              <col style={{ width:80 }} />
+            </colgroup>
             <thead>
               {/* Fila 1 — Labels de columna */}
               <tr style={{ background:'#f3f4f6' }}>
@@ -1583,9 +1605,35 @@ function TabControlInventario() {
                       background: isActive ? '#cce0ff' : '#f3f4f6',
                       borderBottom:'1px solid #e5e7eb',
                       borderTop: isActive ? '2px solid #1877f2' : '2px solid transparent',
-                      userSelect:'none'
+                      userSelect:'none', position:'relative', overflow:'visible'
                     }}>
                       {c.label}
+                      {/* Drag handle */}
+                      <span
+                        onMouseDown={e => {
+                          e.preventDefault()
+                          const startX = e.clientX
+                          const startW = colWidths[c.key] || 130
+                          const onMove = ev => {
+                            const newW = Math.max(60, startW + ev.clientX - startX)
+                            setColWidths(prev => ({ ...prev, [c.key]: newW }))
+                          }
+                          const onUp = () => {
+                            window.removeEventListener('mousemove', onMove)
+                            window.removeEventListener('mouseup', onUp)
+                          }
+                          window.addEventListener('mousemove', onMove)
+                          window.addEventListener('mouseup', onUp)
+                        }}
+                        style={{
+                          position:'absolute', right:0, top:0, bottom:0, width:6,
+                          cursor:'col-resize', background:'transparent',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                        }}
+                        title="Arrastrar para redimensionar"
+                      >
+                        <span style={{ width:2, height:'60%', background:'#dadde1', borderRadius:1, display:'block' }}/>
+                      </span>
                     </th>
                   )
                 })}
@@ -1694,8 +1742,9 @@ function TabControlInventario() {
                     )
                     return (
                       <td key={c.key} style={{ padding:'6px 12px', color:'#374151',
-                        whiteSpace:'nowrap', maxWidth:180, overflow:'hidden',
-                        textOverflow:'ellipsis' }} title={String(v||'')}>{v||'—'}</td>
+                        whiteSpace:'nowrap', overflow:'hidden',
+                        textOverflow:'ellipsis', maxWidth:0 }}
+                        title={String(v||'')}>{v||'—'}</td>
                     )
                   })}
                   <td style={{ padding:'6px 12px' }}>
@@ -1786,7 +1835,7 @@ function ViewSpareModal({ item, onClose, onEdit }) {
         ['N° Serie',        item.serial_number],
         ['Lote',            item.valor_lote],
         ['Estatus',         item.estatus],
-        ['Precio',          item.precio],
+        ['Precio',          item.precio != null && item.precio !== '' ? `$ ${Number(item.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : null],
         ['Orden Compra',    item.orden_compra],
         ['Procedencia',     item.procedencia],
         ['Pedido Traslado', item.pedido_traslado],
