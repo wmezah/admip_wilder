@@ -12,6 +12,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser
+from rest_framework.permissions import IsAuthenticated
 
 from .models import NCEDevice, NCECollectionLog, NCEPMData
 
@@ -144,6 +145,7 @@ class CollectionLogView(APIView):
 # ── Upload CSV (manual load from browser) ──────────────────────────────────────
 class UploadCSVView(APIView):
     parser_classes = [MultiPartParser]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         files = request.FILES.getlist('files')

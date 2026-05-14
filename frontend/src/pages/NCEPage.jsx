@@ -44,7 +44,10 @@ function UploadPanel({ onDone, onClose }) {
     const fd = new FormData()
     Array.from(files).forEach(f => fd.append('files', f))
     try {
-      const r = await fetch(`${API}/upload/`, { method:'POST', body:fd })
+      const r = await fetch(`${API}/upload/`, {
+        method:'POST', body:fd,
+        headers:{ Authorization:`Bearer ${localStorage.getItem('access_token')}` }
+      })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Error al cargar')
       setResult(d); onDone()
