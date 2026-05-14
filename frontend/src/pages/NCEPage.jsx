@@ -11,6 +11,17 @@ import {
 const API = '/api/nce'
 const CPU_AVG_TH  = 70
 const CPU_PEAK_TH = 90
+
+// Convierte fecha UTC a hora local del navegador (Perú UTC-5)
+const toLocalTime = (val) => {
+  if (!val) return '—'
+  try {
+    return new Date(val).toLocaleString('es-PE', {
+      year:'numeric', month:'2-digit', day:'2-digit',
+      hour:'2-digit', minute:'2-digit', hour12:false
+    })
+  } catch { return String(val).substring(0,16).replace('T',' ') }
+}
 const C = {
   primary: '#7c3aed', ok: '#16a34a', warn: '#d97706',
   danger: '#dc2626', muted: '#6b7280', border: '#e5e7eb',
@@ -406,7 +417,7 @@ export default function NCEPage() {
                           fontWeight:700, color:barColor(v||0) }}>{(v||0).toFixed(1)}%</td>
                       ))}
                       <td style={{ padding:'8px 14px', fontSize:11, color:C.muted }}>
-                        {(row.last_sample||'').substring(0,16)||'—'}
+                        {toLocalTime(row.last_sample)||'—'}
                       </td>
                     </tr>
                   ))}
@@ -487,8 +498,8 @@ export default function NCEPage() {
                       background: d.prefix==='rMPLS' ? '#dbeafe' : '#ede9fe',
                       color: d.prefix==='rMPLS' ? C.rmpls : C.rhub }}>{d.prefix||'—'}</span>
                   </td>
-                  <td style={{ padding:'8px 14px', fontSize:11, color:C.muted }}>{String(d.first_seen||'').substring(0,16).replace('T',' ')}</td>
-                  <td style={{ padding:'8px 14px', fontSize:11, color:C.muted }}>{String(d.last_seen||'').substring(0,16).replace('T',' ')}</td>
+                  <td style={{ padding:'8px 14px', fontSize:11, color:C.muted }}>{toLocalTime(d.first_seen)}</td>
+                  <td style={{ padding:'8px 14px', fontSize:11, color:C.muted }}>{toLocalTime(d.last_seen)}</td>
                 </tr>
               ))}
             </tbody>
@@ -518,7 +529,7 @@ export default function NCEPage() {
                   <td style={{ padding:'8px 14px', fontSize:11, color:C.muted, maxWidth:200,
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{l.filename}</td>
                   <td style={{ padding:'8px 14px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>
-                    {String(l.collected_at||'').substring(0,16)}
+                    {toLocalTime(l.collected_at)}
                   </td>
                   <td style={{ padding:'8px 14px', textAlign:'right' }}>{l.rows_total}</td>
                   <td style={{ padding:'8px 14px', textAlign:'right', color:C.ok, fontWeight:600 }}>{l.rows_loaded}</td>
