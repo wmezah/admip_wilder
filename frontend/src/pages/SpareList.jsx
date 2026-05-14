@@ -188,8 +188,9 @@ function SpareImportModal({ onClose, onDone }) {
       const parsed = data.map(row => {
         const obj = {}
         SPARE_IMPORT_COLS.forEach(col => {
-          const val = row[col.key] ?? row[col.label] ??
-            row[col.key.toLowerCase()] ?? row[col.label.toLowerCase()] ?? ''
+          // Buscar por label (nombre original) o por key
+          const val = row[col.label] ?? row[col.key] ??
+            row[col.label.toLowerCase()] ?? row[col.key.toLowerCase()] ?? ''
           const raw = cleanVal(val)
           if (['fecha_ingreso','fecha_asignacion'].includes(col.key) && !raw) return
           if (raw && raw !== 'undefined') obj[col.key] = raw
@@ -211,9 +212,10 @@ function SpareImportModal({ onClose, onDone }) {
     if (rows.length === 0) return
     setSaving(true)
     try {
+      // Enviar con los labels originales que el backend espera
       const wsData = [
-        SPARE_IMPORT_COLS.map(c => c.key),
-        ...rows.map(r => SPARE_IMPORT_COLS.map(c => r[c.key] || ''))
+        SPARE_IMPORT_COLS.map(c => c.label),
+        ...rows.map(r => SPARE_IMPORT_COLS.map(c => r[c.key] ?? ''))
       ]
       const ws = XLSX.utils.aoa_to_sheet(wsData)
       const wb = XLSX.utils.book_new()
@@ -404,7 +406,7 @@ function SpareImportModal({ onClose, onDone }) {
 
 
 const ESTATUS_LIST = [
-  'Operativo','Utilizado'
+  'Operativo','Utilizado','Asignado'
 ]
 
 const EMPTY = {
@@ -805,7 +807,7 @@ function ColumnSelector({ visibleCols, onChange, allCols }) {
 
 // ── PivotChart ────────────────────────────────────────────────────────────────
 // Colores fijos por proveedor: HUAWEI=rojo, ZTE=azul, resto por índice
-const PROV_COLORS = { 'HUAWEI':'#1877f2', 'ZTE':'#16a34a' }
+const PROV_COLORS = { 'HUAWEI':'#CF0A2C', 'Huawei':'#CF0A2C', 'ZTE':'#1877f2', 'NOKIA':'#9c6fe4', 'Nokia':'#9c6fe4', 'CISCO':'#16a34a', 'Cisco':'#16a34a' }
 const PIVOT_PALETTE = ['#d97706','#16a34a','#0891b2','#8b5cf6','#f59e0b','#059669','#6366f1','#ec4899']
 const provColor = (name, idx) => PROV_COLORS[name] || PALETTE_FALLBACK[idx % PALETTE_FALLBACK.length]
 const PALETTE_FALLBACK = PIVOT_PALETTE
@@ -1192,11 +1194,12 @@ function TabControlInventario() {
       <div style={{ marginBottom:14 }}>
 
         {/* KPIs */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:16 }}>
           {[
             { label:'Total spares', val:dashStats.total,    color:'#1877f2', bg:'#e7f3ff', est:null },
             { label:'Operativo',   val:dashStats.operativo, color:'#16a34a', bg:'#f0fdf4', est:'operativo' },
             { label:'Utilizado',   val:dashStats.utilizado, color:'#dc2626', bg:'#fef2f2', est:'utilizado' },
+            { label:'Asignado',    val:dashStats.asignado,  color:'#d97706', bg:'#fffbeb', est:'asignado' },
           ].map(k => (
             <div key={k.label}
               onClick={() => k.est && handleDashClick('estatus', k.est)}

@@ -843,7 +843,7 @@ function PartNumbersTab() {
   // Paleta de colores dinámica por índice de proveedor
   const PROV_PALETTE = ['#1877f2','#d97706','#dc2626','#8b5cf6','#0891b2','#ec4899','#059669','#f59e0b','#6366f1','#14b8a6']
   const provCol2 = (prov, idx) => {
-    const fixed = { 'HUAWEI':'#1877f2','Huawei':'#1877f2','ZTE':'#16a34a','ALCATEL':'#d97706','Alcatel':'#d97706' }
+    const fixed = { 'HUAWEI':'#CF0A2C','Huawei':'#CF0A2C','ZTE':'#1877f2','NOKIA':'#9c6fe4','Nokia':'#9c6fe4','CISCO':'#16a34a','Cisco':'#16a34a','ALCATEL':'#d97706','Alcatel':'#d97706' }
     return fixed[prov] || PROV_PALETTE[(idx + 1) % PROV_PALETTE.length]
   }
 
