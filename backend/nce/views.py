@@ -27,14 +27,16 @@ def _since(hours):
 # ── CPU Summary ────────────────────────────────────────────────────────────────
 class CPUSummaryView(APIView):
     def get(self, request):
-        hours   = int(request.query_params.get('hours', 24))
+        hours   = int(request.query_params.get('hours', 720))  # default 30 días
         prefix  = request.query_params.get('prefix', '')
-        since   = _since(hours)
 
-        qs = NCEPMData.objects.filter(
-            pm_code='PM_IG45046_5',
-            collection_time__gte=since,
-        )
+        qs = NCEPMData.objects.filter(pm_code='PM_IG45046_5')
+
+        # Solo filtrar por tiempo si se especifica un valor razonable
+        if hours < 8760:  # menos de 1 año → filtrar
+            since = _since(hours)
+            qs = qs.filter(collection_time__gte=since)
+
         if prefix:
             qs = qs.filter(device_name__startswith=prefix)
 
@@ -75,13 +77,11 @@ class CPUSummaryView(APIView):
 class CPUTimeSeriesView(APIView):
     def get(self, request):
         device = request.query_params.get('device', '')
-        hours  = int(request.query_params.get('hours', 24))
-        since  = _since(hours)
+        hours  = int(request.query_params.get('hours', 720))
 
-        qs = NCEPMData.objects.filter(
-            pm_code='PM_IG45046_5',
-            collection_time__gte=since,
-        ).order_by('collection_time')
+        qs = NCEPMData.objects.filter(pm_code='PM_IG45046_5').order_by('collection_time')
+        if hours < 8760:
+            qs = qs.filter(collection_time__gte=_since(hours))
         if device:
             qs = qs.filter(device_name=device)
 

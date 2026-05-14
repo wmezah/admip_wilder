@@ -129,15 +129,17 @@ export default function NCEPage() {
   const [lastUpdate, setLastUpdate] = useState(null)
   const intervalRef = useRef(null)
 
+  const authH = { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
       const [s, sum, dev, log, alt] = await Promise.all([
-        fetch(`${API}/stats/`).then(r => r.json()).catch(() => null),
-        fetch(`${API}/cpu/summary/?hours=${hours}${prefix ? `&prefix=${prefix}` : ''}`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/devices/`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/log/?n=50`).then(r => r.json()).catch(() => []),
-        fetch(`${API}/cpu/alerts/`).then(r => r.json()).catch(() => []),
+        fetch(`${API}/stats/`, { headers: authH }).then(r => r.json()).catch(() => null),
+        fetch(`${API}/cpu/summary/?hours=${hours}${prefix ? `&prefix=${prefix}` : ''}`, { headers: authH }).then(r => r.json()).catch(() => []),
+        fetch(`${API}/devices/`, { headers: authH }).then(r => r.json()).catch(() => []),
+        fetch(`${API}/log/?n=50`, { headers: authH }).then(r => r.json()).catch(() => []),
+        fetch(`${API}/cpu/alerts/`, { headers: authH }).then(r => r.json()).catch(() => []),
       ])
       setStats(s)
       setSummary(Array.isArray(sum) ? sum : [])
@@ -150,7 +152,7 @@ export default function NCEPage() {
 
   const loadSeries = useCallback(async (device) => {
     if (!device) return setSeries([])
-    const d = await fetch(`${API}/cpu/series/?device=${encodeURIComponent(device)}&hours=${hours}`)
+    const d = await fetch(`${API}/cpu/series/?device=${encodeURIComponent(device)}&hours=${hours}`, { headers: authH })
       .then(r => r.json()).catch(() => [])
     const byTime = {}
     ;(Array.isArray(d) ? d : []).forEach(row => {
