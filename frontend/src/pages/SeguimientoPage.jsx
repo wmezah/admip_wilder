@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import * as XLSX from 'xlsx'
 import { MapPin, Upload, Download, Search, RefreshCw, Plus, Trash2, Columns, Wrench, AlertTriangle } from 'lucide-react'
 
@@ -360,10 +361,80 @@ function ColumnSelector({ allCols, visibleCols, onChange }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// ── ViewSeguimientoModal ──────────────────────────────────────────────────────
+function ViewSeguimientoModal({ item, onClose, onEdit }) {
+  const SECTIONS = [
+    { title:'Identificación', color:'#1877f2', fields:[
+      ['SAP',item.sap],['N Serie',item.cantidad_serie],['Descripcion',item.descripcion],
+      ['Proveedor',item.proveedor],['Lote',item.lote],
+    ]},
+    { title:'Asignación', color:'#059669', fields:[
+      ['RED',item.red],['Motivo Asignacion',item.motivo_asignacion],['Fecha Asignacion',item.fecha_asignacion],
+    ]},
+    { title:'Ubicación / Proyecto', color:'#2563eb', fields:[
+      ['SITE',item.site],['Codigo Site',item.codigo_site],['Elemento PEP',item.elemento_pep],['Numero Pedido',item.numero_pedido],
+    ]},
+    { title:'Folio / Seguimiento', color:'#ca8a04', fields:[
+      ['Folio',item.folio],['Usuario Folio',item.usuario_folio],['Status Folio',item.status_folio],
+      ['OYM Encargado',item.oym_encargado],['Comentario',item.comentarios],
+    ]},
+  ]
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,.55)',
+      display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:'#fff', borderRadius:14, width:700,
+        maxHeight:'75vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ padding:'12px 16px', borderBottom:'1px solid #e5e7eb',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>Detalle Seguimiento Asignado</p>
+            <p style={{ margin:0, fontWeight:800, color:'#1877f2', fontFamily:'monospace', fontSize:15 }}>
+              {item.sap||'—'}{item.cantidad_serie&&<span style={{ fontSize:12, color:'#6b7280', fontWeight:400 }}> · {item.cantidad_serie}</span>}
+            </p>
+          </div>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <button onClick={onEdit} style={{ fontSize:12, padding:'5px 12px', borderRadius:8,
+              background:'#e7f3ff', color:'#1877f2', border:'1px solid #cce0ff', cursor:'pointer', fontWeight:600 }}>✏️ Editar</button>
+            <button onClick={onClose} style={{ background:'#f3f4f6', border:'none', borderRadius:8,
+              width:30, height:30, cursor:'pointer', fontSize:18, color:'#374151',
+              display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+          </div>
+        </div>
+        <div style={{ overflowY:'auto', padding:'14px 16px', flex:1,
+          display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          {SECTIONS.map(sec=>(
+            <div key={sec.title} style={{ border:'1px solid #e5e7eb', borderRadius:10, overflow:'hidden' }}>
+              <div style={{ background:sec.color, padding:'7px 14px' }}>
+                <p style={{ margin:0, fontSize:10, fontWeight:700, color:'#fff', textTransform:'uppercase', letterSpacing:'.5px' }}>{sec.title}</p>
+              </div>
+              <div>
+                {sec.fields.filter(([,v])=>v!=null&&v!=='').map(([label,val])=>(
+                  <div key={label} style={{ display:'flex', padding:'6px 14px', borderBottom:'1px solid #f9fafb', gap:8 }}>
+                    <span style={{ fontSize:11, color:'#9ca3af', minWidth:120, flexShrink:0 }}>{label}</span>
+                    <span style={{ fontSize:12, color:'#1f2937', fontWeight:500, wordBreak:'break-all' }}>{String(val)}</span>
+                  </div>
+                ))}
+                {sec.fields.filter(([,v])=>v!=null&&v!=='').length===0&&(
+                  <p style={{ fontSize:11, color:'#d1d5db', textAlign:'center', padding:'10px 0', margin:0 }}>Sin datos</p>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ padding:'10px 16px', borderTop:'1px solid #e5e7eb', flexShrink:0, display:'flex', justifyContent:'flex-end' }}>
+          <button className="btn-ghost" onClick={onClose}>Cerrar</button>
+        </div>
+      </div>
+    </div>
+  , document.body)
+}
+
 // PESTAÑA 1 — Seguimiento de Spare Asignado
 // ═══════════════════════════════════════════════════════════════════════════════
 const COLS_ASIGNADO = [
-  { key:'red',              label:'RED',               default:true  },
+  { key:'red',              label:'Red',               default:true  },
   { key:'proveedor',        label:'Proveedor',          default:true  },
   { key:'sap',              label:'SAP',                default:true  },
   { key:'descripcion',      label:'Descripcion',        default:true  },
@@ -371,14 +442,14 @@ const COLS_ASIGNADO = [
   { key:'lote',             label:'Lote',               default:true  },
   { key:'motivo_asignacion',label:'Motivo Asignacion',  default:false },
   { key:'fecha_asignacion', label:'Fecha Asignacion',   default:true  },
-  { key:'site',             label:'SITE',               default:true  },
-  { key:'codigo_site',      label:'CODIGO DE SITE',     default:true  },
-  { key:'elemento_pep',     label:'ELEMENTO PEP',       default:true  },
-  { key:'numero_pedido',    label:'NUMERO DE PEDIDO',   default:true  },
-  { key:'folio',            label:'FOLIO',              default:true  },
-  { key:'usuario_folio',    label:'USUARIO FOLIO',      default:false },
-  { key:'status_folio',     label:'STATUS FOLIO',       default:true  },
-  { key:'oym_encargado',    label:'OYM ENCARGADO',      default:true  },
+  { key:'site',             label:'Site',               default:true  },
+  { key:'codigo_site',      label:'Codigo Site',        default:true  },
+  { key:'elemento_pep',     label:'Elemento PEP',       default:true  },
+  { key:'numero_pedido',    label:'Numero Pedido',      default:true  },
+  { key:'folio',            label:'Folio',              default:true  },
+  { key:'usuario_folio',    label:'Usuario Folio',      default:false },
+  { key:'status_folio',     label:'Status Folio',       default:true  },
+  { key:'oym_encargado',    label:'OyM Encargado',      default:true  },
   { key:'comentarios',      label:'Comentario',         default:true  },
 ]
 
@@ -393,6 +464,7 @@ function TabAsignado() {
   const [showUpload, setShowUpload] = useState(false)
   const [showModal,  setShowModal]  = useState(false)
   const [editItem,   setEditItem]   = useState(null)
+  const [viewItem,   setViewItem]   = useState(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_ASIGNADO.filter(c=>c.default).map(c=>c.key))
   const [colWidths, setColWidths] = useState({})
@@ -418,7 +490,7 @@ function TabAsignado() {
     return data.filter(r=>{
       const mQ = !q||[r.sap,r.descripcion,r.site,r.red,r.oym_encargado,r.folio,r.proveedor,r.lote]
         .some(v=>String(v||'').toLowerCase().includes(q))
-      const mC = Object.entries(colF).every(([k,v])=>!v||String(r[k]||'').toLowerCase()===v.toLowerCase())
+      const EXACT=['red','status_folio','lote','proveedor','status','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
       return mQ && (!fStatus||r.status_folio===fStatus) && (!fRed||r.red===fRed) && mC
     })
   },[data,dQ,fStatus,fRed,colF])
@@ -621,7 +693,6 @@ function TabAsignado() {
       {/* Filters row — solo selector de columnas */}
       <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center', justifyContent:'flex-end' }}>
         <div style={{ marginLeft:'auto' }}>
-          <ColumnSelector allCols={COLS_ASIGNADO} visibleCols={visibleCols} onChange={setVisibleCols} />
         </div>
       </div>
 
@@ -650,6 +721,7 @@ function TabAsignado() {
             background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626' }}>
           <Trash2 size={14}/> Limpiar todo
         </button>
+        <ColumnSelector allCols={COLS_ASIGNADO} visibleCols={visibleCols} onChange={setVisibleCols} />
         <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
           <Plus size={14}/> Nuevo
@@ -660,9 +732,9 @@ function TabAsignado() {
       {showUpload && (
         <ImportPanel api={API_ASIGNADO} onDone={()=>{ load() }}
           plantillaName="seguimiento_asignado"
-          plantillaCols={['RED','PROVEEDOR','SAP','DESCRIPCION','CANTIDAD / NUMERO DE SERIE','LOTE',
-            'MOTIVO DE ASIGNACION','FECHA DE ASIGNACION','SITE','CODIGO DE SITE','ELEMENTO PEP',
-            'NUMERO DE PEDIDO','FOLIO','USUARIO FOLIO','STATUS FOLIO','OYM ENCARGADO','Comentarios']} />
+          plantillaCols={['Red','Proveedor','SAP','Descripcion','N Serie','Lote',
+            'Motivo Asignacion','Fecha Asignacion','Site','Codigo Site','Elemento PEP',
+            'Numero Pedido','Folio','Usuario Folio','Status Folio','OyM Encargado','Comentario']} />
       )}
 
       {/* Tabla */}
@@ -706,7 +778,7 @@ function TabAsignado() {
                     if (col.key==='site') return <td key={col.key} style={{ padding:'8px 12px', fontWeight:600, whiteSpace:'nowrap' }}>
                       {v ? <span style={{ display:'flex', alignItems:'center', gap:4 }}><MapPin size={11} style={{ color:C.primary }}/>{v}</span> : <span style={{ color:'#d1d5db' }}>—</span>}
                     </td>
-                    if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:C.primary, whiteSpace:'nowrap' }}>{v}</td>
+                    if (col.key==='sap') return <td key={col.key} onClick={()=>setViewItem(row)} style={{ padding:'8px 12px', fontFamily:'monospace', fontWeight:700, fontSize:11, color:'#1877f2', whiteSpace:'nowrap', cursor:'pointer', textDecoration:'underline', textDecorationStyle:'dotted', textUnderlineOffset:3 }}>{v||'—'}</td>
                     if (col.key==='fecha_asignacion') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
                     return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
                   })}
@@ -739,6 +811,11 @@ function TabAsignado() {
         )}
       </div>
 
+      {viewItem && (
+        <ViewSeguimientoModal item={viewItem}
+          onClose={()=>setViewItem(null)}
+          onEdit={()=>{ setEditItem({...viewItem,_api:API_ASIGNADO}); setShowModal(true); setViewItem(null) }} />
+      )}
       {showModal && (
         <GenericModal
           title={editItem?.id ? 'Editar Seguimiento' : 'Nuevo Seguimiento'}
@@ -817,7 +894,7 @@ function TabAveriadas() {
     return data.filter(r=>{
       const mQ = !q||[r.red,r.proveedor,r.equipo,r.sap,r.serie_averiada,r.rma,r.ticket,r.status]
         .some(v=>String(v||'').toLowerCase().includes(q))
-      const mC = Object.entries(colF).every(([k,v])=>!v||String(r[k]||'').toLowerCase()===v.toLowerCase())
+      const EXACT=['red','status_folio','lote','proveedor','status','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
       return mQ && (!fStatus||r.status===fStatus) && mC
     })
   },[data,dQ,fStatus])
@@ -956,6 +1033,7 @@ function TabAveriadas() {
             cursor:data.length===0?'default':'pointer' }}>
           <Trash2 size={14}/> Limpiar todo
         </button>
+        <ColumnSelector allCols={COLS_AVERIADAS} visibleCols={visibleCols} onChange={setVisibleCols} />
         <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
           <Plus size={14}/> Nuevo
@@ -965,16 +1043,14 @@ function TabAveriadas() {
       {showUpload && (
         <ImportPanel api={API_AVERIADAS} onDone={load}
           plantillaName="seguimiento_averiadas"
-          plantillaCols={['REGION','RED','PROVEEDOR','EQUIPO','MODELO','PART NUMBER AVERIADO',
-            'DESCRIPTION','Serie Averiada','SAP','Encargado OyM','Ingresado al almacen CD VES',
-            'ACTA DE INGRESO','STATUS','INCIDENCIA OYM','Fecha de cambio/retiro',
-            'Fecha correo OYM','Fecha correo/recojo PROVEEDOR','RMA','TICKET','COSTO US$']} />
+          plantillaCols={['Región','Red','Proveedor','Equipo','Modelo','Part Number Averiado',
+            'Descripción','Serie Averiada','SAP','Encargado OyM','Ingreso Almacén',
+            'Acta Ingreso','Status','Incidencia OyM','Fecha Cambio',
+            'Fecha Correo OyM','Fecha Correo Prov','RMA','Ticket','Costo US$']} />
       )}
 
 
-      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
-        <ColumnSelector allCols={COLS_AVERIADAS} visibleCols={visibleCols} onChange={setVisibleCols} />
-      </div>
+
 
       {/* Tabla */}
       <div className="card overflow-hidden">
@@ -1113,7 +1189,7 @@ function TabUpgrades() {
     return data.filter(r=>{
       const mQ = !q||[r.proveedor,r.sap,r.part_number,r.numero_serie,r.folio,r.descripcion,r.region]
         .some(v=>String(v||'').toLowerCase().includes(q))
-      const mC = Object.entries(colF).every(([k,v])=>!v||String(r[k]||'').toLowerCase()===v.toLowerCase())
+      const EXACT=['red','status_folio','lote','proveedor','status','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
       return mQ && (!fEstado||r.proveedor===fEstado) && mC
     })
   },[data,dQ,fEstado,colF])
@@ -1234,6 +1310,7 @@ function TabUpgrades() {
             color:data.length===0?'#d1d5db':'#dc2626', borderColor:'#fecaca' }}>
           <Trash2 size={14}/> Limpiar todo
         </button>
+        <ColumnSelector allCols={COLS_UPGRADES} visibleCols={visibleCols} onChange={setVisibleCols} />
         <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
           <Plus size={14}/> Nuevo
@@ -1243,15 +1320,13 @@ function TabUpgrades() {
       {showUpload && (
         <ImportPanel api={API_UPGRADES} onDone={load}
           plantillaName="seguimiento_upgrades"
-          plantillaCols={['REGION','PROVEEDOR','PART NUMBER','SAP','DESCRIPCION',
-            'CANTIDAD','NUMERO DE SERIE','FECHA ASIGNACION','GUIA DE REMISION',
-            'FOLIO','N° DE PEDIDO','MOTIVO DE ASIGNACION','SEGUIMIENTO']} />
+          plantillaCols={['Región','Proveedor','Part Number','SAP','Descripción',
+            'Cantidad','N° Serie','Fecha Asignación','Guía Remisión',
+            'Folio','N° Pedido','Motivo','Seguimiento']} />
       )}
 
 
-      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
-        <ColumnSelector allCols={COLS_UPGRADES} visibleCols={visibleCols} onChange={setVisibleCols} />
-      </div>
+
 
       {/* Tabla */}
       <div className="card overflow-hidden">
@@ -1395,7 +1470,7 @@ function TabProveedor() {
     return data.filter(r=>{
       const mQ = !q||[r.proveedor,r.sap,r.part_number,r.numero_serie,r.descripcion,r.region,r.gr_devolucion]
         .some(v=>String(v||'').toLowerCase().includes(q))
-      const mC = Object.entries(colF).every(([k,v])=>!v||String(r[k]||'').toLowerCase()===v.toLowerCase())
+      const EXACT=['red','status_folio','lote','proveedor','status','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
       return mQ && (!fEstado||r.estado===fEstado) && mC
     })
   },[data,dQ,fEstado,colF])
@@ -1527,6 +1602,7 @@ function TabProveedor() {
             cursor:data.length===0?'default':'pointer' }}>
           <Trash2 size={14}/> Limpiar todo
         </button>
+        <ColumnSelector allCols={COLS_PROVEEDOR} visibleCols={visibleCols} onChange={setVisibleCols} />
         <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
           <Plus size={14}/> Nuevo
@@ -1536,16 +1612,14 @@ function TabProveedor() {
       {showUpload && (
         <ImportPanel api={API_PROVEEDOR} onDone={load}
           plantillaName="seguimiento_proveedor"
-          plantillaCols={['REGION','PROVEEDOR','SAP','PART-NUMBER','DESCRIPCIÓN',
-            'Numero de Serie','LOTE','CENTRO','ALMACÉN','Motivo de Asignacion',
-            'Fecha de asignacion','Fecha  devolucion al Almacen','GR-Devolucion ',
-            'ESTADO','COMENTARIO']} />
+          plantillaCols={['Región','Proveedor','SAP','Part Number','Descripción',
+            'N° Serie','Lote','Centro','Almacén','Motivo',
+            'Fecha Asignación','Fecha Devolución','GR Devolución',
+            'Estado','Comentario']} />
       )}
 
 
-      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
-        <ColumnSelector allCols={COLS_PROVEEDOR} visibleCols={visibleCols} onChange={setVisibleCols} />
-      </div>
+
 
       {/* Tabla */}
       <div className="card overflow-hidden">
