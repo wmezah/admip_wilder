@@ -14,7 +14,7 @@ import io
    # DESPUÉS:
 from .models import (
     Spare, SAPCatalog, CentroAlmacen, SAPMaterial,
-    PartNumber, RMA, StockSAP, SeguimientoSpare, Seguimiento,
+    PartNumber, StockSAP, SeguimientoSpare, Seguimiento,
     SeguimientoAveriadas, SeguimientoUpgrades, SeguimientoProveedor,
 )
 
@@ -23,7 +23,6 @@ from .serializers import (
     SpareSerializer, SpareListSerializer,
     SAPCatalogSerializer, CentroAlmacenSerializer,
     SAPMaterialSerializer, DashboardStatsSerializer,
-    RMASerializer,
     StockSAPSerializer,
     SeguimientoSpareSerializer,
     SeguimientoSerializer,
@@ -382,14 +381,6 @@ class PartNumberViewSet(viewsets.ModelViewSet):
         return Response({'deleted': count})
 
 
-# ─── RMA ViewSet ──────────────────────────────────────────────────────────────
-class RMAViewSet(viewsets.ModelViewSet):
-    queryset = RMA.objects.all()
-    serializer_class = RMASerializer
-    filter_backends = [SearchFilter, OrderingFilter]
-    search_fields = ['solicitud', 'usuario_solicitante', 'codigo_sap',
-                     'part_number', 'sn_averiada', 'ne', 'estado']
-    ordering_fields = ['created_at', 'estado', 'fecha_inicio_rma']
     ordering = ['-created_at']
 
 
@@ -560,6 +551,18 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
 
 
 # ─── Seguimiento Spare ViewSet (legacy) ──────────────────────────────────────
+# ─── RMA ViewSet ──────────────────────────────────────────────────────────────
+class RMAViewSet(viewsets.ModelViewSet):
+    from .models import RMA
+    from .serializers import RMASerializer
+    queryset         = RMA.objects.all()
+    serializer_class = RMASerializer
+    filter_backends  = [SearchFilter, OrderingFilter]
+    search_fields    = ['solicitud', 'usuario_solicitante', 'red', 'region',
+                        'ne', 'codigo_sap', 'part_number', 'sn_averiada', 'estado']
+    ordering_fields  = ['created_at', 'estado', 'fecha_inicio_rma']
+
+
 class SeguimientoSpareViewSet(viewsets.ModelViewSet):
     queryset = SeguimientoSpare.objects.all()
     serializer_class = SeguimientoSpareSerializer
@@ -585,49 +588,75 @@ class SeguimientoSpareViewSet(viewsets.ModelViewSet):
             return Response({'error': str(e)}, status=400)
 
         df = df.dropna(how='all')
-        created, errors = 0, []
+        created, updated, errors = 0, 0, []
+
+        def g(row, *keys):
+            """Busca el valor en múltiples posibles nombres de columna."""
+            for k in keys:
+                v = row.get(k)
+                if v is not None and str(v).strip() not in ('', 'nan', 'None'):
+                    return v
+            return None
+
+        def safe_date(val):
+            if val is None: return None
+            if hasattr(val, 'date'): return val.date()
+            try:
+                from datetime import datetime
+                return datetime.strptime(str(val)[:10], '%Y-%m-%d').date()
+            except Exception:
+                return None
 
         for _, row in df.iterrows():
             try:
-                red = safe_str(row.get('RED'))
+                red = safe_str(g(row, 'RED'))
                 if not red:
                     continue
 
-                fecha_raw = row.get('FECHA DE ASIGNACION')
-                fecha = None
-                if fecha_raw is not None and str(fecha_raw).strip() not in ('', 'nan', 'None'):
-                    if hasattr(fecha_raw, 'date'):
-                        fecha = fecha_raw.date()
-                    else:
-                        try:
-                            from datetime import datetime
-                            fecha = datetime.strptime(str(fecha_raw)[:10], '%Y-%m-%d').date()
-                        except Exception:
-                            fecha = None
+                sap_val  = safe_str(g(row, 'SAP'))
+                serie_val = safe_str(g(row, 'N Serie'))
 
-                SeguimientoSpare.objects.create(
+                fields = dict(
                     red               =red,
-                    sap               =safe_str(row.get('SAP')),
-                    descripcion       =safe_str(row.get('DESCRIPCION')),
-                    serial_lote       =safe_str(row.get('CANTIDAD / NUMERO DE SERIE')),
-                    lote              =safe_str(row.get('LOTE')),
-                    motivo_asignacion =safe_str(row.get('MOTIVO DE ASIGNACION')),
-                    fecha_asignacion  =fecha,
-                    site              =safe_str(row.get('SITE')),
-                    codigo_site       =safe_str(row.get('CODIGO DE SITE')),
-                    elemento_pep      =safe_str(row.get('ELEMENTO PEP')),
-                    numero_pedido     =safe_str(row.get('NUMERO DE PEDIDO')),
-                    folio             =safe_str(row.get('FOLIO')),
-                    usuario_folio     =safe_str(row.get('USUARIO FOLIO')),
-                    status_folio      =safe_str(row.get('STATUS FOLIO')),
-                    oym_encargado     =safe_str(row.get('OYM ENCARGADO')),
-                    comentarios       =safe_str(row.get('Comentarios')),
+                    sap               =sap_val,
+                    descripcion       =safe_str(g(row, 'Descripcion')),
+                    serial_lote       =serie_val,
+                    lote              =safe_str(g(row, 'Lote')),
+                    motivo_asignacion =safe_str(g(row, 'Motivo Asignacion')),
+                    fecha_asignacion  =safe_date(g(row, 'Fecha Asignacion')),
+                    site              =safe_str(g(row, 'SITE')),
+                    codigo_site       =safe_str(g(row, 'CODIGO DE SITE')),
+                    elemento_pep      =safe_str(g(row, 'ELEMENTO PEP')),
+                    numero_pedido     =safe_str(g(row, 'NUMERO DE PEDIDO')),
+                    folio             =safe_str(g(row, 'FOLIO')),
+                    usuario_folio     =safe_str(g(row, 'USUARIO FOLIO')),
+                    status_folio      =safe_str(g(row, 'STATUS FOLIO')),
+                    oym_encargado     =safe_str(g(row, 'OYM ENCARGADO')),
+                    comentarios       =safe_str(g(row, 'Comentario')),
                 )
+
+                # Update or create por SAP + N Serie + RED
+                if sap_val and serie_val:
+                    existing = SeguimientoSpare.objects.filter(
+                        sap=sap_val, serial_lote=serie_val, red=red
+                    ).first()
+                    if existing:
+                        for k, v in fields.items():
+                            if v is not None:
+                                setattr(existing, k, v)
+                        existing.save()
+                        updated += 1
+                        continue
+
+                SeguimientoSpare.objects.create(**fields)
                 created += 1
             except Exception as e:
                 errors.append(str(e))
 
-        return Response({'imported': created, 'errors': len(errors), 'error_details': errors[:20]})
+        return Response({
+            'imported': created, 'updated': updated,
+            'errors': len(errors), 'error_details': errors[:20]
+        })
 
     @action(detail=False, methods=['delete'])
     def clear_all(self, request):

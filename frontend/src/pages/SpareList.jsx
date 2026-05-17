@@ -946,25 +946,25 @@ function PivotChart({ items, onFilter, activeFilter, compact }) {
 // ── CAMBIO: agregado precio a CONTROL_COLS ───────────────────────────────────
 const CONTROL_COLS = [
   { key:'centro',           label:'Centro',              default:true  },
-  { key:'almacen',          label:'Almacén',             default:true  },
+  { key:'almacen',          label:'Almacen',             default:true  },
   { key:'zona',             label:'Zona',                default:true  },
   { key:'proveedor',        label:'Proveedor',           default:true  },
   { key:'modelo',           label:'Modelo',              default:true  },
   { key:'tipo',             label:'Tipo',                default:true  },
   { key:'sap',              label:'SAP',                 default:true  },
   { key:'part_number',      label:'Part Number',         default:true  },
-  { key:'descripcion',      label:'Descripción',         default:true  },
-  { key:'serial_number',    label:'N° Serie',            default:true  },
+  { key:'descripcion',      label:'Descripcion',         default:true  },
+  { key:'serial_number',    label:'N Serie',             default:true  },
   { key:'valor_lote',       label:'Lote',                default:true  },
   { key:'estatus',          label:'Estatus',             default:true  },
-  { key:'precio',           label:'Precio',              default:false },
   { key:'fecha_ingreso',    label:'Fecha Ingreso',       default:false },
-  { key:'fecha_asignacion', label:'Fecha Asignación',    default:false },
-  { key:'motivo_asignacion',label:'Motivo Asignación',   default:false },
-  { key:'orden_compra',     label:'Orden Compra',        default:true  },
-  { key:'procedencia',      label:'Procedencia',         default:false },
+  { key:'fecha_asignacion', label:'Fecha Asignacion',    default:false },
+  { key:'motivo_asignacion',label:'Motivo Asignacion',   default:false },
+  { key:'orden_compra',     label:'Orden Compra',        default:false },
+  { key:'procedencia',      label:'Procedencia',         default:true  },
   { key:'pedido_traslado',  label:'Pedido de Traslado',  default:false },
   { key:'comentario',       label:'Comentario',          default:false },
+  { key:'precio',           label:'Precio',              default:false },
 ]
 
 function TabControlInventario() {
@@ -978,6 +978,7 @@ function TabControlInventario() {
   const [showNew, setShowNew]           = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [viewItem, setViewItem] = useState(null)
+  const [seguimientoItem, setSeguimientoItem] = useState(null)
   const [visibleCols, setVisibleCols] = useState(CONTROL_COLS.filter(c=>c.default).map(c=>c.key))
   const [colWidths, setColWidths] = useState({})
   const [importing, setImporting] = useState(false)
@@ -1788,7 +1789,7 @@ function TabControlInventario() {
                     )
                   })}
                   <td style={{ padding:'6px 12px' }}>
-                    <div style={{ display:'flex', gap:4 }}>
+                    <div style={{ display:'flex', gap:4, alignItems:'center' }}>
                       <button onClick={()=>setEditItem(row)}
                         style={{ background:'none', border:'none', cursor:'pointer',
                           color:'#1877f2', padding:4, borderRadius:6 }}>
@@ -1824,6 +1825,12 @@ function TabControlInventario() {
           onClose={()=>setViewItem(null)}
           onEdit={()=>{ setEditItem(viewItem); setViewItem(null) }} />
       )}
+      {seguimientoItem && (
+        <EnviarSeguimientoModal
+          spare={seguimientoItem}
+          onClose={()=>setSeguimientoItem(null)}
+        />
+      )}
 
       {showImportModal && createPortal(
         <SpareImportModal onClose={()=>setShowImportModal(false)} onDone={()=>{ load() }} />,
@@ -1843,6 +1850,210 @@ function TabControlInventario() {
   )
 }
 
+
+// ── EnviarSeguimientoModal ────────────────────────────────────────────────────
+function EnviarSeguimientoModal({ spare, onClose }) {
+  const token = localStorage.getItem('access_token')
+  const [form, setForm] = useState({
+    // Campos comunes pre-llenados del Spare
+    sap:              spare.sap              || '',
+    descripcion:      spare.descripcion      || '',
+    cantidad_serie:   spare.serial_number    || '',
+    lote:             spare.valor_lote       || '',
+    motivo_asignacion:spare.motivo_asignacion|| '',
+    fecha_asignacion: spare.fecha_asignacion || '',
+    proveedor:        spare.proveedor        || '',
+    // Campos exclusivos de Seguimiento — vacíos
+    red:              '',
+    site:             '',
+    codigo_site:      '',
+    elemento_pep:     '',
+    numero_pedido:    '',
+    folio:            '',
+    usuario_folio:    '',
+    status_folio:     '',
+    oym_encargado:    '',
+    comentarios:      '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState(null)
+  const [ok, setOk] = useState(false)
+
+  const set = (k, v) => setForm(f => ({...f, [k]: v}))
+
+  const lbl = (text, req) => (
+    <label style={{ fontSize:10, fontWeight:700, color:'#65676b', display:'block',
+      marginBottom:3, textTransform:'uppercase', letterSpacing:'.3px' }}>
+      {text}{req && <span style={{ color:'#dc2626' }}> *</span>}
+    </label>
+  )
+
+  const save = async () => {
+    if (!form.red) { setErr('El campo RED es requerido'); return }
+    setSaving(true); setErr(null)
+    try {
+      const res = await fetch('/api/spare/seguimiento/', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+        body: JSON.stringify(form)
+      })
+      const d = await res.json()
+      if (!res.ok) {
+        setErr(`Error ${res.status}: ${JSON.stringify(d)}`)
+        return
+      }
+      setOk(true)
+    } catch(e) { setErr('Error de red: ' + e.message) }
+    finally { setSaving(false) }
+  }
+
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.55)', zIndex:9999,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target===e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:14, width:740,
+        maxHeight:'90vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+
+        {/* Header */}
+        <div style={{ padding:'12px 20px', borderBottom:'1px solid #dadde1',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>
+              Enviar a Seguimiento Asignado
+            </p>
+            <p style={{ margin:0, fontWeight:700, color:'#1877f2', fontFamily:'monospace', fontSize:13 }}>
+              SAP {spare.sap} · {spare.serial_number || spare.valor_lote || '—'}
+            </p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'1px solid #dadde1',
+            borderRadius:8, width:28, height:28, cursor:'pointer', fontSize:15, color:'#65676b',
+            display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+        </div>
+
+        {ok ? (
+          <div style={{ padding:40, textAlign:'center' }}>
+            <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
+            <p style={{ fontWeight:700, fontSize:16, color:'#15803d', margin:'0 0 6px' }}>
+              Enviado a Seguimiento correctamente
+            </p>
+            <p style={{ color:'#6b7280', fontSize:13, margin:'0 0 24px' }}>
+              El spare se mantiene en la tabla original sin cambios.
+            </p>
+            <button className="btn-primary" onClick={onClose}>Cerrar</button>
+          </div>
+        ) : (
+          <>
+            <div style={{ overflowY:'auto', padding:'16px 20px', flex:1 }}>
+              {/* Campos comunes — pre-llenados */}
+              <p style={{ fontSize:11, fontWeight:700, color:'#1877f2', margin:'0 0 10px',
+                textTransform:'uppercase', letterSpacing:'.5px', borderBottom:'2px solid #e7f3ff', paddingBottom:6 }}>
+                📋 Datos del Spare (pre-llenados)
+              </p>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16 }}>
+                {[
+                  { key:'sap',           label:'SAP' },
+                  { key:'cantidad_serie', label:'N Serie' },
+                  { key:'lote',          label:'Lote' },
+                ].map(f => (
+                  <div key={f.key}>
+                    {lbl(f.label)}
+                    <input className="input" value={form[f.key]}
+                      onChange={e=>set(f.key,e.target.value)} />
+                  </div>
+                ))}
+                <div style={{ gridColumn:'span 3' }}>
+                  {lbl('Descripcion')}
+                  <input className="input" value={form.descripcion}
+                    onChange={e=>set('descripcion',e.target.value)} />
+                </div>
+                <div>
+                  {lbl('Fecha Asignacion')}
+                  <input type="date" className="input" value={form.fecha_asignacion}
+                    onChange={e=>set('fecha_asignacion',e.target.value)} />
+                </div>
+                <div style={{ gridColumn:'span 2' }}>
+                  {lbl('Motivo Asignacion')}
+                  <input className="input" value={form.motivo_asignacion}
+                    onChange={e=>set('motivo_asignacion',e.target.value)} />
+                </div>
+              </div>
+
+              {/* Campos exclusivos Seguimiento */}
+              <p style={{ fontSize:11, fontWeight:700, color:'#d97706', margin:'0 0 10px',
+                textTransform:'uppercase', letterSpacing:'.5px', borderBottom:'2px solid #fffbeb', paddingBottom:6 }}>
+                ✏️ Datos de Seguimiento (a completar)
+              </p>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+                <div>
+                  {lbl('RED', true)}
+                  <select className="input" value={form.red} onChange={e=>set('red',e.target.value)}>
+                    <option value=''>— Seleccionar —</option>
+                    {['IPRAN','ACCESO','METRO','CORE'].map(r=>(
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  {lbl('STATUS FOLIO')}
+                  <select className="input" value={form.status_folio} onChange={e=>set('status_folio',e.target.value)}>
+                    <option value=''>— Seleccionar —</option>
+                    {['Concluido','No se Utilizó','Pendiente Crear','Aprobado','Pendiente','Cancelado'].map(s=>(
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  {lbl('FOLIO')}
+                  <input className="input" value={form.folio} onChange={e=>set('folio',e.target.value)} />
+                </div>
+                <div style={{ gridColumn:'span 2' }}>
+                  {lbl('SITE')}
+                  <input className="input" value={form.site} onChange={e=>set('site',e.target.value)} />
+                </div>
+                <div>
+                  {lbl('CODIGO DE SITE')}
+                  <input className="input" value={form.codigo_site} onChange={e=>set('codigo_site',e.target.value)} />
+                </div>
+                <div>
+                  {lbl('ELEMENTO PEP')}
+                  <input className="input" value={form.elemento_pep} onChange={e=>set('elemento_pep',e.target.value)} />
+                </div>
+                <div>
+                  {lbl('NUMERO DE PEDIDO')}
+                  <input className="input" value={form.numero_pedido} onChange={e=>set('numero_pedido',e.target.value)} />
+                </div>
+                <div>
+                  {lbl('USUARIO FOLIO')}
+                  <input className="input" value={form.usuario_folio} onChange={e=>set('usuario_folio',e.target.value)} />
+                </div>
+                <div style={{ gridColumn:'span 3' }}>
+                  {lbl('OYM ENCARGADO')}
+                  <input className="input" value={form.oym_encargado} onChange={e=>set('oym_encargado',e.target.value)} />
+                </div>
+                <div style={{ gridColumn:'span 3' }}>
+                  {lbl('Comentario')}
+                  <input className="input" value={form.comentarios} onChange={e=>set('comentarios',e.target.value)} />
+                </div>
+              </div>
+              {err && (
+                <div style={{ marginTop:10, padding:'8px 12px', borderRadius:8,
+                  background:'#fef2f2', border:'1px solid #fecaca', color:'#dc2626', fontSize:12 }}>{err}</div>
+              )}
+            </div>
+            <div style={{ padding:'10px 20px', borderTop:'1px solid #dadde1', flexShrink:0,
+              display:'flex', gap:10, justifyContent:'flex-end' }}>
+              <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+              <button className="btn-primary" onClick={save} disabled={saving}>
+                {saving ? 'Enviando...' : '→ Enviar a Seguimiento'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  , document.body)
+}
 
 // ── ViewSpareModal ────────────────────────────────────────────────────────────
 function ViewSpareModal({ item, onClose, onEdit }) {
@@ -2073,6 +2284,27 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
           : Object.entries(data).map(([k,v])=>`${k}: ${Array.isArray(v)?v.join(', '):v}`).join('\n')
         alert(msg)
         return
+      }
+      // Si estatus es Asignado → crear fila en Seguimiento automáticamente
+      if (payload.estatus === 'Asignado') {
+        try {
+          await fetch('/api/spare/seguimiento/', {
+            method: 'POST',
+            headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+            body: JSON.stringify({
+              sap:              payload.sap               || '',
+              descripcion:      payload.descripcion       || '',
+              cantidad_serie:   payload.serial_number     || '',
+              lote:             payload.valor_lote        || '',
+              motivo_asignacion:payload.motivo_asignacion || '',
+              fecha_asignacion: payload.fecha_asignacion  || '',
+              proveedor:        payload.proveedor         || '',
+              red: '', site: '', codigo_site: '', elemento_pep: '',
+              numero_pedido: '', folio: '', usuario_folio: '',
+              status_folio: '', oym_encargado: '', comentarios: '',
+            })
+          })
+        } catch(_) {}
       }
       onSaved()
     } catch(e) { alert('Error al guardar') }

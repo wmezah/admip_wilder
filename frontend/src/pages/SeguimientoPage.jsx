@@ -88,7 +88,7 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
         </label>
         <button onClick={downloadPlantilla} style={{
           display:'inline-flex', alignItems:'center', gap:6,
-          padding:'7px 14px', borderRadius:8, border:'1.5px solid #e5e7eb',
+          padding:'7px 14px', borderRadius:8, border:'1px solid #dadde1',
           background:'#fff', color:'#374151', fontSize:13, fontWeight:600, cursor:'pointer'
         }}>
           <Download size={14} /> Descargar Plantilla
@@ -282,7 +282,7 @@ function ConfirmClearModal({ count, onClose, onConfirm }) {
         </p>
         <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
           <button onClick={onClose} style={{ padding:'9px 20px', borderRadius:8,
-            border:'1.5px solid #e5e7eb', background:'#fff', fontSize:14, fontWeight:600, cursor:'pointer' }}>
+            border:'1px solid #dadde1', background:'#fff', fontSize:14, fontWeight:600, cursor:'pointer' }}>
             Cancelar
           </button>
           <button onClick={async () => { setLoading(true); await onConfirm(); setLoading(false) }}
@@ -363,23 +363,23 @@ function ColumnSelector({ allCols, visibleCols, onChange }) {
 // PESTAÑA 1 — Seguimiento de Spare Asignado
 // ═══════════════════════════════════════════════════════════════════════════════
 const COLS_ASIGNADO = [
-  { key:'red',              label:'Red',                   default:true  },
-  { key:'proveedor',        label:'Proveedor',             default:true  },
-  { key:'sap',              label:'SAP',                   default:true  },
-  { key:'descripcion',      label:'Descripción',           default:true  },
-  { key:'cantidad_serie',   label:'Serie/Cant.',           default:true  },
-  { key:'lote',             label:'Lote',                  default:true  },
-  { key:'motivo_asignacion',label:'Motivo de Asignación',  default:false },
-  { key:'fecha_asignacion', label:'Fecha de Asignación',   default:true  },
-  { key:'site',             label:'Site',                  default:true  },
-  { key:'codigo_site',      label:'Cód. Site',             default:true  },
-  { key:'elemento_pep',     label:'Elemento PEP',          default:true  },
-  { key:'numero_pedido',    label:'Pedido',                default:true  },
-  { key:'folio',            label:'Folio',                 default:true  },
-  { key:'usuario_folio',    label:'Usuario Folio',         default:false },
-  { key:'status_folio',     label:'Status',                default:true  },
-  { key:'oym_encargado',    label:'OyM Encargado',         default:true  },
-  { key:'comentarios',      label:'Comentarios',           default:true  },
+  { key:'red',              label:'RED',               default:true  },
+  { key:'proveedor',        label:'Proveedor',          default:true  },
+  { key:'sap',              label:'SAP',                default:true  },
+  { key:'descripcion',      label:'Descripcion',        default:true  },
+  { key:'cantidad_serie',   label:'N Serie',            default:true  },
+  { key:'lote',             label:'Lote',               default:true  },
+  { key:'motivo_asignacion',label:'Motivo Asignacion',  default:false },
+  { key:'fecha_asignacion', label:'Fecha Asignacion',   default:true  },
+  { key:'site',             label:'SITE',               default:true  },
+  { key:'codigo_site',      label:'CODIGO DE SITE',     default:true  },
+  { key:'elemento_pep',     label:'ELEMENTO PEP',       default:true  },
+  { key:'numero_pedido',    label:'NUMERO DE PEDIDO',   default:true  },
+  { key:'folio',            label:'FOLIO',              default:true  },
+  { key:'usuario_folio',    label:'USUARIO FOLIO',      default:false },
+  { key:'status_folio',     label:'STATUS FOLIO',       default:true  },
+  { key:'oym_encargado',    label:'OYM ENCARGADO',      default:true  },
+  { key:'comentarios',      label:'Comentario',         default:true  },
 ]
 
 function TabAsignado() {
@@ -389,11 +389,13 @@ function TabAsignado() {
   const [dQ,     setDQ]     = useState('')
   const [fStatus,setFS]     = useState('')
   const [fRed,   setFR]     = useState('')
+  const [colF,   setColF]   = useState({})
   const [showUpload, setShowUpload] = useState(false)
   const [showModal,  setShowModal]  = useState(false)
   const [editItem,   setEditItem]   = useState(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_ASIGNADO.filter(c=>c.default).map(c=>c.key))
+  const [colWidths, setColWidths] = useState({})
   const [page, setPage] = useState(1)
   const debRef = useRef(null)
   const PER_PAGE = 50
@@ -416,22 +418,73 @@ function TabAsignado() {
     return data.filter(r=>{
       const mQ = !q||[r.sap,r.descripcion,r.site,r.red,r.oym_encargado,r.folio,r.proveedor,r.lote]
         .some(v=>String(v||'').toLowerCase().includes(q))
-      return mQ && (!fStatus||r.status_folio===fStatus) && (!fRed||r.red===fRed)
+      const mC = Object.entries(colF).every(([k,v])=>!v||String(r[k]||'').toLowerCase()===v.toLowerCase())
+      return mQ && (!fStatus||r.status_folio===fStatus) && (!fRed||r.red===fRed) && mC
     })
-  },[data,dQ,fStatus,fRed])
+  },[data,dQ,fStatus,fRed,colF])
+
+  const RED_COLORS = { 'IPRAN':'#1877f2','ACCESO':'#2563eb','METRO':'#0891b2','CORE':'#dc2626' }
+  const PROV_COLORS = { 'HUAWEI':'#CF0A2C','ZTE':'#16a34a','NOKIA':'#9c6fe4','CISCO':'#059669' }
+  const PALETTE = ['#1877f2','#CF0A2C','#16a34a','#9c6fe4','#d97706','#0891b2']
+  const STATUS_COLORS = { 'Concluido':'#15803d','Aprobado':'#2563eb','No se Utilizó':'#ca8a04','Pendiente Crear':'#dc2626' }
+
+  // ── Dashboard stats ──────────────────────────────────────────────────────
+  const dash = useMemo(() => {
+    const src = filtered
+    const byRed = {}, byProv = {}, byStatus = {}
+    src.forEach(r => {
+      const red  = r.red      || 'Sin red';   byRed[red]    = (byRed[red]   ||0)+1
+      const prov = r.proveedor|| 'Sin prov.'; byProv[prov]  = (byProv[prov] ||0)+1
+      const st   = r.status_folio||'Sin status'; byStatus[st]= (byStatus[st] ||0)+1
+    })
+    const topRed  = Object.entries(byRed).sort((a,b)=>b[1]-a[1]).slice(0,6)
+    const topProv = Object.entries(byProv).sort((a,b)=>b[1]-a[1]).slice(0,6)
+    const maxRed  = topRed[0]?.[1]  || 1
+    const maxProv = topProv[0]?.[1] || 1
+    const STATUS_COUNTS = {
+      'Concluido':       src.filter(r=>r.status_folio==='Concluido').length,
+      'Aprobado':        src.filter(r=>r.status_folio==='Aprobado').length,
+      'No se Utilizó':   src.filter(r=>r.status_folio==='No se Utilizó').length,
+      'Pendiente Crear': src.filter(r=>r.status_folio==='Pendiente Crear').length,
+    }
+    return { total:src.length, topRed, topProv, maxRed, maxProv, STATUS_COUNTS }
+  }, [filtered])
 
   const pages = Math.ceil(filtered.length/PER_PAGE)
   const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
   const activeCols = COLS_ASIGNADO.filter(c=>visibleCols.includes(c.key))
 
+
+      const filterRow = (
+        <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
+          {activeCols.map(col => (
+            <td key={col.key} style={{ padding:'3px 6px' }}>
+              <input value={colF[col.key]||''} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
+                style={{ width:'100%', border:`1px solid ${colF[col.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
+                  padding:'3px 6px', fontSize:10, outline:'none',
+                  background:colF[col.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
+                placeholder="Filtrar…"/>
+            </td>
+          ))}
+          <td style={{ padding:'3px 6px' }}>
+            {Object.values(colF).some(Boolean) && (
+              <button onClick={()=>setColF({})} title="Limpiar filtros"
+                style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4,
+                  padding:'3px 8px', fontSize:10, color:'#dc2626', cursor:'pointer' }}>✕</button>
+            )}
+          </td>
+        </tr>
+      )
+  const hasFilter = !!(fStatus||fRed||query)
   const exportXLSX = () => {
+    const src = hasFilter ? filtered : data
     const cols = COLS_ASIGNADO.map(c=>c.key)
     const header = COLS_ASIGNADO.map(c=>c.label)
-    const rows = filtered.map(r=>cols.map(k=>r[k]||''))
+    const rows = src.map(r=>cols.map(k=>r[k]||''))
     const ws = XLSX.utils.aoa_to_sheet([header,...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb,ws,'Seguimiento')
-    XLSX.writeFile(wb,'seguimiento_asignado.xlsx')
+    XLSX.writeFile(wb, hasFilter ? `asignado_filtrado_${src.length}.xlsx` : 'seguimiento_asignado.xlsx')
   }
 
   const del = async (id) => {
@@ -477,30 +530,132 @@ function TabAsignado() {
 
   return (
     <div style={{ paddingBottom:20 }}>
-      {/* Toolbar */}
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16, alignItems:'center' }}>
-        <button className="btn-ghost flex items-center gap-2" onClick={()=>setShowUpload(v=>!v)}>
-          <Upload size={14}/> Importar XLSX
+      {/* ── Dashboard ── */}
+      {/* ── Dashboard ── */}
+      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
+        {/* KPIs — mismo formato que Spare */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:14 }}>
+          {[
+            { l:'Total',          v:dash.total,                           color:'#1877f2', bg:'#e7f3ff', est:'' },
+            { l:'Concluido',      v:dash.STATUS_COUNTS['Concluido'],      color:'#15803d', bg:'#f0fdf4', est:'Concluido' },
+            { l:'Aprobado',       v:dash.STATUS_COUNTS['Aprobado'],       color:'#2563eb', bg:'#eff6ff', est:'Aprobado' },
+            { l:'No se Utilizó',  v:dash.STATUS_COUNTS['No se Utilizó'],  color:'#ca8a04', bg:'#fefce8', est:'No se Utilizó' },
+            { l:'Pendiente Crear',v:dash.STATUS_COUNTS['Pendiente Crear'],color:'#dc2626', bg:'#fef2f2', est:'Pendiente Crear' },
+          ].map(k=>(
+            <div key={k.l} onClick={()=>{ setFS(fStatus===k.est&&k.est?'':k.est); setPage(1) }}
+              style={{ background:'#fff', borderRadius:12, padding:'12px 16px',
+                display:'flex', alignItems:'center', gap:12, cursor:'pointer',
+                boxShadow: fStatus===k.est&&k.est ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)',
+                transition:'box-shadow .15s' }}>
+              <div style={{ width:44, height:44, borderRadius:12, background:k.bg,
+                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:20, color:k.color }}>●</span>
+              </div>
+              <div>
+                <div style={{ fontSize:26, fontWeight:700, color:'#111827', lineHeight:1 }}>{k.v}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3 }}>{k.l}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ fontSize:10, fontWeight:700, color:'#6b7280', letterSpacing:'.06em',
+          textTransform:'uppercase', marginBottom:10 }}>
+          Distribución y tendencias
+          {(fStatus||fRed) && <span style={{ background:'#1877f2', color:'#fff', borderRadius:8,
+            padding:'1px 8px', marginLeft:6, fontSize:9 }}>filtrado</span>}
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
+          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por RED</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {dash.topRed.map(([red,cnt])=>{ const col=RED_COLORS[red]||'#6b7280'; return (
+                <div key={red} onClick={()=>{ setFR(fRed===red?'':red); setPage(1) }}
+                  style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', opacity:fRed&&fRed!==red?.4:1 }}>
+                  <span style={{ fontSize:10, width:60, flexShrink:0, textAlign:'right', color:fRed===red?col:'#65676b', fontWeight:fRed===red?700:400, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{red}</span>
+                  <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
+                    <div style={{ width:`${(cnt/dash.maxRed)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
+                  </div>
+                  <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
+                </div>
+              )})}
+            </div>
+          </div>
+          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por Proveedor</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {dash.topProv.map(([prov,cnt],i)=>{ const col=PROV_COLORS[prov]||PALETTE[i%PALETTE.length]; return (
+                <div key={prov} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:10, width:60, flexShrink:0, textAlign:'right', color:'#65676b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prov}</span>
+                  <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
+                    <div style={{ width:`${(cnt/dash.maxProv)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
+                  </div>
+                  <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
+                </div>
+              )})}
+            </div>
+          </div>
+          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por Status Folio</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+              {Object.entries(dash.STATUS_COUNTS).filter(([,v])=>v>0).map(([st,cnt])=>{ const col=STATUS_COLORS[st]||'#6b7280'; const max=Math.max(...Object.values(dash.STATUS_COUNTS))||1; return (
+                <div key={st} onClick={()=>{ setFS(fStatus===st?'':st); setPage(1) }}
+                  style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', opacity:fStatus&&fStatus!==st?.4:1 }}>
+                  <span style={{ fontSize:10, width:80, flexShrink:0, textAlign:'right', color:fStatus===st?col:'#65676b', fontWeight:fStatus===st?700:400, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{st}</span>
+                  <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
+                    <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
+                  </div>
+                  <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
+                </div>
+              )})}
+              {!Object.values(dash.STATUS_COUNTS).some(v=>v>0) && <p style={{ fontSize:11, color:'#d1d5db', textAlign:'center', margin:'10px 0' }}>Sin datos</p>}
+            </div>
+            {(fStatus||fRed) && (
+              <button onClick={()=>{ setFS(''); setFR(''); setPage(1) }}
+                style={{ marginTop:8, fontSize:10, color:'#dc2626', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4, padding:'3px 8px', cursor:'pointer' }}>
+                ✕ Limpiar filtros
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      {/* Filters row — solo selector de columnas */}
+      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center', justifyContent:'flex-end' }}>
+        <div style={{ marginLeft:'auto' }}>
+          <ColumnSelector allCols={COLS_ASIGNADO} visibleCols={visibleCols} onChange={setVisibleCols} />
+        </div>
+      </div>
+
+
+      {/* Toolbar unificado — mismo formato Spare */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14, alignItems:'center' }}>
+        <div style={{ position:'relative', flex:1, minWidth:220 }}>
+          <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }}/>
+          <input className="input" style={{ paddingLeft:30, fontSize:13 }}
+            placeholder="Buscar SAP, descripción, site, proveedor..."
+            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
+              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
+        </div>
+        <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{filtered.length} registros</span>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={exportXLSX}><Download size={14}/>
+          {hasFilter ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
         </button>
-        <button className="btn-ghost flex items-center gap-2" onClick={exportXLSX}>
-          <Download size={14}/> Exportar Excel
-        </button>
-        <button className="btn-ghost flex items-center gap-2" onClick={load}>
-          <RefreshCw size={14}/> Actualizar
-        </button>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={load}><RefreshCw size={14}/> Actualizar</button>
         <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
           style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
-            borderRadius:8, border:'1.5px solid #fecaca',
-            background: data.length===0?'#f9fafb':'#fff',
-            color: data.length===0?'#d1d5db':'#dc2626',
-            fontSize:13, fontWeight:600, cursor: data.length===0?'default':'pointer' }}>
+            borderRadius:8, border:'1.5px solid #fecaca', fontSize:13, fontWeight:600, cursor:data.length===0?'default':'pointer',
+            background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626' }}>
           <Trash2 size={14}/> Limpiar todo
         </button>
-        <button className="btn-primary flex items-center gap-2"
+        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
           <Plus size={14}/> Nuevo
         </button>
       </div>
+
 
       {showUpload && (
         <ImportPanel api={API_ASIGNADO} onDone={()=>{ load() }}
@@ -510,67 +665,24 @@ function TabAsignado() {
             'NUMERO DE PEDIDO','FOLIO','USUARIO FOLIO','STATUS FOLIO','OYM ENCARGADO','Comentarios']} />
       )}
 
-      {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:16 }}>
-        {[
-          ['Total',filtered.length,'#1877f2'],
-          ['Concluido',filtered.filter(r=>r.status_folio==='Concluido').length,'#15803d'],
-          ['Aprobado',filtered.filter(r=>r.status_folio==='Aprobado').length,'#2563eb'],
-          ['No se Utilizó',filtered.filter(r=>r.status_folio==='No se Utilizó').length,'#ca8a04'],
-          ['Pendiente Crear',filtered.filter(r=>r.status_folio==='Pendiente Crear').length,'#dc2626'],
-        ].map(([l,v,c])=>(
-          <div key={l} className="card p-4" style={{ borderLeft:`4px solid ${c}`, cursor:'pointer' }}
-            onClick={()=>{ setFS(l==='Total'?'':l); setPage(1) }}>
-            <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>{l}</p>
-            <p style={{ fontSize:24, fontWeight:800, color:c, margin:0 }}>{v}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
-        <div style={{ position:'relative', flex:1, minWidth:220 }}>
-          <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:C.muted }}/>
-          <input className="input" style={{ paddingLeft:32 }}
-            placeholder="Buscar SAP, descripción, site, proveedor..."
-            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
-              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
-        </div>
-        <select className="input" style={{ width:160 }} value={fStatus} onChange={e=>{ setFS(e.target.value); setPage(1) }}>
-          <option value=''>Todos los status</option>
-          {['Concluido','No se Utilizó','Pendiente Crear','Aprobado'].map(s=>(
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-        <select className="input" style={{ width:130 }} value={fRed} onChange={e=>{ setFR(e.target.value); setPage(1) }}>
-          <option value=''>Todas las redes</option>
-          {['IPRAN','ACCESO','METRO','CORE'].map(r=><option key={r} value={r}>{r}</option>)}
-        </select>
-        {(fStatus||fRed||query) && (
-          <button className="btn-ghost" style={{ fontSize:12 }}
-            onClick={()=>{ setFS(''); setFR(''); setQuery(''); setDQ(''); setPage(1) }}>
-            ✕ Limpiar
-          </button>
-        )}
-        <span style={{ fontSize:12, color:C.muted }}>{filtered.length} resultados</span>
-        <div style={{ marginLeft:'auto' }}>
-          <ColumnSelector allCols={COLS_ASIGNADO} visibleCols={visibleCols} onChange={setVisibleCols} />
-        </div>
-      </div>
-
       {/* Tabla */}
       <div className="card overflow-hidden">
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
+            <colgroup>{activeCols.map(col=><col key={col.key} style={{ width: colWidths[col.key] || 130 }} />)}<col style={{ width:70 }} /></colgroup>
             <thead>
-              <tr style={{ background:'#f9fafb' }}>
+              <tr style={{ background:'#f0f2f5' }}>
                 {activeCols.map(col=>(
                   <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
                     fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
-                    whiteSpace:'nowrap', borderBottom:`1px solid ${C.border}` }}>{col.label}</th>
+                    whiteSpace:'nowrap', borderBottom:'1px solid #dadde1', position:'relative', userSelect:'none', overflow:'visible' }}>
+                    {col.label}
+                    <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
+                  </th>
                 ))}
-                <th style={{ padding:'10px 12px', borderBottom:`1px solid ${C.border}` }}/>
+                <th style={{ padding:'10px 12px', borderBottom:'1px solid #dadde1' }}/>
               </tr>
+              {filterRow}
             </thead>
             <tbody>
               {loading && <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:C.muted }}>Cargando...</td></tr>}
@@ -580,9 +692,9 @@ function TabAsignado() {
                 </td></tr>
               )}
               {shown.map((row,i)=>(
-                <tr key={row.id||i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fafafa' }}
+                <tr key={row.id||i} style={{ borderBottom:'1px solid #dadde1', background:i%2===0?'#ffffff':'#f0f2f5', transition:'background .12s' }}
                   onMouseEnter={e=>e.currentTarget.style.background='#e7f3ff'}
-                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
+                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#ffffff':'#f0f2f5'}>
                   {activeCols.map(col=>{
                     const v = row[col.key]
                     if (col.key==='red') return <td key={col.key} style={{ padding:'8px 12px' }}><RedBadge red={v}/></td>
@@ -596,7 +708,7 @@ function TabAsignado() {
                     </td>
                     if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:C.primary, whiteSpace:'nowrap' }}>{v}</td>
                     if (col.key==='fecha_asignacion') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
-                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
+                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
                   })}
                   <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
                     <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
@@ -610,7 +722,7 @@ function TabAsignado() {
           </table>
         </div>
         {pages>1 && (
-          <div style={{ padding:'12px 16px', borderTop:`1px solid ${C.border}`,
+          <div style={{ padding:'12px 16px', borderTop:'1px solid #dadde1',
             display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <span style={{ fontSize:12, color:C.muted }}>Página {page} de {pages} · {filtered.length} registros</span>
             <div style={{ display:'flex', gap:6 }}>
@@ -676,11 +788,13 @@ function TabAveriadas() {
   const [query,  setQuery]  = useState('')
   const [dQ,     setDQ]     = useState('')
   const [fStatus,setFS]     = useState('')
+  const [colF,   setColF]   = useState({})
   const [showUpload, setShowUpload] = useState(false)
   const [showModal,  setShowModal]  = useState(false)
   const [editItem,   setEditItem]   = useState(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_AVERIADAS.filter(c=>c.default).map(c=>c.key))
+  const [colWidths, setColWidths] = useState({})
   const [page, setPage] = useState(1)
   const debRef = useRef(null)
   const PER_PAGE = 50
@@ -703,7 +817,8 @@ function TabAveriadas() {
     return data.filter(r=>{
       const mQ = !q||[r.red,r.proveedor,r.equipo,r.sap,r.serie_averiada,r.rma,r.ticket,r.status]
         .some(v=>String(v||'').toLowerCase().includes(q))
-      return mQ && (!fStatus||r.status===fStatus)
+      const mC = Object.entries(colF).every(([k,v])=>!v||String(r[k]||'').toLowerCase()===v.toLowerCase())
+      return mQ && (!fStatus||r.status===fStatus) && mC
     })
   },[data,dQ,fStatus])
 
@@ -711,14 +826,35 @@ function TabAveriadas() {
   const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
   const activeCols = COLS_AVERIADAS.filter(c=>visibleCols.includes(c.key))
 
+  const filterRow = (
+    <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
+      {activeCols.map(col => (
+        <td key={col.key} style={{ padding:'3px 6px' }}>
+          <input value={colF[col.key]||''} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
+            style={{ width:'100%', border:`1px solid ${colF[col.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
+              padding:'3px 6px', fontSize:10, outline:'none',
+              background:colF[col.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
+            placeholder="Filtrar…"/>
+        </td>
+      ))}
+      <td style={{ padding:'3px 6px' }}>
+        {Object.values(colF).some(Boolean) && (
+          <button onClick={()=>setColF({})}
+            style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4,
+              padding:'3px 8px', fontSize:10, color:'#dc2626', cursor:'pointer' }}>✕</button>
+        )}
+      </td>
+    </tr>
+  )
   const exportXLSX = () => {
     const cols = COLS_AVERIADAS.map(c=>c.key)
     const header = COLS_AVERIADAS.map(c=>c.label)
-    const rows = filtered.map(r=>cols.map(k=>r[k]||''))
+    const src = (fStatus||query) ? filtered : data
+    const rows = src.map(r=>cols.map(k=>r[k]||''))
     const ws = XLSX.utils.aoa_to_sheet([header,...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb,ws,'Averiadas')
-    XLSX.writeFile(wb,'seguimiento_averiadas.xlsx')
+    XLSX.writeFile(wb,(fStatus||query)?`averiadas_filtrado_${src.length}.xlsx`:'seguimiento_averiadas.xlsx')
   }
 
   const del = async (id) => {
@@ -772,18 +908,55 @@ function TabAveriadas() {
 
   return (
     <div style={{ paddingBottom:20 }}>
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
-        <button className="btn-ghost flex items-center gap-2" onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
-        <button className="btn-ghost flex items-center gap-2" onClick={exportXLSX}><Download size={14}/> Exportar Excel</button>
-        <button className="btn-ghost flex items-center gap-2" onClick={load}><RefreshCw size={14}/> Actualizar</button>
+      {/* KPIs */}
+      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:10 }}>
+          {[
+            { l:'Total', v:filtered.length, color:'#dc2626', bg:'#fef2f2', est:'' },
+            ...STATUSES.map(s=>({ l:s, v:statCounts[s]||0, color:STAT_COLORS[s], bg:'#f9fafb', est:s }))
+          ].map(k=>(
+            <div key={k.l} onClick={()=>{ setFS(fStatus===k.est&&k.est?'':k.est); setPage(1) }}
+              style={{ background:'#fff', borderRadius:12, padding:'12px 16px',
+                display:'flex', alignItems:'center', gap:12, cursor:'pointer',
+                boxShadow: fStatus===k.est&&k.est ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)' }}>
+              <div style={{ width:44, height:44, borderRadius:12, background:k.bg,
+                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:20, color:k.color }}>●</span>
+              </div>
+              <div>
+                <div style={{ fontSize:26, fontWeight:700, color:'#111827', lineHeight:1 }}>{k.v}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3 }}>{k.l}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14, alignItems:'center' }}>
+        <div style={{ position:'relative', flex:1, minWidth:220 }}>
+          <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }}/>
+          <input className="input" style={{ paddingLeft:30, fontSize:13 }}
+            placeholder="Buscar equipo, serie, SAP, RMA..."
+            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
+              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
+        </div>
+        <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{filtered.length} registros</span>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={exportXLSX}><Download size={14}/>
+          {(fStatus||query) ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
+        </button>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={load}><RefreshCw size={14}/> Actualizar</button>
         <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
           style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
-            borderRadius:8, border:'1.5px solid #fecaca',
+            borderRadius:8, border:'1.5px solid #fecaca', fontSize:13, fontWeight:600,
             background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626',
-            fontSize:13, fontWeight:600, cursor:data.length===0?'default':'pointer' }}>
+            cursor:data.length===0?'default':'pointer' }}>
           <Trash2 size={14}/> Limpiar todo
         </button>
-        <button className="btn-primary flex items-center gap-2"
+        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
           <Plus size={14}/> Nuevo
         </button>
@@ -798,58 +971,29 @@ function TabAveriadas() {
             'Fecha correo OYM','Fecha correo/recojo PROVEEDOR','RMA','TICKET','COSTO US$']} />
       )}
 
-      {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:16 }}>
-        <div className="card p-4" style={{ borderLeft:'4px solid #dc2626', cursor:'pointer' }}
-          onClick={()=>{ setFS(''); setPage(1) }}>
-          <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>Total</p>
-          <p style={{ fontSize:24, fontWeight:800, color:'#dc2626', margin:0 }}>{filtered.length}</p>
-        </div>
-        {STATUSES.map(s=>(
-          <div key={s} className="card p-4" style={{ borderLeft:`4px solid ${STAT_COLORS[s]}`, cursor:'pointer' }}
-            onClick={()=>{ setFS(s); setPage(1) }}>
-            <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>{s}</p>
-            <p style={{ fontSize:24, fontWeight:800, color:STAT_COLORS[s], margin:0 }}>{statCounts[s]||0}</p>
-          </div>
-        ))}
-      </div>
 
-      {/* Filters */}
-      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
-        <div style={{ position:'relative', flex:1, minWidth:220 }}>
-          <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:C.muted }}/>
-          <input className="input" style={{ paddingLeft:32 }}
-            placeholder="Buscar equipo, serie, SAP, RMA..."
-            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
-              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
-        </div>
-        <select className="input" style={{ width:160 }} value={fStatus} onChange={e=>{ setFS(e.target.value); setPage(1) }}>
-          <option value=''>Todos los status</option>
-          {STATUSES.map(s=><option key={s} value={s}>{s}</option>)}
-        </select>
-        {(fStatus||query) && (
-          <button className="btn-ghost" style={{ fontSize:12 }}
-            onClick={()=>{ setFS(''); setQuery(''); setDQ(''); setPage(1) }}>✕ Limpiar</button>
-        )}
-        <span style={{ fontSize:12, color:C.muted }}>{filtered.length} resultados</span>
-        <div style={{ marginLeft:'auto' }}>
-          <ColumnSelector allCols={COLS_AVERIADAS} visibleCols={visibleCols} onChange={setVisibleCols} />
-        </div>
+      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+        <ColumnSelector allCols={COLS_AVERIADAS} visibleCols={visibleCols} onChange={setVisibleCols} />
       </div>
 
       {/* Tabla */}
       <div className="card overflow-hidden">
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
+            <colgroup>{activeCols.map(col=><col key={col.key} style={{ width: colWidths[col.key] || 130 }} />)}<col style={{ width:70 }} /></colgroup>
             <thead>
-              <tr style={{ background:'#f9fafb' }}>
+              <tr style={{ background:'#f0f2f5' }}>
                 {activeCols.map(col=>(
                   <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
                     fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
-                    whiteSpace:'nowrap', borderBottom:`1px solid ${C.border}` }}>{col.label}</th>
+                    whiteSpace:'nowrap', borderBottom:'1px solid #dadde1', position:'relative', userSelect:'none', overflow:'visible' }}>
+                    {col.label}
+                    <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
+                  </th>
                 ))}
-                <th style={{ padding:'10px 12px', borderBottom:`1px solid ${C.border}` }}/>
+                <th style={{ padding:'10px 12px', borderBottom:'1px solid #dadde1' }}/>
               </tr>
+            {filterRow}
             </thead>
             <tbody>
               {loading && <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:C.muted }}>Cargando...</td></tr>}
@@ -859,9 +1003,9 @@ function TabAveriadas() {
                 </td></tr>
               )}
               {shown.map((row,i)=>(
-                <tr key={row.id||i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fafafa' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#fff5f5'}
-                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
+                <tr key={row.id||i} style={{ borderBottom:'1px solid #dadde1', background:i%2===0?'#ffffff':'#f0f2f5', transition:'background .12s' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#e7f3ff'}
+                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#ffffff':'#f0f2f5'}>
                   {activeCols.map(col=>{
                     const v = row[col.key]
                     if (col.key==='red') return <td key={col.key} style={{ padding:'8px 12px' }}><RedBadge red={v}/></td>
@@ -869,7 +1013,7 @@ function TabAveriadas() {
                     if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:'#dc2626', whiteSpace:'nowrap' }}>{v||'—'}</td>
                     if (col.key==='costo_usd') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, fontWeight:600, color:'#059669', textAlign:'right' }}>{v?`$${Number(v).toLocaleString()}`:'—'}</td>
                     if (col.key?.startsWith('fecha_')) return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
-                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
+                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
                   })}
                   <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
                     <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
@@ -883,7 +1027,7 @@ function TabAveriadas() {
           </table>
         </div>
         {pages>1 && (
-          <div style={{ padding:'12px 16px', borderTop:`1px solid ${C.border}`,
+          <div style={{ padding:'12px 16px', borderTop:'1px solid #dadde1',
             display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <span style={{ fontSize:12, color:C.muted }}>Página {page} de {pages} · {filtered.length} registros</span>
             <div style={{ display:'flex', gap:6 }}>
@@ -944,6 +1088,9 @@ function TabUpgrades() {
   const [editItem,   setEditItem]   = useState(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_UPGRADES.filter(c=>c.default).map(c=>c.key))
+  const [colWidths, setColWidths] = useState({})
+  const [fEstado, setFEstado] = useState('')
+  const [colF,   setColF]   = useState({})
   const [page, setPage] = useState(1)
   const debRef = useRef(null)
   const PER_PAGE = 50
@@ -964,23 +1111,48 @@ function TabUpgrades() {
   const filtered = useMemo(()=>{
     const q = dQ.toLowerCase()
     return data.filter(r=>{
-      return !q||[r.proveedor,r.sap,r.part_number,r.numero_serie,r.folio,r.descripcion,r.region]
+      const mQ = !q||[r.proveedor,r.sap,r.part_number,r.numero_serie,r.folio,r.descripcion,r.region]
         .some(v=>String(v||'').toLowerCase().includes(q))
+      const mC = Object.entries(colF).every(([k,v])=>!v||String(r[k]||'').toLowerCase()===v.toLowerCase())
+      return mQ && (!fEstado||r.proveedor===fEstado) && mC
     })
-  },[data,dQ])
+  },[data,dQ,fEstado,colF])
 
   const pages = Math.ceil(filtered.length/PER_PAGE)
   const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
   const activeCols = COLS_UPGRADES.filter(c=>visibleCols.includes(c.key))
 
+
+  const filterRow = (
+    <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
+      {activeCols.map(col => (
+        <td key={col.key} style={{ padding:'3px 6px' }}>
+          <input value={colF[col.key]||''} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
+            style={{ width:'100%', border:`1px solid ${colF[col.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
+              padding:'3px 6px', fontSize:10, outline:'none',
+              background:colF[col.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
+            placeholder="Filtrar…"/>
+        </td>
+      ))}
+      <td style={{ padding:'3px 6px' }}>
+        {Object.values(colF).some(Boolean) && (
+          <button onClick={()=>setColF({})}
+            style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4,
+              padding:'3px 8px', fontSize:10, color:'#dc2626', cursor:'pointer' }}>✕</button>
+        )}
+      </td>
+    </tr>
+  )
+  const hasFilter = !!(fEstado||query)
   const exportXLSX = () => {
+    const src = hasFilter ? filtered : data
     const cols = COLS_UPGRADES.map(c=>c.key)
     const header = COLS_UPGRADES.map(c=>c.label)
-    const rows = filtered.map(r=>cols.map(k=>r[k]||''))
+    const rows = src.map(r=>cols.map(k=>r[k]||''))
     const ws = XLSX.utils.aoa_to_sheet([header,...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb,ws,'Upgrades')
-    XLSX.writeFile(wb,'seguimiento_upgrades.xlsx')
+    XLSX.writeFile(wb, hasFilter ? `upgrades_filtrado_${src.length}.xlsx` : 'seguimiento_upgrades.xlsx')
   }
 
   const del = async (id) => {
@@ -1025,18 +1197,44 @@ function TabUpgrades() {
 
   return (
     <div style={{ paddingBottom:20 }}>
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
-        <button className="btn-ghost flex items-center gap-2" onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
-        <button className="btn-ghost flex items-center gap-2" onClick={exportXLSX}><Download size={14}/> Exportar Excel</button>
-        <button className="btn-ghost flex items-center gap-2" onClick={load}><RefreshCw size={14}/> Actualizar</button>
+      {/* KPIs */}
+      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:10 }}>
+          {[
+            { l:'Total', v:filtered.length, color:'#0891b2', bg:'#e0f7fa' },
+            ...proveedores.map((prov,i)=>({ l:prov, v:filtered.filter(r=>r.proveedor===prov).length, color:['#CF0A2C','#1877f2','#16a34a','#9c6fe4'][i]||'#6b7280', bg:'#f9fafb' }))
+          ].map(k=>(
+            <div key={k.l} style={{ background:'#fff', borderRadius:12, padding:'12px 16px',
+              display:'flex', alignItems:'center', gap:12,
+              boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+              <div style={{ width:44, height:44, borderRadius:12, background:k.bg,
+                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:20, color:k.color }}>●</span>
+              </div>
+              <div>
+                <div style={{ fontSize:26, fontWeight:700, color:'#111827', lineHeight:1 }}>{k.v}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{k.l}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14, alignItems:'center' }}>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={exportXLSX}><Download size={14}/>
+          {hasFilter ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
+        </button>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={load}><RefreshCw size={14}/> Actualizar</button>
         <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
-          style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
-            borderRadius:8, border:'1.5px solid #fecaca',
-            background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626',
-            fontSize:13, fontWeight:600, cursor:data.length===0?'default':'pointer' }}>
+          className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6,
+            color:data.length===0?'#d1d5db':'#dc2626', borderColor:'#fecaca' }}>
           <Trash2 size={14}/> Limpiar todo
         </button>
-        <button className="btn-primary flex items-center gap-2"
+        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
           <Plus size={14}/> Nuevo
         </button>
@@ -1050,57 +1248,29 @@ function TabUpgrades() {
             'FOLIO','N° DE PEDIDO','MOTIVO DE ASIGNACION','SEGUIMIENTO']} />
       )}
 
-      {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12, marginBottom:16 }}>
-        <div className="card p-4" style={{ borderLeft:'4px solid #0891b2' }}>
-          <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>Total</p>
-          <p style={{ fontSize:24, fontWeight:800, color:'#0891b2', margin:0 }}>{filtered.length}</p>
-        </div>
-        {proveedores.map((prov,i)=>{
-          const colors = ['#1877f2','#2563eb','#15803d','#ca8a04']
-          return (
-            <div key={prov} className="card p-4" style={{ borderLeft:`4px solid ${colors[i]}` }}>
-              <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prov}</p>
-              <p style={{ fontSize:24, fontWeight:800, color:colors[i], margin:0 }}>
-                {filtered.filter(r=>r.proveedor===prov).length}
-              </p>
-            </div>
-          )
-        })}
-      </div>
 
-      {/* Filters */}
-      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
-        <div style={{ position:'relative', flex:1, minWidth:220 }}>
-          <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:C.muted }}/>
-          <input className="input" style={{ paddingLeft:32 }}
-            placeholder="Buscar SAP, part number, serie, folio..."
-            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
-              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
-        </div>
-        {query && (
-          <button className="btn-ghost" style={{ fontSize:12 }}
-            onClick={()=>{ setQuery(''); setDQ(''); setPage(1) }}>✕ Limpiar</button>
-        )}
-        <span style={{ fontSize:12, color:C.muted }}>{filtered.length} resultados</span>
-        <div style={{ marginLeft:'auto' }}>
-          <ColumnSelector allCols={COLS_UPGRADES} visibleCols={visibleCols} onChange={setVisibleCols} />
-        </div>
+      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+        <ColumnSelector allCols={COLS_UPGRADES} visibleCols={visibleCols} onChange={setVisibleCols} />
       </div>
 
       {/* Tabla */}
       <div className="card overflow-hidden">
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
+            <colgroup>{activeCols.map(col=><col key={col.key} style={{ width: colWidths[col.key] || 130 }} />)}<col style={{ width:70 }} /></colgroup>
             <thead>
-              <tr style={{ background:'#f9fafb' }}>
+              <tr style={{ background:'#f0f2f5' }}>
                 {activeCols.map(col=>(
                   <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
                     fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
-                    whiteSpace:'nowrap', borderBottom:`1px solid ${C.border}` }}>{col.label}</th>
+                    whiteSpace:'nowrap', borderBottom:'1px solid #dadde1', position:'relative', userSelect:'none', overflow:'visible' }}>
+                    {col.label}
+                    <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
+                  </th>
                 ))}
-                <th style={{ padding:'10px 12px', borderBottom:`1px solid ${C.border}` }}/>
+                <th style={{ padding:'10px 12px', borderBottom:'1px solid #dadde1' }}/>
               </tr>
+            {filterRow}
             </thead>
             <tbody>
               {loading && <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:C.muted }}>Cargando...</td></tr>}
@@ -1110,9 +1280,9 @@ function TabUpgrades() {
                 </td></tr>
               )}
               {shown.map((row,i)=>(
-                <tr key={row.id||i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fafafa' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#f0fdfe'}
-                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
+                <tr key={row.id||i} style={{ borderBottom:'1px solid #dadde1', background:i%2===0?'#ffffff':'#f0f2f5', transition:'background .12s' }}
+                  onMouseEnter={e=>e.currentTarget.style.background='#e7f3ff'}
+                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#ffffff':'#f0f2f5'}>
                   {activeCols.map(col=>{
                     const v = row[col.key]
                     if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:'#0891b2', whiteSpace:'nowrap' }}>{v||'—'}</td>
@@ -1120,7 +1290,7 @@ function TabUpgrades() {
                     if (col.key==='proveedor') return <td key={col.key} style={{ padding:'8px 12px' }}>
                       {v ? <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:4, background:'#e0f2fe', color:'#0369a1' }}>{v}</span> : '—'}
                     </td>
-                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
+                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
                   })}
                   <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
                     <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
@@ -1134,7 +1304,7 @@ function TabUpgrades() {
           </table>
         </div>
         {pages>1 && (
-          <div style={{ padding:'12px 16px', borderTop:`1px solid ${C.border}`,
+          <div style={{ padding:'12px 16px', borderTop:'1px solid #dadde1',
             display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <span style={{ fontSize:12, color:C.muted }}>Página {page} de {pages} · {filtered.length} registros</span>
             <div style={{ display:'flex', gap:6 }}>
@@ -1193,11 +1363,13 @@ function TabProveedor() {
   const [query,  setQuery]  = useState('')
   const [dQ,     setDQ]     = useState('')
   const [fEstado,setFE]     = useState('')
+  const [colF,   setColF]   = useState({})
   const [showUpload, setShowUpload] = useState(false)
   const [showModal,  setShowModal]  = useState(false)
   const [editItem,   setEditItem]   = useState(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_PROVEEDOR.filter(c=>c.default).map(c=>c.key))
+  const [colWidths, setColWidths] = useState({})
   const [page, setPage] = useState(1)
   const debRef = useRef(null)
   const PER_PAGE = 50
@@ -1223,14 +1395,36 @@ function TabProveedor() {
     return data.filter(r=>{
       const mQ = !q||[r.proveedor,r.sap,r.part_number,r.numero_serie,r.descripcion,r.region,r.gr_devolucion]
         .some(v=>String(v||'').toLowerCase().includes(q))
-      return mQ && (!fEstado||r.estado===fEstado)
+      const mC = Object.entries(colF).every(([k,v])=>!v||String(r[k]||'').toLowerCase()===v.toLowerCase())
+      return mQ && (!fEstado||r.estado===fEstado) && mC
     })
-  },[data,dQ,fEstado])
+  },[data,dQ,fEstado,colF])
 
   const pages = Math.ceil(filtered.length/PER_PAGE)
   const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
   const activeCols = COLS_PROVEEDOR.filter(c=>visibleCols.includes(c.key))
 
+  const filterRow = (
+    <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
+      {activeCols.map(col => (
+        <td key={col.key} style={{ padding:'3px 6px' }}>
+          <input value={colF[col.key]||''} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
+            style={{ width:'100%', border:`1px solid ${colF[col.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
+              padding:'3px 6px', fontSize:10, outline:'none',
+              background:colF[col.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
+            placeholder="Filtrar…"/>
+        </td>
+      ))}
+      <td style={{ padding:'3px 6px' }}>
+        {Object.values(colF).some(Boolean) && (
+          <button onClick={()=>setColF({})}
+            style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4,
+              padding:'3px 8px', fontSize:10, color:'#dc2626', cursor:'pointer' }}>✕</button>
+        )}
+      </td>
+    </tr>
+  )
+    const hasFilter = !!(fEstado||query)
   const exportXLSX = () => {
     const cols = COLS_PROVEEDOR.map(c=>c.key)
     const header = COLS_PROVEEDOR.map(c=>c.label)
@@ -1284,19 +1478,56 @@ function TabProveedor() {
 
   return (
     <div style={{ paddingBottom:20 }}>
+      {/* KPIs */}
+      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:10 }}>
+          {[
+            { l:'Total', v:filtered.length, color:'#1877f2', bg:'#e7f3ff', est:'' },
+            ...ESTADOS.map(e=>({ l:e, v:estadoCounts[e]||0, color:ESTADO_COLOR[e], bg:'#f9fafb', est:e }))
+          ].map(k=>(
+            <div key={k.l} onClick={()=>{ setFE(fEstado===k.est&&k.est?'':k.est); setPage(1) }}
+              style={{ background:'#fff', borderRadius:12, padding:'12px 16px',
+                display:'flex', alignItems:'center', gap:12, cursor:'pointer',
+                boxShadow: fEstado===k.est&&k.est ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)' }}>
+              <div style={{ width:44, height:44, borderRadius:12, background:k.bg,
+                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:20, color:k.color }}>●</span>
+              </div>
+              <div>
+                <div style={{ fontSize:26, fontWeight:700, color:'#111827', lineHeight:1 }}>{k.v}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3 }}>{k.l}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {/* Toolbar */}
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
-        <button className="btn-ghost flex items-center gap-2" onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
-        <button className="btn-ghost flex items-center gap-2" onClick={exportXLSX}><Download size={14}/> Exportar Excel</button>
-        <button className="btn-ghost flex items-center gap-2" onClick={load}><RefreshCw size={14}/> Actualizar</button>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14, alignItems:'center' }}>
+        <div style={{ position:'relative', flex:1, minWidth:220 }}>
+          <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }}/>
+          <input className="input" style={{ paddingLeft:30, fontSize:13 }}
+            placeholder="Buscar SAP, part number, serie, proveedor..."
+            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
+              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
+        </div>
+        <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{filtered.length} registros</span>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={exportXLSX}><Download size={14}/>
+          {hasFilter ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
+        </button>
+        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={load}><RefreshCw size={14}/> Actualizar</button>
         <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
           style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
-            borderRadius:8, border:'1.5px solid #fecaca',
+            borderRadius:8, border:'1.5px solid #fecaca', fontSize:13, fontWeight:600,
             background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626',
-            fontSize:13, fontWeight:600, cursor:data.length===0?'default':'pointer' }}>
+            cursor:data.length===0?'default':'pointer' }}>
           <Trash2 size={14}/> Limpiar todo
         </button>
-        <button className="btn-primary flex items-center gap-2"
+        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
           <Plus size={14}/> Nuevo
         </button>
@@ -1311,58 +1542,29 @@ function TabProveedor() {
             'ESTADO','COMENTARIO']} />
       )}
 
-      {/* KPIs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:16 }}>
-        <div className="card p-4" style={{ borderLeft:'4px solid #1877f2', cursor:'pointer' }}
-          onClick={()=>{ setFE(''); setPage(1) }}>
-          <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>Total</p>
-          <p style={{ fontSize:24, fontWeight:800, color:'#1877f2', margin:0 }}>{filtered.length}</p>
-        </div>
-        {ESTADOS.map(e=>(
-          <div key={e} className="card p-4" style={{ borderLeft:`4px solid ${ESTADO_COLOR[e]}`, cursor:'pointer' }}
-            onClick={()=>{ setFE(e); setPage(1) }}>
-            <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>{e}</p>
-            <p style={{ fontSize:24, fontWeight:800, color:ESTADO_COLOR[e], margin:0 }}>{estadoCounts[e]||0}</p>
-          </div>
-        ))}
-      </div>
 
-      {/* Filters */}
-      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
-        <div style={{ position:'relative', flex:1, minWidth:220 }}>
-          <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:C.muted }}/>
-          <input className="input" style={{ paddingLeft:32 }}
-            placeholder="Buscar SAP, part number, serie, proveedor..."
-            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
-              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
-        </div>
-        <select className="input" style={{ width:150 }} value={fEstado} onChange={e=>{ setFE(e.target.value); setPage(1) }}>
-          <option value=''>Todos los estados</option>
-          {ESTADOS.map(e=><option key={e} value={e}>{e}</option>)}
-        </select>
-        {(fEstado||query) && (
-          <button className="btn-ghost" style={{ fontSize:12 }}
-            onClick={()=>{ setFE(''); setQuery(''); setDQ(''); setPage(1) }}>✕ Limpiar</button>
-        )}
-        <span style={{ fontSize:12, color:C.muted }}>{filtered.length} resultados</span>
-        <div style={{ marginLeft:'auto' }}>
-          <ColumnSelector allCols={COLS_PROVEEDOR} visibleCols={visibleCols} onChange={setVisibleCols} />
-        </div>
+      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:12 }}>
+        <ColumnSelector allCols={COLS_PROVEEDOR} visibleCols={visibleCols} onChange={setVisibleCols} />
       </div>
 
       {/* Tabla */}
       <div className="card overflow-hidden">
         <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
+            <colgroup>{activeCols.map(col=><col key={col.key} style={{ width: colWidths[col.key] || 130 }} />)}<col style={{ width:70 }} /></colgroup>
             <thead>
-              <tr style={{ background:'#f9fafb' }}>
+              <tr style={{ background:'#f0f2f5' }}>
                 {activeCols.map(col=>(
                   <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
                     fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
-                    whiteSpace:'nowrap', borderBottom:`1px solid ${C.border}` }}>{col.label}</th>
+                    whiteSpace:'nowrap', borderBottom:'1px solid #dadde1', position:'relative', userSelect:'none', overflow:'visible' }}>
+                    {col.label}
+                    <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
+                  </th>
                 ))}
-                <th style={{ padding:'10px 12px', borderBottom:`1px solid ${C.border}` }}/>
+                <th style={{ padding:'10px 12px', borderBottom:'1px solid #dadde1' }}/>
               </tr>
+            {filterRow}
             </thead>
             <tbody>
               {loading && <tr><td colSpan={activeCols.length+1} style={{ textAlign:'center', padding:40, color:C.muted }}>Cargando...</td></tr>}
@@ -1372,9 +1574,9 @@ function TabProveedor() {
                 </td></tr>
               )}
               {shown.map((row,i)=>(
-                <tr key={row.id||i} style={{ borderBottom:`1px solid ${C.border}`, background:i%2===0?'#fff':'#fafafa' }}
+                <tr key={row.id||i} style={{ borderBottom:'1px solid #dadde1', background:i%2===0?'#ffffff':'#f0f2f5', transition:'background .12s' }}
                   onMouseEnter={e=>e.currentTarget.style.background='#e7f3ff'}
-                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fff':'#fafafa'}>
+                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#ffffff':'#f0f2f5'}>
                   {activeCols.map(col=>{
                     const v = row[col.key]
                     if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:C.primary, whiteSpace:'nowrap' }}>{v||'—'}</td>
@@ -1387,7 +1589,7 @@ function TabProveedor() {
                         background:v==='VALORADO'?'#dbeafe':'#f3f4f6', color:v==='VALORADO'?'#1e40af':'#6b7280' }}>{v}</span> : '—'}
                     </td>
                     if (col.key?.startsWith('fecha_')) return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
-                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:160, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
+                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
                   })}
                   <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
                     <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
@@ -1401,7 +1603,7 @@ function TabProveedor() {
           </table>
         </div>
         {pages>1 && (
-          <div style={{ padding:'12px 16px', borderTop:`1px solid ${C.border}`,
+          <div style={{ padding:'12px 16px', borderTop:'1px solid #dadde1',
             display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <span style={{ fontSize:12, color:C.muted }}>Página {page} de {pages} · {filtered.length} registros</span>
             <div style={{ display:'flex', gap:6 }}>
