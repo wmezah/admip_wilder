@@ -117,14 +117,24 @@ def run_collection(
                     summary.append(process_file(pm, fname, content))
     else:
         from nce.collector import NCECollector
+        # Archivos ya procesados (ok o skipped) — no volver a descargar
+        processed = set(
+            NCECollectionLog.objects
+            .filter(status__in=['ok', 'skipped'])
+            .values_list('filename', flat=True)
+        )
+        logger.info("Archivos ya procesados en BD: %d", len(processed))
+
         with NCECollector(NCE_HOST, NCE_USER, NCE_PASSWORD, NCE_BASE_DIR,
                           NCE_USE_SFTP, NCE_PORT) as col:
             for pm in active_pms:
                 files = col.list_files(pm['code'])
-                if not files:
-                    logger.info("PM %s: sin archivos nuevos.", pm['code'])
+                new_files = [f for f in files if f not in processed]
+                if not new_files:
+                    logger.info("PM %s: sin archivos nuevos (todos ya procesados).", pm['code'])
                     continue
-                for fname in files:
+                logger.info("PM %s: %d nuevos de %d totales.", pm['code'], len(new_files), len(files))
+                for fname in new_files:
                     content = col.download_file(fname)
                     if content:
                         summary.append(process_file(pm, fname, content))

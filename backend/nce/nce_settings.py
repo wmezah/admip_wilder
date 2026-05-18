@@ -16,7 +16,7 @@ NCE_PORT         = int(os.environ.get('NCE_PORT', 22 if NCE_USE_SFTP else 21))
 DEVICE_PREFIXES  = ['rMPLS', 'rHUB']
 
 # ── Recolección automática ────────────────────────────────────
-COLLECTION_INTERVAL_MINUTES = int(os.environ.get('NCE_INTERVAL', 5))
+COLLECTION_INTERVAL_MINUTES = int(os.environ.get('NCE_INTERVAL', 15))
 
 # ── Umbrales de alertas ───────────────────────────────────────
 CPU_AVG_THRESHOLD  = float(os.environ.get('CPU_AVG_THRESHOLD',  70.0))
