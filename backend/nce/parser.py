@@ -35,19 +35,17 @@ def _to_int(value: str) -> Optional[int]:
 
 
 def _parse_collection_time(raw: str) -> Optional[datetime]:
-    from django.utils import timezone as tz
+    """
+    El CollectionTime del CSV NCE viene en UTC (naive).
+    Se guarda como datetime aware UTC para que Django lo serialice
+    correctamente y el frontend lo convierta a GMT-5 (America/Lima).
+    """
     import pytz
     for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S',
                 '%Y%m%d%H%M%S', '%Y-%m-%dT%H:%M:%S'):
         try:
             naive = datetime.strptime(raw.strip(), fmt)
-            # Make timezone-aware using local timezone
-            try:
-                from django.conf import settings
-                local_tz = pytz.timezone(settings.TIME_ZONE)
-                return local_tz.localize(naive)
-            except Exception:
-                return tz.make_aware(naive)
+            return pytz.utc.localize(naive)  # siempre UTC → Django lo guarda bien
         except ValueError:
             continue
     return None

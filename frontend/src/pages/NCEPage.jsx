@@ -176,7 +176,8 @@ export default function NCEPage() {
     ;(Array.isArray(d) ? d : []).forEach(row => {
       const t = (row.time || '').substring(0, 16)
       if (!byTime[t]) byTime[t] = { time: t }
-      byTime[t][`${row.resource || 'CPU'}_avg`] = row.cpu_avg
+      byTime[t][`${row.resource || 'CPU'}_avg`]  = row.cpu_avg
+      byTime[t][`${row.resource || 'CPU'}_peak`] = row.cpu_peak
     })
     setSeries(Object.values(byTime).sort((a, b) => a.time.localeCompare(b.time)))
   }, [hours])
@@ -189,7 +190,8 @@ export default function NCEPage() {
   }, [loadAll])
 
   const top20 = summary.slice(0, 20)
-  const seriesKeys = series.length > 0 ? Object.keys(series[0]).filter(k => k !== 'time') : []
+  const seriesKeys     = series.length > 0 ? Object.keys(series[0]).filter(k => k !== 'time' && k.endsWith('_avg'))  : []
+  const seriesPeakKeys = series.length > 0 ? Object.keys(series[0]).filter(k => k !== 'time' && k.endsWith('_peak')) : []
   const TAB = t => ({
     padding:'8px 18px', fontSize:13, fontWeight: t===tab ? 700 : 400,
     border:'none', background:'none', cursor:'pointer',
@@ -262,7 +264,7 @@ export default function NCEPage() {
 
       {/* Tabs */}
       <div style={{ borderBottom:`1px solid ${C.border}`, marginBottom:20, display:'flex' }}>
-        {[['cpu','📊 CPU / CGNAT'],['alerts','🔴 Alertas'],['devices','📡 Equipos'],['log','📋 Log']].map(([t,label]) => (
+        {[['cpu','📊 CPU Avg'],['peak','📈 CPU Pico'],['alerts','🔴 Alertas'],['devices','📡 Equipos'],['log','📋 Log']].map(([t,label]) => (
           <button key={t} style={TAB(t)} onClick={() => setTab(t)}>{label}</button>
         ))}
       </div>
@@ -459,6 +461,207 @@ export default function NCEPage() {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* ── TAB PICO CPU ── */}
+      {tab === 'peak' && (
+        <div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 320px', gap:16, marginBottom:20 }}>
+            {/* Bar chart pico */}
+            <div className="card p-5">
+              <p style={{ fontWeight:700, fontSize:14, margin:'0 0 16px' }}>Top 20 — CPU Pico Máximo por Equipo</p>
+              {loading ? (
+                <p style={{ color:C.muted, textAlign:'center', padding:40, fontSize:13 }}>Cargando...</p>
+              ) : top20.length === 0 ? (
+                <p style={{ color:'#9ca3af', textAlign:'center', padding:40, fontSize:13 }}>
+                  Sin datos — carga archivos CSV para comenzar.
+                </p>
+              ) : (
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={[...top20].reverse()} layout="vertical"
+                    margin={{ left:130, right:60, top:5, bottom:5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                    <XAxis type="number" domain={[0,100]} tickFormatter={v=>`${v}%`} tick={{ fontSize:11 }} />
+                    <YAxis type="category" dataKey="device" tick={{ fontSize:11 }} width={125} />
+                    <Tooltip content={<CPUTooltip />} />
+                    <ReferenceLine x={CPU_PEAK_TH} stroke={C.danger} strokeDasharray="4 4"
+                      label={{ value:`${CPU_PEAK_TH}%`, fontSize:10, fill:C.danger }} />
+                    <Bar dataKey="cpu_peak_max" name="CPU Pico %" radius={[0,4,4,0]}>
+                      {[...top20].reverse().map((e,i) => (
+                        <Cell key={i} fill={e.cpu_peak_max >= CPU_PEAK_TH ? C.danger : e.cpu_peak_max >= CPU_PEAK_TH * 0.8 ? C.warn : C.ok} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Summary pico */}
+            <div className="card p-5">
+              <p style={{ fontWeight:700, fontSize:14, margin:'0 0 16px' }}>Resumen Pico por Tipo</p>
+              {['rMPLS','rHUB'].map(pref => {
+                const sub   = summary.filter(r => r.device?.startsWith(pref))
+                const peak  = sub.length ? Math.max(...sub.map(r => r.cpu_peak_max)).toFixed(1) : 0
+                const pAvg  = sub.length ? (sub.reduce((s,r) => s + r.cpu_peak_max, 0) / sub.length).toFixed(1) : 0
+                const col   = pref === 'rMPLS' ? C.rmpls : C.rhub
+                const pCol  = Number(peak) >= CPU_PEAK_TH ? C.danger : Number(peak) >= CPU_PEAK_TH * 0.8 ? C.warn : C.ok
+                return (
+                  <div key={pref} style={{ marginBottom:20 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                      <span style={{ fontWeight:700, fontSize:13, color:col }}>{pref}</span>
+                      <span style={{ fontSize:11, color:C.muted }}>{sub.length} equipos</span>
+                    </div>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:8 }}>
+                      {[['Pico Máx', peak+'%', pCol],
+                        ['Pico Medio', pAvg+'%', Number(pAvg) >= CPU_PEAK_TH ? C.danger : Number(pAvg) >= CPU_PEAK_TH*0.8 ? C.warn : C.ok]
+                      ].map(([l,v,c]) => (
+                        <div key={l} style={{ background:'#f9fafb', borderRadius:8, padding:'10px 12px', textAlign:'center' }}>
+                          <p style={{ fontSize:10, color:C.muted, margin:'0 0 4px', textTransform:'uppercase' }}>{l}</p>
+                          <p style={{ fontSize:20, fontWeight:800, color:c, margin:0 }}>{v}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ height:6, background:'#f3f4f6', borderRadius:4 }}>
+                      <div style={{ height:'100%', width:`${Math.min(Number(peak),100)}%`,
+                        background:pCol, borderRadius:4, transition:'width .5s' }} />
+                    </div>
+                  </div>
+                )
+              })}
+              <div style={{ borderTop:`1px solid ${C.border}`, paddingTop:14, marginTop:4 }}>
+                <p style={{ fontSize:11, color:C.muted, margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'.4px' }}>
+                  Equipos sobre {CPU_PEAK_TH}%
+                </p>
+                {summary.filter(r => r.cpu_peak_max >= CPU_PEAK_TH).length === 0
+                  ? <p style={{ color:C.ok, fontSize:13, fontWeight:700, margin:0 }}>✅ Ninguno</p>
+                  : summary.filter(r => r.cpu_peak_max >= CPU_PEAK_TH).slice(0,5).map((r,i) => (
+                    <div key={i} style={{ fontSize:11, padding:'4px 8px', marginBottom:4,
+                      background:'#fef2f2', borderRadius:6, color:C.danger,
+                      display:'flex', justifyContent:'space-between' }}>
+                      <span>🔴 {r.device}</span>
+                      <strong>{r.cpu_peak_max?.toFixed(1)}%</strong>
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          </div>
+
+          {/* Serie temporal pico */}
+          <div className="card p-5" style={{ marginBottom:20 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
+              <p style={{ fontWeight:700, fontSize:14, margin:0 }}>Serie Temporal — CPU Pico</p>
+              <select className="input" style={{ fontSize:12, padding:'4px 10px', width:240 }}
+                value={selDevice} onChange={e => setSelDevice(e.target.value)}>
+                <option value=''>— Selecciona un equipo —</option>
+                {summary.map(r => <option key={r.device} value={r.device}>{r.device}</option>)}
+              </select>
+            </div>
+            {!selDevice ? (
+              <p style={{ color:C.muted, fontSize:13, textAlign:'center', padding:30 }}>
+                Selecciona un equipo para ver su serie temporal de pico
+              </p>
+            ) : series.length === 0 ? (
+              <p style={{ color:C.muted, fontSize:13, textAlign:'center', padding:30 }}>
+                Sin datos en las últimas {hours}h
+              </p>
+            ) : (
+              <>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
+                  {seriesPeakKeys.slice(0,6).map((k,i) => {
+                    const color = [C.danger, C.warn, C.rmpls, C.rhub, C.ok, C.primary][i%6]
+                    const hidden = hiddenEngines['pk_'+k]
+                    return (
+                      <button key={k} onClick={() => setHiddenEngines(prev => ({ ...prev, ['pk_'+k]: !prev['pk_'+k] }))}
+                        title={hidden ? 'Mostrar' : 'Ocultar'}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'4px 10px',
+                          borderRadius:20, border:`1.5px solid ${color}`,
+                          background: hidden ? '#f3f4f6' : color+'18',
+                          cursor:'pointer', fontSize:11, fontWeight:600,
+                          color: hidden ? '#9ca3af' : color,
+                          opacity: hidden ? 0.6 : 1, transition:'all .15s' }}>
+                        <span style={{ width:16, height:3, borderRadius:2, display:'inline-block',
+                          background: hidden ? '#d1d5db' : color }}/>
+                        {k.replace('_peak','').split('/').slice(-1)[0]}
+                      </button>
+                    )
+                  })}
+                </div>
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={series} margin={{ left:0, right:20, top:5, bottom:5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                    <XAxis dataKey="time" tick={{ fontSize:10 }} tickFormatter={v=>v.substring(11)} />
+                    <YAxis domain={[0,100]} tickFormatter={v=>`${v}%`} tick={{ fontSize:11 }} />
+                    <Tooltip content={<CPUTooltip />} />
+                    <ReferenceLine y={CPU_PEAK_TH} stroke={C.danger} strokeDasharray="4 4"
+                      label={{ value:`${CPU_PEAK_TH}%`, fontSize:10, fill:C.danger }} />
+                    {seriesPeakKeys.slice(0,6).map((k,i) => (
+                      <Line key={k} type="monotone" dataKey={k}
+                        name={k.replace('_peak','').split('/').slice(-1)[0]+' pico'}
+                        stroke={[C.danger, C.warn, C.rmpls, C.rhub, C.ok, C.primary][i%6]}
+                        dot={false} strokeWidth={hiddenEngines['pk_'+k] ? 0 : 2}
+                        hide={!!hiddenEngines['pk_'+k]}
+                        connectNulls />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </>
+            )}
+          </div>
+
+          {/* Tabla pico */}
+          <div className="card overflow-hidden">
+            <div style={{ padding:'12px 16px', borderBottom:`1px solid ${C.border}`, fontWeight:700, fontSize:13 }}>
+              Tabla Pico — {summary.length} equipos
+            </div>
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:'#f9fafb' }}>
+                    {['Equipo','Tipo','Muestras','CPU Pico Medio','CPU Pico Máx','Última Muestra'].map(h => (
+                      <th key={h} style={{ padding:'10px 14px', textAlign: h==='Equipo'||h==='Tipo' ? 'left' : 'right',
+                        fontSize:10, fontWeight:600, color:C.muted, textTransform:'uppercase',
+                        letterSpacing:'.4px', whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading && <tr><td colSpan={6} style={{ textAlign:'center', padding:30, color:C.muted }}>Cargando...</td></tr>}
+                  {!loading && summary.length === 0 && (
+                    <tr><td colSpan={6} style={{ textAlign:'center', padding:30, color:'#9ca3af' }}>Sin datos disponibles.</td></tr>
+                  )}
+                  {[...summary].sort((a,b) => (b.cpu_peak_max||0) - (a.cpu_peak_max||0)).map((row, i) => {
+                    const peakColor = v => v >= CPU_PEAK_TH ? C.danger : v >= CPU_PEAK_TH * 0.8 ? C.warn : C.ok
+                    return (
+                      <tr key={i} style={{ borderBottom:`1px solid ${C.border}`, cursor:'pointer' }}
+                        onClick={() => { setSelDevice(row.device) }}
+                        onMouseEnter={e => e.currentTarget.style.background='#fff7ed'}
+                        onMouseLeave={e => e.currentTarget.style.background=''}>
+                        <td style={{ padding:'8px 14px', fontWeight:600, color:C.primary }}>{row.device}</td>
+                        <td style={{ padding:'8px 14px' }}>
+                          <span style={{ fontSize:10, padding:'2px 6px', borderRadius:4,
+                            background: row.device?.startsWith('rMPLS') ? '#dbeafe' : '#ede9fe',
+                            color: row.device?.startsWith('rMPLS') ? C.rmpls : C.rhub }}>
+                            {row.device?.startsWith('rMPLS') ? 'rMPLS' : 'rHUB'}
+                          </span>
+                        </td>
+                        <td style={{ padding:'8px 14px', textAlign:'right', color:C.muted }}>{row.samples}</td>
+                        {[row.cpu_peak_mean ?? row.cpu_avg_mean, row.cpu_peak_max].map((v,j) => (
+                          <td key={j} style={{ padding:'8px 14px', textAlign:'right',
+                            fontWeight:700, color:peakColor(v||0) }}>{(v||0).toFixed(1)}%</td>
+                        ))}
+                        <td style={{ padding:'8px 14px', fontSize:11, color:C.muted }}>
+                          {toLocalTime(row.last_sample)||'—'}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
