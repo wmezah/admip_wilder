@@ -11,14 +11,17 @@ import {
 const API = '/api/nce'
 const CPU_AVG_TH  = 70
 const CPU_PEAK_TH = 90
+const authH = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` })
 
 // Convierte fecha UTC a hora local del navegador (Perú UTC-5)
+const TZ = 'America/Lima'
 const toLocalTime = (val) => {
   if (!val) return '—'
   try {
     return new Date(val).toLocaleString('es-PE', {
       year:'numeric', month:'2-digit', day:'2-digit',
-      hour:'2-digit', minute:'2-digit', hour12:false
+      hour:'2-digit', minute:'2-digit', hour12:false,
+      timeZone: TZ
     })
   } catch { return String(val).substring(0,16).replace('T',' ') }
 }
@@ -140,17 +143,21 @@ export default function NCEPage() {
   const [lastUpdate, setLastUpdate] = useState(null)
   const intervalRef = useRef(null)
 
-  const authH = { Authorization: `Bearer ${localStorage.getItem('access_token')}` }
+  const [hiddenEngines, setHiddenEngines] = useState({})
+
+  const toggleEngine = (key) => {
+    setHiddenEngines(prev => ({ ...prev, [key]: !prev[key] }))
+  }
 
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
       const [s, sum, dev, log, alt] = await Promise.all([
-        fetch(`${API}/stats/`, { headers: authH }).then(r => r.json()).catch(() => null),
-        fetch(`${API}/cpu/summary/?hours=${hours}${prefix ? `&prefix=${prefix}` : ''}`, { headers: authH }).then(r => r.json()).catch(() => []),
-        fetch(`${API}/devices/`, { headers: authH }).then(r => r.json()).catch(() => []),
-        fetch(`${API}/log/?n=50`, { headers: authH }).then(r => r.json()).catch(() => []),
-        fetch(`${API}/cpu/alerts/`, { headers: authH }).then(r => r.json()).catch(() => []),
+        fetch(`${API}/stats/`, { headers: authH() }).then(r => r.json()).catch(() => null),
+        fetch(`${API}/cpu/summary/?hours=${hours}${prefix ? `&prefix=${prefix}` : ''}`, { headers: authH() }).then(r => r.json()).catch(() => []),
+        fetch(`${API}/devices/`, { headers: authH() }).then(r => r.json()).catch(() => []),
+        fetch(`${API}/log/?n=50`, { headers: authH() }).then(r => r.json()).catch(() => []),
+        fetch(`${API}/cpu/alerts/`, { headers: authH() }).then(r => r.json()).catch(() => []),
       ])
       setStats(s)
       setSummary(Array.isArray(sum) ? sum : [])
@@ -163,7 +170,7 @@ export default function NCEPage() {
 
   const loadSeries = useCallback(async (device) => {
     if (!device) return setSeries([])
-    const d = await fetch(`${API}/cpu/series/?device=${encodeURIComponent(device)}&hours=${hours}`, { headers: authH })
+    const d = await fetch(`${API}/cpu/series/?device=${encodeURIComponent(device)}&hours=${hours}`, { headers: authH() })
       .then(r => r.json()).catch(() => [])
     const byTime = {}
     ;(Array.isArray(d) ? d : []).forEach(row => {
@@ -175,7 +182,7 @@ export default function NCEPage() {
   }, [hours])
 
   useEffect(() => { loadAll() }, [loadAll])
-  useEffect(() => { loadSeries(selDevice) }, [selDevice, loadSeries])
+  useEffect(() => { loadSeries(selDevice); setHiddenEngines({}) }, [selDevice, loadSeries])
   useEffect(() => {
     intervalRef.current = setInterval(loadAll, 5 * 60 * 1000)
     return () => clearInterval(intervalRef.current)
@@ -203,7 +210,7 @@ export default function NCEPage() {
           <p style={{ fontSize:13, color:C.muted, margin:0 }}>
             Monitoreo de CPU en tiempo real · rMPLS y rHUB
             {lastUpdate && <span style={{ marginLeft:10, fontSize:11 }}>
-              · actualizado {lastUpdate.toLocaleTimeString('es-PE')}
+              · actualizado {lastUpdate.toLocaleTimeString('es-PE', { timeZone: TZ, hour12: false })}
             </span>}
           </p>
         </div>
@@ -249,7 +256,7 @@ export default function NCEPage() {
             : (summary.reduce((s,r)=>s+r.cpu_avg_mean,0)/summary.length).toFixed(1)+'%'}
           color={C.warn}
           sub={stats?.last_collection
-            ? 'ult: ' + new Date(stats.last_collection).toLocaleTimeString('es-PE')
+            ? 'ult: ' + new Date(stats.last_collection).toLocaleTimeString('es-PE', { timeZone: TZ, hour12: false })
             : 'sin recolección'} />
       </div>
 
@@ -359,22 +366,53 @@ export default function NCEPage() {
                 Sin datos en las últimas {hours}h
               </p>
             ) : (
-              <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={series} margin={{ left:0, right:20, top:5, bottom:5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                  <XAxis dataKey="time" tick={{ fontSize:10 }} tickFormatter={v=>v.substring(11)} />
-                  <YAxis domain={[0,100]} tickFormatter={v=>`${v}%`} tick={{ fontSize:11 }} />
-                  <Tooltip content={<CPUTooltip />} />
-                  <Legend wrapperStyle={{ fontSize:11 }} />
-                  <ReferenceLine y={CPU_AVG_TH} stroke={C.danger} strokeDasharray="4 4"
-                    label={{ value:`${CPU_AVG_TH}%`, fontSize:10, fill:C.danger }} />
-                  {seriesKeys.slice(0,6).map((k,i) => (
-                    <Line key={k} type="monotone" dataKey={k} name={k}
-                      stroke={[C.primary,C.rmpls,C.rhub,C.warn,C.ok,C.danger][i%6]}
-                      dot={false} strokeWidth={2} connectNulls />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
+              <>
+                {/* Leyenda clickeable por engine */}
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
+                  {seriesKeys.slice(0,6).map((k,i) => {
+                    const color = [C.primary,C.rmpls,C.rhub,C.warn,C.ok,C.danger][i%6]
+                    const hidden = hiddenEngines[k]
+                    return (
+                      <button key={k} onClick={() => toggleEngine(k)}
+                        title={hidden ? 'Mostrar' : 'Ocultar'}
+                        style={{ display:'flex', alignItems:'center', gap:6, padding:'4px 10px',
+                          borderRadius:20, border:`1.5px solid ${color}`,
+                          background: hidden ? '#f3f4f6' : color+'18',
+                          cursor:'pointer', fontSize:11, fontWeight:600,
+                          color: hidden ? '#9ca3af' : color,
+                          opacity: hidden ? 0.6 : 1, transition:'all .15s' }}>
+                        <span style={{ width:16, height:3, borderRadius:2, display:'inline-block',
+                          background: hidden ? '#d1d5db' : color }}/>
+                        {k.split('/').slice(-1)[0]}
+                      </button>
+                    )
+                  })}
+                  {Object.values(hiddenEngines).some(Boolean) && (
+                    <button onClick={() => setHiddenEngines({})}
+                      style={{ padding:'4px 10px', borderRadius:20, border:'1px solid #dadde1',
+                        background:'#f3f4f6', cursor:'pointer', fontSize:11, color:'#6b7280' }}>
+                      Mostrar todos
+                    </button>
+                  )}
+                </div>
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={series} margin={{ left:0, right:20, top:5, bottom:5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                    <XAxis dataKey="time" tick={{ fontSize:10 }} tickFormatter={v=>v.substring(11)} />
+                    <YAxis domain={[0,100]} tickFormatter={v=>`${v}%`} tick={{ fontSize:11 }} />
+                    <Tooltip content={<CPUTooltip />} />
+                    <ReferenceLine y={CPU_AVG_TH} stroke={C.danger} strokeDasharray="4 4"
+                      label={{ value:`${CPU_AVG_TH}%`, fontSize:10, fill:C.danger }} />
+                    {seriesKeys.slice(0,6).map((k,i) => (
+                      <Line key={k} type="monotone" dataKey={k} name={k}
+                        stroke={[C.primary,C.rmpls,C.rhub,C.warn,C.ok,C.danger][i%6]}
+                        dot={false} strokeWidth={hiddenEngines[k] ? 0 : 2}
+                        hide={!!hiddenEngines[k]}
+                        connectNulls />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </>
             )}
           </div>
 
