@@ -1,15 +1,31 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import Sidebar         from './components/Sidebar'
 import Topbar          from './components/Topbar'
 import LoginPage       from './pages/LoginPage'
-import NCEPage         from './pages/NCEPage'
-import SeguimientoPage from './pages/SeguimientoPage'
-import RMAPage         from './pages/RMAPage'
-import SpareList       from './pages/SpareList'
-import ImportPage      from './pages/ImportPage'
-import CatalogPage     from './pages/CatalogPage'
-import UsersPage       from './pages/UsersPage'
+
+// Lazy load — cada página se descarga solo cuando el usuario navega a ella
+const NCEPage         = lazy(() => import('./pages/NCEPage'))
+const SeguimientoPage = lazy(() => import('./pages/SeguimientoPage'))
+const RMAPage         = lazy(() => import('./pages/RMAPage'))
+const SpareList       = lazy(() => import('./pages/SpareList'))
+const ImportPage      = lazy(() => import('./pages/ImportPage'))
+const CatalogPage     = lazy(() => import('./pages/CatalogPage'))
+const UsersPage       = lazy(() => import('./pages/UsersPage'))
+
+// Loading fallback
+function PageLoader() {
+  return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+      height:'60vh', flexDirection:'column', gap:16 }}>
+      <div style={{ width:36, height:36, borderRadius:'50%',
+        border:'3px solid #e7f3ff', borderTopColor:'#1877f2',
+        animation:'spin 0.8s linear infinite' }}/>
+      <p style={{ color:'#6b7280', fontSize:13 }}>Cargando...</p>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  )
+}
 
 // ── Axios interceptor: JWT token + auto-refresh ───────────────────────────────
 import axios from 'axios'
@@ -174,17 +190,19 @@ export default function App() {
           overflowX: 'hidden',
           transition: 'margin-left 0.22s cubic-bezier(0.4,0,0.2,1)',
         }}>
-          <Routes>
-            <Route path="/"            element={<Navigate to="/spare" />}  />
-            <Route path="/spare"       element={<SpareList />}       />
-            <Route path="/seguimiento" element={<SeguimientoPage />} />
-            <Route path="/rma"         element={<RMAPage />}         />
-            <Route path="/nce"         element={<NCEPage />}         />
-            <Route path="/import"      element={<ImportPage />}      />
-            <Route path="/catalogo"    element={<CatalogPage />}     />
-            <Route path="/usuarios"    element={<UsersPage />}       />
-            <Route path="*"            element={<Navigate to="/" />} />
-          </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/"            element={<Navigate to="/spare" />}  />
+              <Route path="/spare"       element={<SpareList />}       />
+              <Route path="/seguimiento" element={<SeguimientoPage />} />
+              <Route path="/rma"         element={<RMAPage />}         />
+              <Route path="/nce"         element={<NCEPage />}         />
+              <Route path="/import"      element={<ImportPage />}      />
+              <Route path="/catalogo"    element={<CatalogPage />}     />
+              <Route path="/usuarios"    element={<UsersPage />}       />
+              <Route path="*"            element={<Navigate to="/" />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </BrowserRouter>

@@ -14,7 +14,7 @@ import io
    # DESPUÉS:
 from .models import (
     Spare, SAPCatalog, CentroAlmacen, SAPMaterial,
-    PartNumber, StockSAP, SeguimientoSpare, Seguimiento,
+    PartNumber, StockSAP, Seguimiento,
     SeguimientoAveriadas, SeguimientoUpgrades, SeguimientoProveedor,
 )
 
@@ -24,7 +24,6 @@ from .serializers import (
     SAPCatalogSerializer, CentroAlmacenSerializer,
     SAPMaterialSerializer, DashboardStatsSerializer,
     StockSAPSerializer,
-    SeguimientoSpareSerializer,
     SeguimientoSerializer,
     SeguimientoAveridasSerializer,
     SeguimientoUpgradesSerializer,
@@ -553,14 +552,6 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
 # ─── Seguimiento Spare ViewSet (legacy) ──────────────────────────────────────
 
 
-class SeguimientoSpareViewSet(viewsets.ModelViewSet):
-    queryset = SeguimientoSpare.objects.all()
-    serializer_class = SeguimientoSpareSerializer
-    pagination_class = FlexPagePagination
-    filter_backends = [SearchFilter, OrderingFilter]
-    search_fields = ['red', 'sap', 'descripcion', 'codigo_site', 'folio',
-                     'usuario_folio', 'status_folio', 'oym_encargado']
-    ordering_fields = ['fecha_asignacion', 'red', 'status_folio', 'created_at']
 
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
     def import_xlsx(self, request):

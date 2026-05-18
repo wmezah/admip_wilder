@@ -6,7 +6,7 @@ class Spare(models.Model):
     part_number        = models.CharField(max_length=200, blank=True, null=True)
     tipo               = models.CharField(max_length=200, blank=True, null=True)
     modelo             = models.CharField(max_length=500, blank=True, null=True)
-    proveedor          = models.CharField(max_length=100, blank=True, null=True)
+    proveedor          = models.CharField(max_length=100, blank=True, null=True, db_index=True)
     descripcion        = models.TextField(blank=True, null=True)
     serial_number      = models.CharField(max_length=200, blank=True, null=True, db_index=True)
     orden_compra       = models.CharField(max_length=200, blank=True, null=True)
@@ -161,21 +161,21 @@ class Seguimiento(models.Model):
         ('Aprobado',        'Aprobado'),
     ]
 
-    red               = models.CharField(max_length=100, blank=True, null=True)
-    proveedor         = models.CharField(max_length=200, blank=True, null=True)
-    sap               = models.CharField(max_length=50,  blank=True, null=True)
+    red               = models.CharField(max_length=100, blank=True, null=True, db_index=True)
+    proveedor         = models.CharField(max_length=200, blank=True, null=True, db_index=True)
+    sap               = models.CharField(max_length=50,  blank=True, null=True, db_index=True)
     descripcion       = models.CharField(max_length=500, blank=True, null=True)
     cantidad_serie    = models.CharField(max_length=200, blank=True, null=True)
     lote              = models.CharField(max_length=100, blank=True, null=True)
     motivo_asignacion = models.TextField(blank=True, null=True)
-    fecha_asignacion  = models.DateField(blank=True, null=True)
+    fecha_asignacion  = models.DateField(blank=True, null=True, db_index=True)
     site              = models.CharField(max_length=200, blank=True, null=True)
     codigo_site       = models.CharField(max_length=100, blank=True, null=True)
     elemento_pep      = models.CharField(max_length=200, blank=True, null=True)
     numero_pedido     = models.CharField(max_length=100, blank=True, null=True)
-    folio             = models.CharField(max_length=100, blank=True, null=True)
+    folio             = models.CharField(max_length=100, blank=True, null=True, db_index=True)
     usuario_folio     = models.CharField(max_length=200, blank=True, null=True)
-    status_folio      = models.CharField(max_length=100, choices=STATUS_CHOICES, blank=True, null=True)
+    status_folio      = models.CharField(max_length=100, choices=STATUS_CHOICES, blank=True, null=True, db_index=True)
     oym_encargado     = models.CharField(max_length=200, blank=True, null=True)
     comentarios       = models.TextField(blank=True, null=True)
     created_at        = models.DateTimeField(auto_now_add=True)
@@ -188,50 +188,6 @@ class Seguimiento(models.Model):
     def __str__(self):
         return f"{self.sap} – {self.codigo_site} – {self.status_folio}"
 
-
-# ─── Seguimiento Spare (modelo legacy) ───────────────────────────────────────
-class SeguimientoSpare(models.Model):
-    STATUS_CHOICES = [
-        ('Aprobado',        'Aprobado'),
-        ('Pendiente Crear', 'Pendiente Crear'),
-        ('Concluido',       'Concluido'),
-        ('No se Utilizó',   'No se Utilizó'),
-        ('Pendiente',       'Pendiente'),
-        ('Cancelado',       'Cancelado'),
-    ]
-    RED_CHOICES = [
-        ('IPRAN',  'IPRAN'),
-        ('CORE',   'CORE'),
-        ('METRO',  'METRO'),
-        ('ACCESO', 'ACCESO'),
-        ('OTRO',   'OTRO'),
-    ]
-
-    red               = models.CharField(max_length=50,  blank=True, null=True, choices=RED_CHOICES)
-    sap               = models.CharField(max_length=50,  blank=True, null=True)
-    descripcion       = models.CharField(max_length=500, blank=True, null=True)
-    serial_lote       = models.CharField(max_length=100, blank=True, null=True, verbose_name='Cantidad / N° Serie')
-    lote              = models.CharField(max_length=100, blank=True, null=True)
-    motivo_asignacion = models.TextField(blank=True, null=True)
-    fecha_asignacion  = models.DateField(blank=True, null=True)
-    site              = models.CharField(max_length=200, blank=True, null=True)
-    codigo_site       = models.CharField(max_length=100, blank=True, null=True)
-    elemento_pep      = models.CharField(max_length=100, blank=True, null=True)
-    numero_pedido     = models.CharField(max_length=100, blank=True, null=True)
-    folio             = models.CharField(max_length=100, blank=True, null=True)
-    usuario_folio     = models.CharField(max_length=100, blank=True, null=True)
-    status_folio      = models.CharField(max_length=50,  blank=True, null=True, choices=STATUS_CHOICES)
-    oym_encargado     = models.CharField(max_length=100, blank=True, null=True, verbose_name='OyM Encargado')
-    comentarios       = models.TextField(blank=True, null=True)
-    created_at        = models.DateTimeField(auto_now_add=True)
-    updated_at        = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'seguimiento_spare'
-        ordering = ['-fecha_asignacion', '-created_at']
-
-    def __str__(self):
-        return f"{self.red} | {self.sap} | {self.codigo_site} | {self.status_folio}"
 
 # ─── Seguimiento Piezas Averiadas ─────────────────────────────────────────────
 class SeguimientoAveriadas(models.Model):

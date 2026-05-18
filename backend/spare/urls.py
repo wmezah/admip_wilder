@@ -11,7 +11,6 @@ from .views import (
     ImportSpareXLSXView,
     ImportSAPXLSXView,
     StockSAPViewSet,
-    SeguimientoSpareViewSet,
     SeguimientoViewSet,
     SeguimientoAveridasViewSet,
     SeguimientoUpgradesViewSet,
