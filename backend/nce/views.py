@@ -60,13 +60,14 @@ class CPUSummaryView(APIView):
             avgs = data['avg_samples']
             maxs = data['max_samples']
             result.append({
-                'device':       dev,
-                'samples':      len(avgs),
-                'cpu_avg_mean': round(sum(avgs) / len(avgs), 2) if avgs else 0,
-                'cpu_avg_max':  round(max(avgs), 2)             if avgs else 0,
-                'cpu_peak_max': round(max(maxs), 2)             if maxs else 0,
-                'first_sample': min(data['times'])              if data['times'] else '',
-                'last_sample':  max(data['times'])              if data['times'] else '',
+                'device':        dev,
+                'samples':       len(avgs),
+                'cpu_avg_mean':  round(sum(avgs) / len(avgs), 2)  if avgs else 0,
+                'cpu_avg_max':   round(max(avgs), 2)              if avgs else 0,
+                'cpu_peak_mean': round(sum(maxs) / len(maxs), 2)  if maxs else 0,
+                'cpu_peak_max':  round(max(maxs), 2)              if maxs else 0,
+                'first_sample':  min(data['times'])               if data['times'] else '',
+                'last_sample':   max(data['times'])               if data['times'] else '',
             })
 
         result.sort(key=lambda x: x['cpu_avg_mean'], reverse=True)
