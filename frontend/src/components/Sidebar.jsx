@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   Package, PieChart, Users, ChevronDown, ChevronUp,
-  Search, Zap, BookOpen, FileText, Activity, ClipboardList,
-  PanelLeftClose, PanelLeftOpen
+  Zap, BookOpen, FileText, Activity, ClipboardList,
+  PanelLeftClose, PanelLeftOpen, AlertTriangle
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -11,8 +11,8 @@ const NAV_GROUPS = [
     section: 'Almacén', collapsible: true,
     items: [
       { label:'Spares',      icon:Package,      to:'/spare'       },
-      { label:'Gestión RMA', icon:FileText,      to:'/rma'         },
       { label:'Seguimiento', icon:ClipboardList, to:'/seguimiento' },
+      { label:'RMA',         icon:AlertTriangle, to:'/rma'         },
       { label:'Catálogos',   icon:BookOpen,      to:'/catalogo'    },
     ],
   },
@@ -28,26 +28,6 @@ const NAV_GROUPS = [
     ],
   },
 ]
-
-function SearchBar() {
-  const [focused, setFocused] = useState(false)
-  return (
-    <div style={{ position:'relative', margin:'0 12px 4px' }}>
-      <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)',
-        color: focused ? '#1877f2' : '#65676b', transition:'color 0.18s', pointerEvents:'none' }} />
-      <input type="text" placeholder="Search"
-        onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-        style={{ width:'100%', boxSizing:'border-box', padding:'6px 34px 6px 28px', borderRadius:7,
-          border:`1px solid ${focused ? '#1877f2' : '#dadde1'}`,
-          background: focused ? '#e7f3ff' : '#f0f2f5',
-          fontSize:13, color:'#1c1e21', outline:'none', fontFamily:'inherit',
-          boxShadow: focused ? '0 0 0 3px rgba(24,119,242,0.12)' : 'none', transition:'all 0.18s' }} />
-      <span style={{ position:'absolute', right:9, top:'50%', transform:'translateY(-50%)',
-        fontSize:10.5, color:'#65676b', fontFamily:'monospace', pointerEvents:'none',
-        border:'1px solid #dadde1', borderRadius:4, padding:'1px 4px', background:'#f0f2f5' }}>⌘K</span>
-    </div>
-  )
-}
 
 function NavGroup({ group, collapsed }) {
   const [open, setOpen] = useState(true)
@@ -135,7 +115,6 @@ export default function Sidebar({ collapsed, onToggle }) {
           )}
         </div>
 
-        {!collapsed && <SearchBar />}
         <div style={{ height:1, background:'#dadde1', margin:'6px 0', flexShrink:0 }} />
 
         <nav style={{ flex:1, padding: collapsed ? '4px 4px' : '4px 8px', overflowY:'auto' }}>

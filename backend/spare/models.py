@@ -133,49 +133,6 @@ class SAPMaterial(models.Model):
         return f"{self.material} – {(self.texto_breve or '')[:60]}"
 
 
-# ─── RMA ──────────────────────────────────────────────────────────────────────
-class RMA(models.Model):
-    ESTADO_CHOICES = [
-        ('PENDIENTE',  'Pendiente'),
-        ('EN_PROCESO', 'En Proceso'),
-        ('COMPLETADO', 'Completado'),
-        ('CANCELADO',  'Cancelado'),
-    ]
-
-    solicitud           = models.CharField(max_length=100, blank=True, null=True)
-    usuario_solicitante = models.CharField(max_length=200, blank=True, null=True)
-    usuario_login       = models.CharField(max_length=100, blank=True, null=True)
-    red                 = models.CharField(max_length=100, blank=True, null=True)
-    region              = models.CharField(max_length=100, blank=True, null=True)
-    ne                  = models.CharField(max_length=100, blank=True, null=True)
-    modelo_ne           = models.CharField(max_length=200, blank=True, null=True)
-    codigo_sap          = models.CharField(max_length=100, blank=True, null=True)
-    part_number         = models.CharField(max_length=200, blank=True, null=True)
-    proveedor           = models.CharField(max_length=100, blank=True, null=True)
-    descripcion         = models.TextField(blank=True, null=True)
-    sn_averiada         = models.CharField(max_length=200, blank=True, null=True)
-    rma_proveedor       = models.CharField(max_length=200, blank=True, null=True)
-    ticket_proveedor    = models.CharField(max_length=200, blank=True, null=True)
-    sr_proveedor        = models.CharField(max_length=200, blank=True, null=True)
-    sap_asignado        = models.CharField(max_length=100, blank=True, null=True)
-    pn_asignado         = models.CharField(max_length=200, blank=True, null=True)
-    desc_asignado       = models.TextField(blank=True, null=True)
-    sn_asignado         = models.CharField(max_length=200, blank=True, null=True)
-    fecha_sn_asignado   = models.DateField(blank=True, null=True)
-    fecha_inicio_rma    = models.DateField(blank=True, null=True)
-    sn_rma              = models.CharField(max_length=200, blank=True, null=True)
-    fecha_retorno       = models.DateField(blank=True, null=True)
-    estado              = models.CharField(max_length=50, choices=ESTADO_CHOICES, default='PENDIENTE')
-    created_at          = models.DateTimeField(auto_now_add=True)
-    updated_at          = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'rma'
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"RMA {self.solicitud or self.id}"
-
 
 # ─── Stock SAP ────────────────────────────────────────────────────────────────
 class StockSAP(models.Model):

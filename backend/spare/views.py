@@ -551,16 +551,6 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
 
 
 # ─── Seguimiento Spare ViewSet (legacy) ──────────────────────────────────────
-# ─── RMA ViewSet ──────────────────────────────────────────────────────────────
-class RMAViewSet(viewsets.ModelViewSet):
-    from .models import RMA
-    from .serializers import RMASerializer
-    queryset         = RMA.objects.all()
-    serializer_class = RMASerializer
-    filter_backends  = [SearchFilter, OrderingFilter]
-    search_fields    = ['solicitud', 'usuario_solicitante', 'red', 'region',
-                        'ne', 'codigo_sap', 'part_number', 'sn_averiada', 'estado']
-    ordering_fields  = ['created_at', 'estado', 'fecha_inicio_rma']
 
 
 class SeguimientoSpareViewSet(viewsets.ModelViewSet):

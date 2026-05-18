@@ -10,26 +10,24 @@ from .views import (
     ImportSpareCSVView,
     ImportSpareXLSXView,
     ImportSAPXLSXView,
-    RMAViewSet,
     StockSAPViewSet,
     SeguimientoSpareViewSet,
     SeguimientoViewSet,
-    SeguimientoAveridasViewSet,   # ← NUEVO
-    SeguimientoUpgradesViewSet,   # ← NUEVO
-    SeguimientoProveedorViewSet,  # ← NUEVO
+    SeguimientoAveridasViewSet,
+    SeguimientoUpgradesViewSet,
+    SeguimientoProveedorViewSet,
 )
 
 router = DefaultRouter()
-router.register(r'items',                SpareViewSet,                basename='spare')
-router.register(r'sap-catalog',          SAPCatalogViewSet,           basename='sap-catalog')
-router.register(r'centros',              CentroAlmacenViewSet,        basename='centros')
-router.register(r'part-numbers',         PartNumberViewSet,           basename='part-numbers')
-router.register(r'rma',                  RMAViewSet,                  basename='rma')
-router.register(r'stock-sap',            StockSAPViewSet,             basename='stock-sap')
-router.register(r'seguimiento',          SeguimientoViewSet,          basename='seguimiento')
-router.register(r'seguimiento-averiadas',SeguimientoAveridasViewSet,  basename='seguimiento-averiadas')  # ← NUEVO
-router.register(r'seguimiento-upgrades', SeguimientoUpgradesViewSet,  basename='seguimiento-upgrades')   # ← NUEVO
-router.register(r'seguimiento-proveedor', SeguimientoProveedorViewSet,  basename='seguimiento-proveedor')   # ← NUEVO
+router.register(r'items',                 SpareViewSet,                basename='spare')
+router.register(r'sap-catalog',           SAPCatalogViewSet,           basename='sap-catalog')
+router.register(r'centros',               CentroAlmacenViewSet,        basename='centros')
+router.register(r'part-numbers',          PartNumberViewSet,           basename='part-numbers')
+router.register(r'stock-sap',             StockSAPViewSet,             basename='stock-sap')
+router.register(r'seguimiento',           SeguimientoViewSet,          basename='seguimiento')
+router.register(r'seguimiento-averiadas', SeguimientoAveridasViewSet,  basename='seguimiento-averiadas')
+router.register(r'seguimiento-upgrades',  SeguimientoUpgradesViewSet,  basename='seguimiento-upgrades')
+router.register(r'seguimiento-proveedor', SeguimientoProveedorViewSet, basename='seguimiento-proveedor')
 
 urlpatterns = [
     path('', include(router.urls)),

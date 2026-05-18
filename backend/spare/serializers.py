@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Spare, SAPCatalog, CentroAlmacen, SAPMaterial, PartNumber, RMA, StockSAP, SeguimientoSpare, Seguimiento, SeguimientoAveriadas, SeguimientoUpgrades, SeguimientoProveedor
+from .models import Spare, SAPCatalog, CentroAlmacen, SAPMaterial, PartNumber, StockSAP, SeguimientoSpare, Seguimiento, SeguimientoAveriadas, SeguimientoUpgrades, SeguimientoProveedor
 
 class SpareSerializer(serializers.ModelSerializer):
     proveedor = serializers.CharField(max_length=100, allow_blank=True, required=False, allow_null=True)
@@ -79,10 +79,6 @@ class PartNumberSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class RMASerializer(serializers.ModelSerializer):
-    class Meta:
-        model = RMA
-        fields = '__all__'
 
 
 class StockSAPSerializer(serializers.ModelSerializer):

@@ -5,8 +5,8 @@ import Topbar          from './components/Topbar'
 import LoginPage       from './pages/LoginPage'
 import NCEPage         from './pages/NCEPage'
 import SeguimientoPage from './pages/SeguimientoPage'
-import SpareList       from './pages/SpareList'
 import RMAPage         from './pages/RMAPage'
+import SpareList       from './pages/SpareList'
 import ImportPage      from './pages/ImportPage'
 import CatalogPage     from './pages/CatalogPage'
 import UsersPage       from './pages/UsersPage'
@@ -178,8 +178,8 @@ export default function App() {
             <Route path="/"            element={<Navigate to="/spare" />}  />
             <Route path="/spare"       element={<SpareList />}       />
             <Route path="/seguimiento" element={<SeguimientoPage />} />
-            <Route path="/nce"         element={<NCEPage />}         />
             <Route path="/rma"         element={<RMAPage />}         />
+            <Route path="/nce"         element={<NCEPage />}         />
             <Route path="/import"      element={<ImportPage />}      />
             <Route path="/catalogo"    element={<CatalogPage />}     />
             <Route path="/usuarios"    element={<UsersPage />}       />
