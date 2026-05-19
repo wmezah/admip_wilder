@@ -13,11 +13,13 @@ const C = {
 }
 
 function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
-  const [uploading, setUploading]   = useState(false)
-  const [result,    setResult]      = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const [result,    setResult]    = useState(null)
+  const [error,     setError]     = useState('')
+  const fileRef = useRef()
 
   const uploadXLSX = async (file) => {
-    setUploading(true); setResult(null)
+    setUploading(true); setResult(null); setError('')
     const fd = new FormData(); fd.append('file', file)
     try {
       const r = await fetch(`${api}/import_xlsx/`, {
@@ -26,11 +28,8 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Error')
       setResult(d); onDone()
-    } catch(e) {
-      alert('❌ ' + e.message)
-    } finally {
-      setUploading(false)
-    }
+    } catch(e) { setError(e.message) }
+    finally { setUploading(false) }
   }
 
   const downloadPlantilla = () => {
@@ -40,40 +39,64 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
     XLSX.writeFile(wb, `plantilla_${plantillaName}.xlsx`)
   }
 
-  return (
-    <div className="card p-4" style={{ marginBottom:16, border:'1px solid #90bef740' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
-        marginBottom: result ? 12 : 0 }}>
-        <label style={{ display:'inline-flex', alignItems:'center', gap:8,
-          background:'#1877f2', color:'#fff', padding:'7px 14px', borderRadius:8,
-          cursor:'pointer', fontSize:13, fontWeight:600, whiteSpace:'nowrap' }}>
-          <Upload size={14} />
-          {uploading ? 'Importando...' : 'Seleccionar XLSX'}
-          <input type="file" accept=".xlsx,.xls" style={{ display:'none' }}
-            onChange={e => e.target.files[0] && uploadXLSX(e.target.files[0])} />
-        </label>
-        <button onClick={downloadPlantilla} style={{
-          display:'inline-flex', alignItems:'center', gap:6,
-          padding:'7px 14px', borderRadius:8, border:'1px solid #dadde1',
-          background:'#fff', color:'#374151', fontSize:13, fontWeight:600, cursor:'pointer'
-        }}>
-          <Download size={14} /> Descargar Plantilla
-        </button>
-        <span style={{ fontSize:12, color:'#6b7280' }}>
-          ⚠️ El import <strong>reemplaza todos los registros</strong> existentes.
-        </span>
+  if (result) return (
+    <div style={{ background:'#fff', borderRadius:14, border:'1px solid #e5e7eb',
+      padding:20, marginBottom:16, textAlign:'center' }}>
+      <p style={{ fontSize:28, margin:'0 0 6px' }}>{result.errors>0 ? '⚠️' : '✅'}</p>
+      <p style={{ fontWeight:700, fontSize:14, color:'#15803d', margin:'0 0 10px' }}>Importación completada</p>
+      <div style={{ display:'flex', gap:16, justifyContent:'center', marginBottom:14 }}>
+        {[['Eliminados', result.deleted,'#dc2626'],['Importados',result.imported,'#15803d'],
+          ...(result.skipped>0?[['Omitidos',result.skipped,'#b45309']]:[]),
+          ...(result.errors>0?[['Errores',result.errors,'#dc2626']]:[])
+        ].map(([l,v,col])=>(
+          <div key={l} style={{ textAlign:'center' }}>
+            <p style={{ fontSize:22, fontWeight:700, color:col, margin:0 }}>{v||0}</p>
+            <p style={{ fontSize:11, color:'#6b7280', margin:0 }}>{l}</p>
+          </div>
+        ))}
       </div>
-      {result && (
-        <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0',
-          borderRadius:8, padding:'10px 14px', fontSize:13 }}>
-          <strong style={{ color:'#15803d' }}>✅ Importación completada</strong>
-          <span style={{ color:'#374151', marginLeft:12 }}>
-            {result.deleted} anteriores eliminados · {result.imported} nuevos importados
-            {result.skipped > 0 && ` · ${result.skipped} omitidos`}
-            {result.errors  > 0 && <span style={{ color:'#dc2626' }}> · {result.errors} errores</span>}
-          </span>
+      <button className="btn-primary" style={{ fontSize:12 }} onClick={()=>setResult(null)}>Importar otro</button>
+    </div>
+  )
+
+  return (
+    <div style={{ background:'#fff', borderRadius:14, border:'1px solid #e5e7eb',
+      padding:20, marginBottom:16 }}>
+      <div style={{ background:'#e7f3ff', borderRadius:8, padding:'10px 14px',
+        marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div>
+          <p style={{ margin:0, fontSize:12, fontWeight:600, color:'#1877f2' }}>📋 Plantilla Excel</p>
+          <p style={{ margin:'2px 0 0', fontSize:11, color:'#6b7280' }}>
+            Descarga la plantilla con las columnas correctas antes de importar.
+          </p>
         </div>
+        <button onClick={downloadPlantilla}
+          style={{ fontSize:11, padding:'6px 12px', border:'1px solid #1877f2',
+            borderRadius:7, background:'#fff', color:'#1877f2', cursor:'pointer', fontWeight:600,
+            display:'flex', alignItems:'center', gap:5 }}>
+          <Download size={12}/> Descargar plantilla
+        </button>
+      </div>
+      <div onClick={()=>fileRef.current.click()}
+        style={{ border:'2px dashed #d8b4fe', borderRadius:10, padding:'20px',
+          textAlign:'center', cursor:'pointer', transition:'border-color .2s' }}
+        onMouseEnter={e=>e.currentTarget.style.borderColor='#1877f2'}
+        onMouseLeave={e=>e.currentTarget.style.borderColor='#d8b4fe'}>
+        <Upload size={22} color="#6babf5" style={{ margin:'0 auto 6px', display:'block' }}/>
+        <p style={{ margin:0, fontSize:13, fontWeight:600, color:'#1877f2' }}>
+          {uploading ? 'Importando...' : 'Seleccionar archivo Excel (.xlsx)'}
+        </p>
+        <p style={{ margin:'3px 0 0', fontSize:11, color:'#9ca3af' }}>Haz clic para buscar</p>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:'none' }}
+          onChange={e => e.target.files[0] && uploadXLSX(e.target.files[0])} />
+      </div>
+      {error && (
+        <p style={{ fontSize:12, color:'#dc2626', background:'#fef2f2',
+          padding:'8px 12px', borderRadius:6, border:'1px solid #fecaca', margin:'10px 0 0' }}>{error}</p>
       )}
+      <p style={{ fontSize:11, color:'#9ca3af', margin:'8px 0 0', textAlign:'center' }}>
+        ⚠️ El import <strong>reemplaza todos</strong> los registros existentes.
+      </p>
     </div>
   )
 }
@@ -322,27 +345,35 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
 
 // PESTAÑA 2 — Seguimiento Piezas Averiadas
 // ═══════════════════════════════════════════════════════════════════════════════
+const ZONA_OPTS    = ['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR']
+const RED_OPTS     = ['ACCESO','IPRAN','CORE','METRO','PRONATEL']
+const PROV_OPTS    = ['HUAWEI','ZTE','NOKIA','CISCO','INFINERA']
+const ALMACEN_OPTS = ['Pendiente','Pendiente (requiere acta de ingreso)','Pendiente (no RMA)','P008/G000','P008/G001','P008/D000','P008/U000','P008/P000']
+const STATUS_OPTS  = ['Proceso COMPLETADO','Pendiente de cambio','Pieza ubicada/En traslado a CD VES','Enviar correo a OYM','Se envió correo a OYM para devolución','Enviar correo a PROVEEDOR','Se envió correo a PROVEEDOR para recojo','PROVEEDOR recogió averiado','PROVEEDOR entregó pieza operativa','Solicitar BAJA SISTEMA']
+const ACTA_OPTS    = ['GENERADA','NO GENERADA','NO REQUIERE']
+
 const COLS_AVERIADAS = [
-  { key:'region',                 label:'Región',          default:true  },
-  { key:'red',                    label:'Red',             default:true  },
-  { key:'proveedor',              label:'Proveedor',       default:true  },
+  { key:'region',                 label:'Zona',            default:true,  dropdown: ZONA_OPTS    },
+  { key:'red',                    label:'Red',             default:true,  dropdown: RED_OPTS     },
+  { key:'proveedor',              label:'Proveedor',       default:true,  dropdown: PROV_OPTS    },
   { key:'equipo',                 label:'Equipo',          default:true  },
   { key:'modelo',                 label:'Modelo',          default:true  },
-  { key:'part_number_averiado',   label:'Part Number Averiado', default:true  },
+  { key:'part_number_averiado',   label:'P/N Averiado',    default:true  },
   { key:'description',            label:'Descripción',     default:true  },
-  { key:'serie_averiada',         label:'Serie Averiada',  default:true  },
+  { key:'serie_averiada',         label:'Serie Aver.',     default:true  },
   { key:'sap',                    label:'SAP',             default:true  },
   { key:'encargado_oym',          label:'Encargado OyM',   default:true  },
-  { key:'ingresado_almacen',      label:'Ingreso Almacén', default:false },
-  { key:'acta_ingreso',           label:'Acta Ingreso',    default:false },
-  { key:'status',                 label:'Status',          default:true  },
-  { key:'incidencia_oym',         label:'Incidencia OyM',  default:false },
-  { key:'fecha_cambio_retiro',    label:'Fecha Cambio',    default:true  },
-  { key:'fecha_correo_oym',       label:'Fecha Correo OyM',default:false },
-  { key:'fecha_correo_proveedor', label:'Fecha Correo Prov',default:false },
+  { key:'ingresado_almacen',      label:'Ing. Almacén',    default:false, dropdown: ALMACEN_OPTS },
+  { key:'acta_ingreso',           label:'Acta Ingreso',    default:false, dropdown: ACTA_OPTS    },
+  { key:'status',                 label:'Status',          default:true,  dropdown: STATUS_OPTS  },
+  { key:'incidencia_oym',         label:'Incidencia',      default:false },
+  { key:'fecha_cambio_retiro',    label:'F. Cambio',       default:true  },
+  { key:'fecha_correo_oym',       label:'F. Correo OyM',   default:false },
+  { key:'fecha_correo_proveedor', label:'F. Correo Prov',  default:false },
   { key:'rma',                    label:'RMA',             default:true  },
   { key:'ticket',                 label:'Ticket',          default:true  },
-  { key:'costo_usd',              label:'Costo US$',       default:true  },
+  { key:'serie_proveedor',        label:'Serie Proveedor', default:true  },
+  { key:'modalidad_entrega',      label:'Modalidad Entrega',default:true },
 ]
 
 const STATUSES   = ['Pendiente','En Proceso','Completado','Cancelado']
@@ -414,7 +445,7 @@ export default function RMAPage() {
     return data.filter(r=>{
       const mQ = !q||[r.red,r.proveedor,r.equipo,r.sap,r.serie_averiada,r.rma,r.ticket,r.status]
         .some(v=>String(v||'').toLowerCase().includes(q))
-      const EXACT=['red','status_folio','lote','proveedor','status','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
+      const EXACT=['region','red','proveedor','status','ingresado_almacen','acta_ingreso','status_folio','lote','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
       return mQ && (!fStatus||r.status===fStatus) && mC
     })
   },[data,dQ,fStatus])
@@ -424,16 +455,29 @@ export default function RMAPage() {
   const activeCols = COLS_AVERIADAS.filter(c=>visibleCols.includes(c.key))
 
   const filterRow = (
-    <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
-      {activeCols.map(col => (
-        <td key={col.key} style={{ padding:'3px 6px' }}>
-          <input value={colF[col.key]||''} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
-            style={{ width:'100%', border:`1px solid ${colF[col.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
-              padding:'3px 6px', fontSize:10, outline:'none',
-              background:colF[col.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
-            placeholder="Filtrar…"/>
-        </td>
-      ))}
+    <tr style={{ background:'#fafafa', borderBottom:'2px solid #e5e7eb' }}>
+      {activeCols.map(col => {
+        const val = colF[col.key] || ''
+        const active = !!val
+        const base = { width:'100%', borderRadius:5, fontSize:11, padding:'4px 7px', outline:'none',
+          boxSizing:'border-box', fontFamily:'inherit', transition:'border-color .15s',
+          border:`1px solid ${active?'#6babf5':'#d1d5db'}`,
+          background: active ? '#e7f3ff' : '#fff',
+          boxShadow: active ? '0 0 0 2px #cce0ff' : 'none' }
+        return (
+          <td key={col.key} style={{ padding:'3px 6px' }}>
+            {col.dropdown ? (
+              <select value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }} style={base}>
+                <option value=''>Todos</option>
+                {col.dropdown.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <input value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
+                style={base} placeholder="Filtrar…"/>
+            )}
+          </td>
+        )
+      })}
       <td style={{ padding:'3px 6px' }}>
         {Object.values(colF).some(Boolean) && (
           <button onClick={()=>setColF({})}
@@ -476,9 +520,9 @@ export default function RMAPage() {
   }
 
   const MODAL_FIELDS = [
-    { key:'region',                 label:'Región' },
-    { key:'red',                    label:'Red',            options:['IPRAN','ACCESO','METRO','CORE'] },
-    { key:'proveedor',              label:'Proveedor' },
+    { key:'region',                 label:'Zona',           options:ZONA_OPTS },
+    { key:'red',                    label:'Red',            options:RED_OPTS },
+    { key:'proveedor',              label:'Proveedor',      options:PROV_OPTS },
     { key:'equipo',                 label:'Equipo' },
     { key:'modelo',                 label:'Modelo' },
     { key:'part_number_averiado',   label:'Part Number Averiado' },
@@ -486,16 +530,17 @@ export default function RMAPage() {
     { key:'serie_averiada',         label:'Serie Averiada' },
     { key:'sap',                    label:'SAP' },
     { key:'encargado_oym',          label:'Encargado OyM' },
-    { key:'ingresado_almacen',      label:'Ingreso Almacén' },
-    { key:'acta_ingreso',           label:'Acta Ingreso' },
-    { key:'status',                 label:'Status',         options:STATUSES },
+    { key:'ingresado_almacen',      label:'Ingreso Almacén',options:ALMACEN_OPTS },
+    { key:'acta_ingreso',           label:'Acta Ingreso',   options:ACTA_OPTS },
+    { key:'status',                 label:'Status',         options:STATUS_OPTS },
     { key:'incidencia_oym',         label:'Incidencia OyM' },
     { key:'fecha_cambio_retiro',    label:'Fecha Cambio',   type:'date' },
     { key:'fecha_correo_oym',       label:'Fecha Correo OyM', type:'date' },
     { key:'fecha_correo_proveedor', label:'Fecha Correo Prov', type:'date' },
     { key:'rma',                    label:'RMA' },
     { key:'ticket',                 label:'Ticket' },
-    { key:'costo_usd',              label:'Costo US$',      type:'number' },
+    { key:'serie_proveedor',        label:'Serie Proveedor' },
+    { key:'modalidad_entrega',       label:'Modalidad Entrega' },
   ]
 
   const statCounts = STATUSES.reduce((acc,s)=>{ acc[s]=filtered.filter(r=>r.status===s).length; return acc },{})
@@ -560,10 +605,10 @@ export default function RMAPage() {
       {showUpload && (
         <ImportPanel api={API_AVERIADAS} onDone={load}
           plantillaName="seguimiento_averiadas"
-          plantillaCols={['Región','Red','Proveedor','Equipo','Modelo','Part Number Averiado',
-            'Descripción','Serie Averiada','SAP','Encargado OyM','Ingreso Almacén',
-            'Acta Ingreso','Status','Incidencia OyM','Fecha Cambio',
-            'Fecha Correo OyM','Fecha Correo Prov','RMA','Ticket','Costo US$']} />
+          plantillaCols={['ZONA','RED','PROVEEDOR','EQUIPO','MODELO','PART NUMBER AVERIADO',
+            'DESCRIPTION','SERIE AVERIADA','SAP','ENCARGADO OYM','ING. ALMACÉN',
+            'ACTA INGRESO','STATUS','INCIDENCIA','F. CAMBIO',
+            'F. CORREO OYM','F. CORREO PROV','RMA','TICKET','SERIE PROVEEDOR','MODALIDAD ENTREGA']} />
       )}
 
 
@@ -575,11 +620,15 @@ export default function RMAPage() {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
             <colgroup>{activeCols.map(col=><col key={col.key} style={{ width: colWidths[col.key] || 130 }} />)}<col style={{ width:70 }} /></colgroup>
             <thead>
-              <tr style={{ background:'#f0f2f5' }}>
+              <tr style={{ background:'#f3f4f6' }}>
                 {activeCols.map(col=>(
-                  <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
-                    fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
-                    whiteSpace:'nowrap', borderBottom:'1px solid #dadde1', position:'relative', userSelect:'none', overflow:'visible' }}>
+                  <th key={col.key} style={{ padding:'7px 12px 4px', textAlign:'left', fontSize:10,
+                    fontWeight:700, color: colF[col.key] ? '#1877f2' : '#6b7280',
+                    textTransform:'uppercase', letterSpacing:'.4px', whiteSpace:'nowrap',
+                    borderBottom:'1px solid #e5e7eb',
+                    borderTop: colF[col.key] ? '2px solid #1877f2' : '2px solid transparent',
+                    background: colF[col.key] ? '#cce0ff' : '#f3f4f6',
+                    position:'relative', userSelect:'none', overflow:'visible' }}>
                     {col.label}
                     <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
                   </th>

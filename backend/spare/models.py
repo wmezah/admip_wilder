@@ -218,6 +218,8 @@ class SeguimientoAveriadas(models.Model):
     rma                       = models.CharField(max_length=200, blank=True, null=True)
     ticket                    = models.CharField(max_length=200, blank=True, null=True)
     costo_usd                 = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    serie_proveedor           = models.CharField(max_length=200, blank=True, null=True)
+    modalidad_entrega         = models.CharField(max_length=200, blank=True, null=True)
     created_at                = models.DateTimeField(auto_now_add=True)
     updated_at                = models.DateTimeField(auto_now=True)
  
@@ -253,38 +255,4 @@ class SeguimientoUpgrades(models.Model):
  
     def __str__(self):
         return f"{self.proveedor} | {self.sap} | {self.folio}"
-
-# ─── Seguimiento Proveedor ─────────────────────────────────────
-
-class SeguimientoProveedor(models.Model):
-    ESTADO_CHOICES = [
-        ('EN PROCESO', 'EN PROCESO'),
-        ('CERRADO',    'CERRADO'),
-        ('PENDIENTE',  'PENDIENTE'),
-    ]
-
-    region              = models.CharField(max_length=100, blank=True, null=True)
-    proveedor           = models.CharField(max_length=200, blank=True, null=True)
-    sap                 = models.CharField(max_length=50,  blank=True, null=True)
-    part_number         = models.CharField(max_length=200, blank=True, null=True)
-    descripcion         = models.CharField(max_length=500, blank=True, null=True)
-    numero_serie        = models.CharField(max_length=200, blank=True, null=True)
-    lote                = models.CharField(max_length=100, blank=True, null=True)
-    centro              = models.CharField(max_length=100, blank=True, null=True)
-    almacen             = models.CharField(max_length=100, blank=True, null=True)
-    motivo_asignacion   = models.TextField(blank=True, null=True)
-    fecha_asignacion    = models.DateField(blank=True, null=True)
-    fecha_devolucion    = models.DateField(blank=True, null=True)
-    gr_devolucion       = models.CharField(max_length=200, blank=True, null=True)
-    estado              = models.CharField(max_length=100, blank=True, null=True)
-    comentario          = models.TextField(blank=True, null=True)
-    created_at          = models.DateTimeField(auto_now_add=True)
-    updated_at          = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'seguimiento_proveedor'
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"{self.proveedor} | {self.sap} | {self.estado}"
 

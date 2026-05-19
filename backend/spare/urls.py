@@ -14,7 +14,6 @@ from .views import (
     SeguimientoViewSet,
     SeguimientoAveridasViewSet,
     SeguimientoUpgradesViewSet,
-    SeguimientoProveedorViewSet,
 )
 
 router = DefaultRouter()
@@ -26,7 +25,6 @@ router.register(r'stock-sap',             StockSAPViewSet,             basename=
 router.register(r'seguimiento',           SeguimientoViewSet,          basename='seguimiento')
 router.register(r'seguimiento-averiadas', SeguimientoAveridasViewSet,  basename='seguimiento-averiadas')
 router.register(r'seguimiento-upgrades',  SeguimientoUpgradesViewSet,  basename='seguimiento-upgrades')
-router.register(r'seguimiento-proveedor', SeguimientoProveedorViewSet, basename='seguimiento-proveedor')
 
 urlpatterns = [
     path('', include(router.urls)),

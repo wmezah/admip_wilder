@@ -50,11 +50,13 @@ function RedBadge({ red }) {
 
 // ─── Panel de importación reutilizable ────────────────────────────────────────
 function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
-  const [uploading, setUploading]   = useState(false)
-  const [result,    setResult]      = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const [result,    setResult]    = useState(null)
+  const [error,     setError]     = useState('')
+  const fileRef = useRef()
 
   const uploadXLSX = async (file) => {
-    setUploading(true); setResult(null)
+    setUploading(true); setResult(null); setError('')
     const fd = new FormData(); fd.append('file', file)
     try {
       const r = await fetch(`${api}/import_xlsx/`, {
@@ -63,7 +65,7 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
       const d = await r.json()
       if (!r.ok) throw new Error(d.error || 'Error')
       setResult(d); onDone()
-    } catch(e) { alert('❌ ' + e.message) }
+    } catch(e) { setError(e.message) }
     finally { setUploading(false) }
   }
 
@@ -74,40 +76,64 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
     XLSX.writeFile(wb, `plantilla_${plantillaName}.xlsx`)
   }
 
-  return (
-    <div className="card p-4" style={{ marginBottom:16, border:'1px solid #90bef740' }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap',
-        marginBottom: result ? 12 : 0 }}>
-        <label style={{ display:'inline-flex', alignItems:'center', gap:8,
-          background:'#1877f2', color:'#fff', padding:'7px 14px', borderRadius:8,
-          cursor:'pointer', fontSize:13, fontWeight:600, whiteSpace:'nowrap' }}>
-          <Upload size={14} />
-          {uploading ? 'Importando...' : 'Seleccionar XLSX'}
-          <input type="file" accept=".xlsx,.xls" style={{ display:'none' }}
-            onChange={e => e.target.files[0] && uploadXLSX(e.target.files[0])} />
-        </label>
-        <button onClick={downloadPlantilla} style={{
-          display:'inline-flex', alignItems:'center', gap:6,
-          padding:'7px 14px', borderRadius:8, border:'1px solid #dadde1',
-          background:'#fff', color:'#374151', fontSize:13, fontWeight:600, cursor:'pointer'
-        }}>
-          <Download size={14} /> Descargar Plantilla
-        </button>
-        <span style={{ fontSize:12, color:'#6b7280' }}>
-          ⚠️ El import <strong>reemplaza todos los registros</strong> existentes.
-        </span>
+  if (result) return (
+    <div style={{ background:'#fff', borderRadius:14, border:'1px solid #e5e7eb',
+      padding:20, marginBottom:16, textAlign:'center' }}>
+      <p style={{ fontSize:28, margin:'0 0 6px' }}>{result.errors>0 ? '⚠️' : '✅'}</p>
+      <p style={{ fontWeight:700, fontSize:14, color:'#15803d', margin:'0 0 10px' }}>Importación completada</p>
+      <div style={{ display:'flex', gap:16, justifyContent:'center', marginBottom:14 }}>
+        {[['Eliminados',result.deleted,'#dc2626'],['Importados',result.imported,'#15803d'],
+          ...(result.skipped>0?[['Omitidos',result.skipped,'#b45309']]:[]),
+          ...(result.errors>0?[['Errores',result.errors,'#dc2626']]:[])
+        ].map(([l,v,col])=>(
+          <div key={l} style={{ textAlign:'center' }}>
+            <p style={{ fontSize:22, fontWeight:700, color:col, margin:0 }}>{v||0}</p>
+            <p style={{ fontSize:11, color:'#6b7280', margin:0 }}>{l}</p>
+          </div>
+        ))}
       </div>
-      {result && (
-        <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0',
-          borderRadius:8, padding:'10px 14px', fontSize:13 }}>
-          <strong style={{ color:'#15803d' }}>✅ Importación completada</strong>
-          <span style={{ color:'#374151', marginLeft:12 }}>
-            {result.deleted} anteriores eliminados · {result.imported} nuevos importados
-            {result.skipped > 0 && ` · ${result.skipped} omitidos`}
-            {result.errors  > 0 && <span style={{ color:'#dc2626' }}> · {result.errors} errores</span>}
-          </span>
+      <button className="btn-primary" style={{ fontSize:12 }} onClick={()=>setResult(null)}>Importar otro</button>
+    </div>
+  )
+
+  return (
+    <div style={{ background:'#fff', borderRadius:14, border:'1px solid #e5e7eb',
+      padding:20, marginBottom:16 }}>
+      <div style={{ background:'#e7f3ff', borderRadius:8, padding:'10px 14px',
+        marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div>
+          <p style={{ margin:0, fontSize:12, fontWeight:600, color:'#1877f2' }}>📋 Plantilla Excel</p>
+          <p style={{ margin:'2px 0 0', fontSize:11, color:'#6b7280' }}>
+            Descarga la plantilla con las columnas correctas antes de importar.
+          </p>
         </div>
+        <button onClick={downloadPlantilla}
+          style={{ fontSize:11, padding:'6px 12px', border:'1px solid #1877f2',
+            borderRadius:7, background:'#fff', color:'#1877f2', cursor:'pointer', fontWeight:600,
+            display:'flex', alignItems:'center', gap:5 }}>
+          <Download size={12}/> Descargar plantilla
+        </button>
+      </div>
+      <div onClick={()=>fileRef.current.click()}
+        style={{ border:'2px dashed #d8b4fe', borderRadius:10, padding:'20px',
+          textAlign:'center', cursor:'pointer', transition:'border-color .2s' }}
+        onMouseEnter={e=>e.currentTarget.style.borderColor='#1877f2'}
+        onMouseLeave={e=>e.currentTarget.style.borderColor='#d8b4fe'}>
+        <Upload size={22} color="#6babf5" style={{ margin:'0 auto 6px', display:'block' }}/>
+        <p style={{ margin:0, fontSize:13, fontWeight:600, color:'#1877f2' }}>
+          {uploading ? 'Importando...' : 'Seleccionar archivo Excel (.xlsx)'}
+        </p>
+        <p style={{ margin:'3px 0 0', fontSize:11, color:'#9ca3af' }}>Haz clic para buscar</p>
+        <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:'none' }}
+          onChange={e => e.target.files[0] && uploadXLSX(e.target.files[0])} />
+      </div>
+      {error && (
+        <p style={{ fontSize:12, color:'#dc2626', background:'#fef2f2',
+          padding:'8px 12px', borderRadius:6, border:'1px solid #fecaca', margin:'10px 0 0' }}>{error}</p>
       )}
+      <p style={{ fontSize:11, color:'#9ca3af', margin:'8px 0 0', textAlign:'center' }}>
+        ⚠️ El import <strong>reemplaza todos</strong> los registros existentes.
+      </p>
     </div>
   )
 }
@@ -527,16 +553,29 @@ function TabAsignado() {
 
 
       const filterRow = (
-        <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
-          {activeCols.map(col => (
-            <td key={col.key} style={{ padding:'3px 6px' }}>
-              <input value={colF[col.key]||''} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
-                style={{ width:'100%', border:`1px solid ${colF[col.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
-                  padding:'3px 6px', fontSize:10, outline:'none',
-                  background:colF[col.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
-                placeholder="Filtrar…"/>
-            </td>
-          ))}
+        <tr style={{ background:'#fafafa', borderBottom:'2px solid #e5e7eb' }}>
+          {activeCols.map(col => {
+            const val = colF[col.key] || ''
+            const active = !!val
+            const base = { width:'100%', borderRadius:5, fontSize:11, padding:'4px 7px', outline:'none',
+              boxSizing:'border-box', fontFamily:'inherit', transition:'border-color .15s',
+              border:`1px solid ${active?'#6babf5':'#d1d5db'}`,
+              background: active ? '#e7f3ff' : '#fff',
+              boxShadow: active ? '0 0 0 2px #cce0ff' : 'none' }
+            return (
+              <td key={col.key} style={{ padding:'3px 6px' }}>
+                {col.dropdown ? (
+                  <select value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }} style={base}>
+                    <option value=''>Todos</option>
+                    {col.dropdown.map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : (
+                  <input value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
+                    style={base} placeholder="Filtrar…"/>
+                )}
+              </td>
+            )
+          })}
           <td style={{ padding:'3px 6px' }}>
             {Object.values(colF).some(Boolean) && (
               <button onClick={()=>setColF({})} title="Limpiar filtros"
@@ -585,7 +624,7 @@ function TabAsignado() {
     { key:'sap',              label:'SAP' },
     { key:'descripcion',      label:'Descripción',      span:true },
     { key:'cantidad_serie',   label:'Cantidad/Serie' },
-    { key:'lote',             label:'Lote',             options:['VALORADO','NO VALORADO'] },
+    { key:'lote',             label:'Lote',             options:['VALORADO','NOVALORADO'] },
     { key:'motivo_asignacion',label:'Motivo',           span:true },
     { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
     { key:'status_folio',     label:'Status',           options:['Concluido','No se Utilizó','Pendiente Crear','Aprobado'] },
@@ -742,11 +781,15 @@ function TabAsignado() {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
             <colgroup>{activeCols.map(col=><col key={col.key} style={{ width: colWidths[col.key] || 130 }} />)}<col style={{ width:70 }} /></colgroup>
             <thead>
-              <tr style={{ background:'#f0f2f5' }}>
+              <tr style={{ background:'#f3f4f6' }}>
                 {activeCols.map(col=>(
-                  <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
-                    fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
-                    whiteSpace:'nowrap', borderBottom:'1px solid #dadde1', position:'relative', userSelect:'none', overflow:'visible' }}>
+                  <th key={col.key} style={{ padding:'7px 12px 4px', textAlign:'left', fontSize:10,
+                    fontWeight:700, color: colF[col.key] ? '#1877f2' : '#6b7280',
+                    textTransform:'uppercase', letterSpacing:'.4px', whiteSpace:'nowrap',
+                    borderBottom:'1px solid #e5e7eb',
+                    borderTop: colF[col.key] ? '2px solid #1877f2' : '2px solid transparent',
+                    background: colF[col.key] ? '#cce0ff' : '#f3f4f6',
+                    position:'relative', userSelect:'none', overflow:'visible' }}>
                     {col.label}
                     <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
                   </th>
@@ -836,17 +879,18 @@ function TabAsignado() {
 // PESTAÑA 3 — Seguimiento Upgrade / Mantenimiento
 // ═══════════════════════════════════════════════════════════════════════════════
 const COLS_UPGRADES = [
-  { key:'region',           label:'Región',          default:true  },
+  { key:'region',           label:'Zona',             default:true  },
   { key:'proveedor',        label:'Proveedor',        default:true  },
-  { key:'part_number',      label:'Part Number',      default:true  },
+  { key:'part_number',      label:'Modelo de Equipo', default:true  },
   { key:'sap',              label:'SAP',              default:true  },
   { key:'descripcion',      label:'Descripción',      default:true  },
   { key:'cantidad',         label:'Cantidad',         default:true  },
   { key:'numero_serie',     label:'N° Serie',         default:true  },
+  { key:'lote',             label:'LOTE',             default:true  },
   { key:'fecha_asignacion', label:'Fecha Asignación', default:true  },
-  { key:'guia_remision',    label:'Guía Remisión',    default:true  },
-  { key:'folio',            label:'Folio',            default:true  },
   { key:'numero_pedido',    label:'N° Pedido',        default:true  },
+  { key:'guia_remision',    label:'Guía Remisión',    default:true  },
+  { key:'oym_encargado',    label:'OYM Encargado',    default:true  },
   { key:'motivo_asignacion',label:'Motivo',           default:false },
   { key:'seguimiento',      label:'Seguimiento',      default:true  },
 ]
@@ -897,16 +941,29 @@ function TabUpgrades() {
 
 
   const filterRow = (
-    <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
-      {activeCols.map(col => (
-        <td key={col.key} style={{ padding:'3px 6px' }}>
-          <input value={colF[col.key]||''} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
-            style={{ width:'100%', border:`1px solid ${colF[col.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
-              padding:'3px 6px', fontSize:10, outline:'none',
-              background:colF[col.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
-            placeholder="Filtrar…"/>
-        </td>
-      ))}
+    <tr style={{ background:'#fafafa', borderBottom:'2px solid #e5e7eb' }}>
+      {activeCols.map(col => {
+        const val = colF[col.key] || ''
+        const active = !!val
+        const base = { width:'100%', borderRadius:5, fontSize:11, padding:'4px 7px', outline:'none',
+          boxSizing:'border-box', fontFamily:'inherit', transition:'border-color .15s',
+          border:`1px solid ${active?'#6babf5':'#d1d5db'}`,
+          background: active ? '#e7f3ff' : '#fff',
+          boxShadow: active ? '0 0 0 2px #cce0ff' : 'none' }
+        return (
+          <td key={col.key} style={{ padding:'3px 6px' }}>
+            {col.dropdown ? (
+              <select value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }} style={base}>
+                <option value=''>Todos</option>
+                {col.dropdown.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <input value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
+                style={base} placeholder="Filtrar…"/>
+            )}
+          </td>
+        )
+      })}
       <td style={{ padding:'3px 6px' }}>
         {Object.values(colF).some(Boolean) && (
           <button onClick={()=>setColF({})}
@@ -950,17 +1007,18 @@ function TabUpgrades() {
   }
 
   const MODAL_FIELDS = [
-    { key:'region',           label:'Región' },
+    { key:'region',           label:'Zona' },
     { key:'proveedor',        label:'Proveedor' },
-    { key:'part_number',      label:'Part Number' },
+    { key:'part_number',      label:'Modelo de Equipo' },
     { key:'sap',              label:'SAP' },
     { key:'descripcion',      label:'Descripción',    span:true },
     { key:'cantidad',         label:'Cantidad' },
     { key:'numero_serie',     label:'N° Serie' },
+    { key:'lote',             label:'LOTE' },
     { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
-    { key:'guia_remision',    label:'Guía Remisión' },
-    { key:'folio',            label:'Folio' },
     { key:'numero_pedido',    label:'N° Pedido' },
+    { key:'guia_remision',    label:'Guía Remisión' },
+    { key:'oym_encargado',    label:'OYM Encargado' },
     { key:'motivo_asignacion',label:'Motivo',          span:true },
     { key:'seguimiento',      label:'Seguimiento',     span:true },
   ]
@@ -1017,9 +1075,9 @@ function TabUpgrades() {
       {showUpload && (
         <ImportPanel api={API_UPGRADES} onDone={load}
           plantillaName="seguimiento_upgrades"
-          plantillaCols={['Región','Proveedor','Part Number','SAP','Descripción',
-            'Cantidad','N° Serie','Fecha Asignación','Guía Remisión',
-            'Folio','N° Pedido','Motivo','Seguimiento']} />
+          plantillaCols={['ZONA','PROVEEDOR','MODELO DE EQUIPO','SAP','DESCRIPCION',
+            'CANTIDAD','NUMERO DE SERIE','LOTE','FECHA ASIGNACION','N° PEDIDO',
+            'GUIA DE REMISION','OYM ENCARGADO','MOTIVO DE ASIGNACION','SEGUIMIENTO']} />
       )}
 
 
@@ -1031,11 +1089,15 @@ function TabUpgrades() {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
             <colgroup>{activeCols.map(col=><col key={col.key} style={{ width: colWidths[col.key] || 130 }} />)}<col style={{ width:70 }} /></colgroup>
             <thead>
-              <tr style={{ background:'#f0f2f5' }}>
+              <tr style={{ background:'#f3f4f6' }}>
                 {activeCols.map(col=>(
-                  <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
-                    fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
-                    whiteSpace:'nowrap', borderBottom:'1px solid #dadde1', position:'relative', userSelect:'none', overflow:'visible' }}>
+                  <th key={col.key} style={{ padding:'7px 12px 4px', textAlign:'left', fontSize:10,
+                    fontWeight:700, color: colF[col.key] ? '#1877f2' : '#6b7280',
+                    textTransform:'uppercase', letterSpacing:'.4px', whiteSpace:'nowrap',
+                    borderBottom:'1px solid #e5e7eb',
+                    borderTop: colF[col.key] ? '2px solid #1877f2' : '2px solid transparent',
+                    background: colF[col.key] ? '#cce0ff' : '#f3f4f6',
+                    position:'relative', userSelect:'none', overflow:'visible' }}>
                     {col.label}
                     <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
                   </th>
@@ -1112,10 +1174,10 @@ function TabUpgrades() {
 // PESTAÑA 4 — Seguimiento Spare Asignado a Proveedor
 // ═══════════════════════════════════════════════════════════════════════════════
 const COLS_PROVEEDOR = [
-  { key:'region',           label:'Región',             default:true  },
+  { key:'region',           label:'Zona',             default:true  },
   { key:'proveedor',        label:'Proveedor',           default:true  },
   { key:'sap',              label:'SAP',                 default:true  },
-  { key:'part_number',      label:'Part Number',         default:true  },
+  { key:'part_number',      label:'Modelo de Equipo',         default:true  },
   { key:'descripcion',      label:'Descripción',         default:true  },
   { key:'numero_serie',     label:'N° Serie',            default:true  },
   { key:'lote',             label:'Lote',                default:true  },
@@ -1177,16 +1239,29 @@ function TabProveedor() {
   const activeCols = COLS_PROVEEDOR.filter(c=>visibleCols.includes(c.key))
 
   const filterRow = (
-    <tr style={{ background:'#fafafa', borderBottom:'2px solid #dadde1' }}>
-      {activeCols.map(col => (
-        <td key={col.key} style={{ padding:'3px 6px' }}>
-          <input value={colF[col.key]||''} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
-            style={{ width:'100%', border:`1px solid ${colF[col.key]?'#1877f2':'#dadde1'}`, borderRadius:4,
-              padding:'3px 6px', fontSize:10, outline:'none',
-              background:colF[col.key]?'#e7f3ff':'#fff', fontFamily:'inherit' }}
-            placeholder="Filtrar…"/>
-        </td>
-      ))}
+    <tr style={{ background:'#fafafa', borderBottom:'2px solid #e5e7eb' }}>
+      {activeCols.map(col => {
+        const val = colF[col.key] || ''
+        const active = !!val
+        const base = { width:'100%', borderRadius:5, fontSize:11, padding:'4px 7px', outline:'none',
+          boxSizing:'border-box', fontFamily:'inherit', transition:'border-color .15s',
+          border:`1px solid ${active?'#6babf5':'#d1d5db'}`,
+          background: active ? '#e7f3ff' : '#fff',
+          boxShadow: active ? '0 0 0 2px #cce0ff' : 'none' }
+        return (
+          <td key={col.key} style={{ padding:'3px 6px' }}>
+            {col.dropdown ? (
+              <select value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }} style={base}>
+                <option value=''>Todos</option>
+                {col.dropdown.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            ) : (
+              <input value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
+                style={base} placeholder="Filtrar…"/>
+            )}
+          </td>
+        )
+      })}
       <td style={{ padding:'3px 6px' }}>
         {Object.values(colF).some(Boolean) && (
           <button onClick={()=>setColF({})}
@@ -1229,13 +1304,13 @@ function TabProveedor() {
   }
 
   const MODAL_FIELDS = [
-    { key:'region',           label:'Región' },
+    { key:'region',           label:'Zona' },
     { key:'proveedor',        label:'Proveedor' },
     { key:'sap',              label:'SAP' },
-    { key:'part_number',      label:'Part Number' },
+    { key:'part_number',      label:'Modelo de Equipo' },
     { key:'descripcion',      label:'Descripción',      span:true },
     { key:'numero_serie',     label:'N° Serie' },
-    { key:'lote',             label:'Lote',             options:['VALORADO','NO VALORADO'] },
+    { key:'lote',             label:'Lote',             options:['VALORADO','NOVALORADO'] },
     { key:'centro',           label:'Centro' },
     { key:'almacen',          label:'Almacén' },
     { key:'motivo_asignacion',label:'Motivo',           span:true },
@@ -1309,7 +1384,7 @@ function TabProveedor() {
       {showUpload && (
         <ImportPanel api={API_PROVEEDOR} onDone={load}
           plantillaName="seguimiento_proveedor"
-          plantillaCols={['Región','Proveedor','SAP','Part Number','Descripción',
+          plantillaCols={['ZONA','PROVEEDOR','SAP','MODELO DE EQUIPO','DESCRIPCION',
             'N° Serie','Lote','Centro','Almacén','Motivo',
             'Fecha Asignación','Fecha Devolución','GR Devolución',
             'Estado','Comentario']} />
@@ -1324,11 +1399,15 @@ function TabProveedor() {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
             <colgroup>{activeCols.map(col=><col key={col.key} style={{ width: colWidths[col.key] || 130 }} />)}<col style={{ width:70 }} /></colgroup>
             <thead>
-              <tr style={{ background:'#f0f2f5' }}>
+              <tr style={{ background:'#f3f4f6' }}>
                 {activeCols.map(col=>(
-                  <th key={col.key} style={{ padding:'10px 12px', textAlign:'left', fontSize:10,
-                    fontWeight:600, color:C.muted, textTransform:'uppercase', letterSpacing:'.4px',
-                    whiteSpace:'nowrap', borderBottom:'1px solid #dadde1', position:'relative', userSelect:'none', overflow:'visible' }}>
+                  <th key={col.key} style={{ padding:'7px 12px 4px', textAlign:'left', fontSize:10,
+                    fontWeight:700, color: colF[col.key] ? '#1877f2' : '#6b7280',
+                    textTransform:'uppercase', letterSpacing:'.4px', whiteSpace:'nowrap',
+                    borderBottom:'1px solid #e5e7eb',
+                    borderTop: colF[col.key] ? '2px solid #1877f2' : '2px solid transparent',
+                    background: colF[col.key] ? '#cce0ff' : '#f3f4f6',
+                    position:'relative', userSelect:'none', overflow:'visible' }}>
                     {col.label}
                     <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
                   </th>
@@ -1416,7 +1495,6 @@ export default function SeguimientoPage() {
   const TABS = [
     { key:'asignado',  label:'Spare Asignado',          icon:<MapPin size={14}/> },
     { key:'upgrades',  label:'Spare Upgrade/Mantenimiento',             icon:<Wrench size={14}/> },
-    { key:'proveedor', label:'Spare Asignado a Proveedor',              icon:<Upload size={14}/> },
   ]
 
   return (
@@ -1448,7 +1526,6 @@ export default function SeguimientoPage() {
 
       {tab==='asignado'  && <TabAsignado />}
       {tab==='upgrades'  && <TabUpgrades />}
-      {tab==='proveedor' && <TabProveedor />}
     </div>
   )
 }

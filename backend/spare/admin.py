@@ -3,7 +3,7 @@ from .models import (
     Spare, SAPCatalog, CentroAlmacen, PartNumber,
     SAPMaterial, StockSAP,
     Seguimiento, SeguimientoAveriadas,
-    SeguimientoUpgrades, SeguimientoProveedor,
+    SeguimientoUpgrades,
 )
 
 
@@ -68,9 +68,4 @@ class SeguimientoAveriadasAdmin(admin.ModelAdmin):
 
 @admin.register(SeguimientoUpgrades)
 class SeguimientoUpgradesAdmin(admin.ModelAdmin):
-    list_display  = ['id']
-
-
-@admin.register(SeguimientoProveedor)
-class SeguimientoProveedorAdmin(admin.ModelAdmin):
     list_display  = ['id']

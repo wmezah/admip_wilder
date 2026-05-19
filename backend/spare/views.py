@@ -15,7 +15,7 @@ import io
 from .models import (
     Spare, SAPCatalog, CentroAlmacen, SAPMaterial,
     PartNumber, StockSAP, Seguimiento,
-    SeguimientoAveriadas, SeguimientoUpgrades, SeguimientoProveedor,
+    SeguimientoAveriadas, SeguimientoUpgrades,
 )
 
 from .serializers import (
@@ -27,7 +27,6 @@ from .serializers import (
     SeguimientoSerializer,
     SeguimientoAveridasSerializer,
     SeguimientoUpgradesSerializer,
-    SeguimientoProveedorSerializer,
 )
 from .filters import SpareFilter, PartNumberFilter
 
@@ -446,14 +445,13 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({'error': 'No se envió archivo.'}, status=400)
 
-        # Auto-detect header row
         try:
             df = pd.read_excel(file, header=0)
-            df.columns = [str(col).strip() for col in df.columns]
-            if 'RED' not in df.columns:
+            df.columns = [str(col).strip().upper() for col in df.columns]
+            if 'RED' not in df.columns and 'SAP' not in df.columns:
                 file.seek(0)
                 df = pd.read_excel(file, header=1)
-                df.columns = [str(col).strip() for col in df.columns]
+                df.columns = [str(col).strip().upper() for col in df.columns]
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
@@ -462,19 +460,29 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
             'PROVEEDOR':                  'proveedor',
             'SAP':                        'sap',
             'DESCRIPCION':                'descripcion',
+            'DESCRIPCIÓN':                'descripcion',
             'CANTIDAD / NUMERO DE SERIE': 'cantidad_serie',
+            'N SERIE':                    'cantidad_serie',
+            'N° SERIE':                   'cantidad_serie',
+            'NUMERO DE SERIE':            'cantidad_serie',
             'LOTE':                       'lote',
             'MOTIVO DE ASIGNACION':       'motivo_asignacion',
+            'MOTIVO ASIGNACION':          'motivo_asignacion',
             'FECHA DE ASIGNACION':        'fecha_asignacion',
+            'FECHA ASIGNACION':           'fecha_asignacion',
             'SITE':                       'site',
             'CODIGO DE SITE':             'codigo_site',
+            'CODIGO SITE':                'codigo_site',
             'ELEMENTO PEP':               'elemento_pep',
             'NUMERO DE PEDIDO':           'numero_pedido',
+            'NUMERO PEDIDO':              'numero_pedido',
             'FOLIO':                      'folio',
             'USUARIO FOLIO':              'usuario_folio',
             'STATUS FOLIO':               'status_folio',
             'OYM ENCARGADO':              'oym_encargado',
-            'Comentarios':                'comentarios',
+            'OYM ENCARGADO':              'oym_encargado',
+            'COMENTARIOS':                'comentarios',
+            'COMENTARIO':                 'comentarios',
         }
 
         # 1. Limpiar tabla completa
@@ -515,11 +523,6 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
                     skipped += 1
                     continue
 
-                lookup = {k: kwargs.get(k) for k in ('sap', 'folio', 'fecha_asignacion')}
-                if any(v for v in lookup.values()):
-                    if Seguimiento.objects.filter(**{k: v for k, v in lookup.items() if v}).exists():
-                        skipped += 1
-                        continue
                 Seguimiento.objects.create(**kwargs)
                 created += 1
             except Exception as e:
@@ -534,7 +537,7 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
             'first_error': errors[0] if errors else None,
         })
 
-    @action(detail=False, methods=['delete'])
+    @action(detail=False, methods=['delete'], url_path='clear_all')
     def clear_all(self, request):
         count, _ = Seguimiento.objects.all().delete()
         return Response({'deleted': count})
@@ -560,11 +563,11 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
             return Response({'error': 'No se envió archivo.'}, status=400)
         try:
             df = pd.read_excel(file, header=0)
-            df.columns = [str(col).strip() for col in df.columns]
-            if 'RED' not in df.columns:
+            df.columns = [str(col).strip().upper() for col in df.columns]
+            if 'RED' not in df.columns and 'SAP' not in df.columns:
                 file.seek(0)
                 df = pd.read_excel(file, header=1)
-                df.columns = [str(col).strip() for col in df.columns]
+                df.columns = [str(col).strip().upper() for col in df.columns]
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
@@ -588,68 +591,66 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
             except Exception:
                 return None
 
+        df.columns = [str(col).strip().upper() for col in df.columns]
+
         for _, row in df.iterrows():
             try:
-                red = safe_str(g(row, 'RED'))
-                if not red:
+                red   = safe_str(row.get('RED'))
+                sap   = safe_str(row.get('SAP'))
+                if not sap and not red:
+                    updated += 1  # contar como skip
                     continue
 
-                sap_val  = safe_str(g(row, 'SAP'))
-                serie_val = safe_str(g(row, 'N Serie'))
+                def rv(col):
+                    v = row.get(col)
+                    try:
+                        import pandas as _pd
+                        if _pd.isna(v): return None
+                    except: pass
+                    return safe_str(v) if v is not None else None
 
                 fields = dict(
-                    red               =red,
-                    sap               =sap_val,
-                    descripcion       =safe_str(g(row, 'Descripcion')),
-                    serial_lote       =serie_val,
-                    lote              =safe_str(g(row, 'Lote')),
-                    motivo_asignacion =safe_str(g(row, 'Motivo Asignacion')),
-                    fecha_asignacion  =safe_date(g(row, 'Fecha Asignacion')),
-                    site              =safe_str(g(row, 'SITE')),
-                    codigo_site       =safe_str(g(row, 'CODIGO DE SITE')),
-                    elemento_pep      =safe_str(g(row, 'ELEMENTO PEP')),
-                    numero_pedido     =safe_str(g(row, 'NUMERO DE PEDIDO')),
-                    folio             =safe_str(g(row, 'FOLIO')),
-                    usuario_folio     =safe_str(g(row, 'USUARIO FOLIO')),
-                    status_folio      =safe_str(g(row, 'STATUS FOLIO')),
-                    oym_encargado     =safe_str(g(row, 'OYM ENCARGADO')),
-                    comentarios       =safe_str(g(row, 'Comentario')),
+                    red               = red,
+                    proveedor         = rv('PROVEEDOR'),
+                    sap               = sap,
+                    descripcion       = rv('DESCRIPCION'),
+                    cantidad_serie    = rv('N SERIE'),
+                    lote              = rv('LOTE'),
+                    motivo_asignacion = rv('MOTIVO ASIGNACION'),
+                    fecha_asignacion  = safe_date(row.get('FECHA ASIGNACION')),
+                    site              = rv('SITE'),
+                    codigo_site       = rv('CODIGO SITE'),
+                    elemento_pep      = rv('ELEMENTO PEP'),
+                    numero_pedido     = rv('NUMERO PEDIDO'),
+                    folio             = rv('FOLIO'),
+                    usuario_folio     = rv('USUARIO FOLIO'),
+                    status_folio      = rv('STATUS FOLIO'),
+                    oym_encargado     = rv('OYM ENCARGADO'),
+                    comentarios       = rv('COMENTARIO'),
                 )
-
-                # Update or create por SAP + N Serie + RED
-                if sap_val and serie_val:
-                    existing = SeguimientoSpare.objects.filter(
-                        sap=sap_val, serial_lote=serie_val, red=red
-                    ).first()
-                    if existing:
-                        for k, v in fields.items():
-                            if v is not None:
-                                setattr(existing, k, v)
-                        existing.save()
-                        updated += 1
-                        continue
-
-                SeguimientoSpare.objects.create(**fields)
+                Seguimiento.objects.create(**fields)
                 created += 1
             except Exception as e:
+                import traceback; traceback.print_exc()
                 errors.append(str(e))
 
         return Response({
-            'imported': created, 'updated': updated,
-            'errors': len(errors), 'error_details': errors[:20]
+            'imported': created, 'deleted': 0,
+            'skipped': updated, 'errors': len(errors),
+            'error_details': errors[:20]
         })
 
-    @action(detail=False, methods=['delete'])
+    @action(detail=False, methods=['delete'], url_path='clear_all')
     def clear_all(self, request):
-        count, _ = SeguimientoSpare.objects.all().delete()
+        count, _ = Seguimiento.objects.all().delete()
         return Response({'deleted': count})
 
     @action(detail=False, methods=['get'])
     def stats(self, request):
-        total     = SeguimientoSpare.objects.count()
-        by_status = list(SeguimientoSpare.objects.values('status_folio')
+        total     = Seguimiento.objects.count()
+        by_status = list(Seguimiento.objects.values('status_folio')
                          .annotate(count=Count('id')).order_by('-count'))
-        by_red    = list(SeguimientoSpare.objects.values('red')
+        by_red    = list(Seguimiento.objects.values('red')
                          .annotate(count=Count('id')).order_by('-count'))
         return Response({'total': total, 'by_status': by_status, 'by_red': by_red})
 
@@ -676,27 +677,41 @@ class SeguimientoAveridasViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
+        df.columns = [str(col).strip().upper() for col in df.columns]
         col_map = {
             'REGION':                          'region',
+            'ZONA':                            'region',
             'RED':                             'red',
             'PROVEEDOR':                       'proveedor',
             'EQUIPO':                          'equipo',
             'MODELO':                          'modelo',
             'PART NUMBER AVERIADO':            'part_number_averiado',
+            'P/N AVERIADO':                    'part_number_averiado',
             'DESCRIPTION':                     'description',
-            'Serie Averiada':                  'serie_averiada',
+            'DESCRIPCIÓN':                     'description',
+            'SERIE AVERIADA':                  'serie_averiada',
+            'SERIE AVER.':                     'serie_averiada',
             'SAP':                             'sap',
-            'Encargado OyM':                   'encargado_oym',
-            'Ingresado al almacen CD VES':     'ingresado_almacen',
+            'ENCARGADO OYM':                   'encargado_oym',
+            'ING. ALMACÉN':                    'ingresado_almacen',
+            'INGRESO ALMACÉN':                 'ingresado_almacen',
+            'INGRESADO AL ALMACEN CD VES':     'ingresado_almacen',
+            'ACTA INGRESO':                    'acta_ingreso',
             'ACTA DE INGRESO':                 'acta_ingreso',
             'STATUS':                          'status',
+            'INCIDENCIA':                      'incidencia_oym',
             'INCIDENCIA OYM':                  'incidencia_oym',
-            'Fecha de cambio/retiro':          'fecha_cambio_retiro',
-            'Fecha correo OYM':                'fecha_correo_oym',
-            'Fecha correo/recojo PROVEEDOR':   'fecha_correo_proveedor',
+            'F. CAMBIO':                       'fecha_cambio_retiro',
+            'FECHA DE CAMBIO/RETIRO':          'fecha_cambio_retiro',
+            'F. CORREO OYM':                   'fecha_correo_oym',
+            'FECHA CORREO OYM':                'fecha_correo_oym',
+            'F. CORREO PROV':                  'fecha_correo_proveedor',
+            'FECHA CORREO/RECOJO PROVEEDOR':   'fecha_correo_proveedor',
             'RMA':                             'rma',
             'TICKET':                          'ticket',
             'COSTO US$':                       'costo_usd',
+            'SERIE PROVEEDOR':                 'serie_proveedor',
+            'MODALIDAD ENTREGA':               'modalidad_entrega',
         }
 
         deleted, _ = SeguimientoAveriadas.objects.all().delete()
@@ -741,7 +756,7 @@ class SeguimientoAveridasViewSet(viewsets.ModelViewSet):
             'error_details': errors[:20],
         })
 
-    @action(detail=False, methods=['delete'])
+    @action(detail=False, methods=['delete'], url_path='clear_all')
     def clear_all(self, request):
         count, _ = SeguimientoAveriadas.objects.all().delete()
         return Response({'deleted': count})
@@ -778,19 +793,29 @@ class SeguimientoUpgradesViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
+        df.columns = [str(col).strip().upper() for col in df.columns]
         col_map = {
             'REGION':               'region',
+            'ZONA':                 'region',
             'PROVEEDOR':            'proveedor',
             'PART NUMBER':          'part_number',
+            'MODELO DE EQUIPO':     'part_number',
             'SAP':                  'sap',
             'DESCRIPCION':          'descripcion',
+            'DESCRIPCIÓN':          'descripcion',
             'CANTIDAD':             'cantidad',
             'NUMERO DE SERIE':      'numero_serie',
+            'N° SERIE':             'numero_serie',
+            'LOTE':                 'lote',
             'FECHA ASIGNACION':     'fecha_asignacion',
-            'GUIA DE REMISION':     'guia_remision',
-            'FOLIO':                'folio',
+            'FECHA ASIGNACIÓN':     'fecha_asignacion',
+            'N° PEDIDO':            'numero_pedido',
             'N° DE PEDIDO':         'numero_pedido',
+            'GUIA DE REMISION':     'guia_remision',
+            'GUÍA REMISIÓN':        'guia_remision',
+            'OYM ENCARGADO':        'oym_encargado',
             'MOTIVO DE ASIGNACION': 'motivo_asignacion',
+            'MOTIVO':               'motivo_asignacion',
             'SEGUIMIENTO':          'seguimiento',
         }
 
@@ -833,7 +858,7 @@ class SeguimientoUpgradesViewSet(viewsets.ModelViewSet):
             'error_details': errors[:20],
         })
 
-    @action(detail=False, methods=['delete'])
+    @action(detail=False, methods=['delete'], url_path='clear_all')
     def clear_all(self, request):
         count, _ = SeguimientoUpgrades.objects.all().delete()
         return Response({'deleted': count})
@@ -847,97 +872,6 @@ class SeguimientoUpgradesViewSet(viewsets.ModelViewSet):
     
 # ─── Seguimiento Proveedor  ViewSet ─────────────────────────────────────────────
 
-class SeguimientoProveedorViewSet(viewsets.ModelViewSet):
-    queryset = SeguimientoProveedor.objects.all()
-    serializer_class = SeguimientoProveedorSerializer
-    filter_backends  = [SearchFilter, OrderingFilter]
-    search_fields    = ['region', 'proveedor', 'sap', 'part_number',
-                        'descripcion', 'numero_serie', 'estado', 'gr_devolucion']
-    ordering_fields  = ['fecha_asignacion', 'fecha_devolucion', 'estado', 'created_at']
-    pagination_class = FlexPagePagination
-
-    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
-    def import_xlsx(self, request):
-        file = request.FILES.get('file')
-        if not file:
-            return Response({'error': 'No se envió archivo.'}, status=400)
-        try:
-            df = pd.read_excel(file, header=0)
-            df.columns = [str(col).strip() for col in df.columns]
-        except Exception as e:
-            return Response({'error': str(e)}, status=400)
-
-        col_map = {
-            'REGION':                       'region',
-            'PROVEEDOR':                    'proveedor',
-            'SAP':                          'sap',
-            'PART-NUMBER':                  'part_number',
-            'DESCRIPCIÓN':                  'descripcion',
-            'Numero de Serie':              'numero_serie',
-            'LOTE':                         'lote',
-            'CENTRO':                       'centro',
-            'ALMACÉN':                      'almacen',
-            'Motivo de Asignacion':         'motivo_asignacion',
-            'Fecha de asignacion':          'fecha_asignacion',
-            'Fecha  devolucion al Almacen': 'fecha_devolucion',
-            'GR-Devolucion ':               'gr_devolucion',
-            'ESTADO':                       'estado',
-            'COMENTARIO':                   'comentario',
-        }
-
-        deleted, _ = SeguimientoProveedor.objects.all().delete()
-        created = skipped = 0
-        errors  = []
-
-        for _, row in df.iterrows():
-            try:
-                kwargs = {}
-                for excel_col, field in col_map.items():
-                    val = row.get(excel_col)
-                    is_na = False
-                    try: is_na = pd.isna(val)
-                    except: pass
-                    if is_na:
-                        kwargs[field] = None
-                    elif field in ('fecha_asignacion', 'fecha_devolucion'):
-                        kwargs[field] = safe_date(str(val))
-                    else:
-                        kwargs[field] = safe_str(val)
-
-                if not kwargs.get('sap') and not kwargs.get('proveedor') and not kwargs.get('estado'):
-                    skipped += 1
-                    continue
-
-                lookup = {k: kwargs.get(k) for k in ('sap', 'numero_serie', 'fecha_asignacion')}
-                if any(v for v in lookup.values()):
-                    if SeguimientoProveedor.objects.filter(**{k: v for k, v in lookup.items() if v}).exists():
-                        skipped += 1
-                        continue
-                SeguimientoProveedor.objects.create(**kwargs)
-                created += 1
-            except Exception as e:
-                errors.append(str(e))
-
-        return Response({
-            'imported': created, 'deleted': deleted,
-            'skipped': skipped, 'errors': len(errors),
-            'error_details': errors[:20],
-        })
-
-    @action(detail=False, methods=['delete'])
-    def clear_all(self, request):
-        count, _ = SeguimientoProveedor.objects.all().delete()
-        return Response({'deleted': count})
-
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        total    = SeguimientoProveedor.objects.count()
-        by_estado = list(SeguimientoProveedor.objects.values('estado')
-                         .annotate(count=Count('id')).order_by('-count'))
-        return Response({'total': total, 'by_estado': by_estado})
-
-
-# ─── Dashboard ────────────────────────────────────────────────────────────────
 class DashboardStatsView(APIView):
     """
     Dashboard optimizado:
