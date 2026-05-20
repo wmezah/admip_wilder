@@ -471,12 +471,12 @@ function ViewSeguimientoModal({ item, onClose, onEdit }) {
 // PESTAÑA 1 — Seguimiento de Spare Asignado
 // ═══════════════════════════════════════════════════════════════════════════════
 const COLS_ASIGNADO = [
-  { key:'red',              label:'Red',               default:true  },
-  { key:'proveedor',        label:'Proveedor',          default:true  },
+  { key:'red',              label:'Red',               default:true,  dropdown:['ACCESO','IPRAN','CORE','METRO'] },
+  { key:'proveedor',        label:'Proveedor',          default:true,  dropdown:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON'] },
   { key:'sap',              label:'SAP',                default:true  },
   { key:'descripcion',      label:'Descripcion',        default:true  },
   { key:'cantidad_serie',   label:'N Serie',            default:true  },
-  { key:'lote',             label:'Lote',               default:true  },
+  { key:'lote',             label:'Lote',               default:true,  dropdown:['VALORADO','NOVALORADO'] },
   { key:'motivo_asignacion',label:'Motivo Asignacion',  default:false },
   { key:'fecha_asignacion', label:'Fecha Asignacion',   default:true  },
   { key:'site',             label:'Site',               default:true  },
@@ -485,7 +485,7 @@ const COLS_ASIGNADO = [
   { key:'numero_pedido',    label:'Numero Pedido',      default:true  },
   { key:'folio',            label:'Folio',              default:true  },
   { key:'usuario_folio',    label:'Usuario Folio',      default:false },
-  { key:'status_folio',     label:'Status Folio',       default:true  },
+  { key:'status_folio',     label:'Status Folio',       default:true,  dropdown:['Concluido','No se Utilizó','Pendiente Crear','Aprobado'] },
   { key:'oym_encargado',    label:'OyM Encargado',      default:true  },
   { key:'comentarios',      label:'Comentario',         default:true  },
 ]
