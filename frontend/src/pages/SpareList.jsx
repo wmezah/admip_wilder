@@ -488,6 +488,7 @@ function SpareModal({ spare, onClose, onSaved }) {
   const [centro, setCentro]         = useState(init.centro || '')
   const [almacen, setAlmacen]       = useState(init.almacen || '')
   const [estatus, setEstatus]       = useState(init.estatus || '')
+  const [valorLote, setValorLote]   = useState(init.valor_lote || '')
   const [centros, setCentros]       = useState([])
   const [almacenes, setAlmacenes]   = useState([])
   const sapTimer                    = useRef(null)
@@ -557,7 +558,7 @@ function SpareModal({ spare, onClose, onSaved }) {
       zona:              refs.zona.current?.value              || '',
       fecha_ingreso:     refs.fecha_ingreso.current?.value     || null,
       fecha_asignacion:  refs.fecha_asignacion.current?.value  || null,
-      valor_lote:        refs.valor_lote.current?.value        || '',
+      valor_lote:        valorLote || '',
       motivo_asignacion: refs.motivo_asignacion.current?.value || '',
     }
     if (!payload.fecha_ingreso)    delete payload.fecha_ingreso
@@ -697,7 +698,14 @@ function SpareModal({ spare, onClose, onSaved }) {
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
             <F label="Serial Number"    k="serial_number" />
             <F label="Orden de Compra"  k="orden_compra" />
-            <F label="Valor Lote"       k="valor_lote" />
+            <div>
+              <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>Valor Lote</label>
+              <select className="input" value={valorLote} onChange={e => setValorLote(e.target.value)}>
+                <option value="">— seleccionar —</option>
+                <option value="VALORADO">VALORADO</option>
+                <option value="NOVALORADO">NOVALORADO</option>
+              </select>
+            </div>
             <F label="Fecha Ingreso"    k="fecha_ingreso"    type="date" />
             <F label="Fecha Asignación" k="fecha_asignacion" type="date" />
             <div>
@@ -1011,7 +1019,7 @@ function TabControlInventario() {
   const clearColFilters = () => setColFilters({})
 
   // Opciones únicas para dropdowns (columnas categóricas)
-  const DROPDOWN_COLS = ['centro','almacen','zona','proveedor','tipo','estatus','procedencia','motivo_asignacion']
+  const DROPDOWN_COLS = ['centro','almacen','zona','proveedor','tipo','estatus','procedencia','motivo_asignacion','valor_lote']
   const dropdownOpts = useMemo(() => {
     const opts = {}
     DROPDOWN_COLS.forEach(key => {
@@ -1687,8 +1695,8 @@ function TabControlInventario() {
               {/* Fila 2 — Inputs de filtro */}
               <tr style={{ background:'#fafafa', borderBottom:'2px solid #e5e7eb' }}>
                 {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c => {
-                  const isDropdown = ['centro','almacen','zona','proveedor','tipo','estatus','procedencia','motivo_asignacion'].includes(c.key)
-                  const isText = ['sap','part_number','descripcion','serial_number','modelo','valor_lote','orden_compra','pedido_traslado','comentario','precio','fecha_ingreso','fecha_asignacion'].includes(c.key)
+                  const isDropdown = ['centro','almacen','zona','proveedor','tipo','estatus','procedencia','motivo_asignacion','valor_lote'].includes(c.key)
+                  const isText = ['sap','part_number','descripcion','serial_number','modelo','orden_compra','pedido_traslado','comentario','precio','fecha_ingreso','fecha_asignacion'].includes(c.key)
                   const filterVal = colFilters[c.key] || ''
                   const isActive = filterVal !== ''
                   const base = {
@@ -1715,7 +1723,10 @@ function TabControlInventario() {
                         <select style={selSt} value={filterVal}
                           onChange={e => setColFilter(c.key, e.target.value)}>
                           <option value=''>Todos</option>
-                          {(dropdownOpts[c.key] || []).map(opt => (
+                          {(c.key === 'valor_lote'
+                            ? ['VALORADO','NOVALORADO']
+                            : (dropdownOpts[c.key] || [])
+                          ).map(opt => (
                             <option key={opt} value={opt}>{opt}</option>
                           ))}
                         </select>
@@ -2180,6 +2191,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
     proveedor:   item.proveedor   || '',
     descripcion: item.descripcion || '',
   })
+  const [valorLote,  setValorLote]  = useState(item.valor_lote || '')
   const [centros,    setCentros]    = useState([])
   const [almacenes,  setAlmacenes]  = useState([])
   const [sapLoading, setSapLoading] = useState(false)
@@ -2252,7 +2264,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
         sap:              refs.sap.current?.value              || '',
         zona:             refs.zona.current?.value             || '',
         serial_number:    refs.serial_number.current?.value    || '',
-        valor_lote:       refs.valor_lote.current?.value       || '',
+        valor_lote:       valorLote || '',
         estatus:          estatusVal                             || '',
         fecha_ingreso:    refs.fecha_ingreso.current?.value    || null,
         fecha_asignacion: refs.fecha_asignacion.current?.value || null,
@@ -2392,7 +2404,13 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
                 onChange={e=>setAutoData(d=>({...d,proveedor:e.target.value}))}
                 style={autoStyle(autoData.proveedor)}/>
             </div>
-            <div>{lbl('Lote')}<input ref={refs.valor_lote} className="input" defaultValue={item.valor_lote||''}/></div>
+            <div>{lbl('Lote')}
+              <select className="input" value={valorLote} onChange={e=>setValorLote(e.target.value)}>
+                <option value="">— seleccionar —</option>
+                <option value="VALORADO">VALORADO</option>
+                <option value="NOVALORADO">NOVALORADO</option>
+              </select>
+            </div>
             <div>{lbl('Estatus')}
               <select ref={refs.estatus} className="input" value={estatusVal} onChange={e=>setEstatusVal(e.target.value)}>
                 <option value="">— seleccionar —</option>

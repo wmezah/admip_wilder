@@ -82,7 +82,8 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
       <p style={{ fontSize:28, margin:'0 0 6px' }}>{result.errors>0 ? '⚠️' : '✅'}</p>
       <p style={{ fontWeight:700, fontSize:14, color:'#15803d', margin:'0 0 10px' }}>Importación completada</p>
       <div style={{ display:'flex', gap:16, justifyContent:'center', marginBottom:14 }}>
-        {[['Eliminados',result.deleted,'#dc2626'],['Importados',result.imported,'#15803d'],
+        {[['Eliminados',result.deleted,'#dc2626'],['Creados',result.imported,'#15803d'],
+          ...(result.updated>0?[['Actualizados',result.updated,'#1877f2']]:[]),
           ...(result.skipped>0?[['Omitidos',result.skipped,'#b45309']]:[]),
           ...(result.errors>0?[['Errores',result.errors,'#dc2626']]:[])
         ].map(([l,v,col])=>(
@@ -92,7 +93,18 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
           </div>
         ))}
       </div>
-      <button className="btn-primary" style={{ fontSize:12 }} onClick={()=>setResult(null)}>Importar otro</button>
+      {result.error_details && result.error_details.length > 0 && (
+        <div style={{ margin:'10px auto 0', maxWidth:500, textAlign:'left',
+          background:'#fef2f2', border:'1px solid #fecaca', borderRadius:8, padding:'10px 14px' }}>
+          <p style={{ fontSize:11, fontWeight:700, color:'#dc2626', margin:'0 0 4px' }}>
+            Detalle de errores:
+          </p>
+          {result.error_details.slice(0,5).map((e,i) => (
+            <p key={i} style={{ fontSize:11, color:'#991b1b', margin:'2px 0', fontFamily:'monospace' }}>• {e}</p>
+          ))}
+        </div>
+      )}
+      <button className="btn-primary" style={{ fontSize:12, marginTop:10 }} onClick={()=>setResult(null)}>Importar otro</button>
     </div>
   )
 
@@ -1014,7 +1026,7 @@ function TabUpgrades() {
     { key:'descripcion',      label:'Descripción',    span:true },
     { key:'cantidad',         label:'Cantidad' },
     { key:'numero_serie',     label:'N° Serie' },
-    { key:'lote',             label:'LOTE' },
+    { key:'lote',             label:'LOTE',             options:['VALORADO','NOVALORADO'] },
     { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
     { key:'numero_pedido',    label:'N° Pedido' },
     { key:'guia_remision',    label:'Guía Remisión' },

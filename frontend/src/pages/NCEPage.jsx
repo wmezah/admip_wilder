@@ -152,18 +152,22 @@ export default function NCEPage() {
   const loadAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [s, sum, dev, log, alt] = await Promise.all([
+      const [s, sum, dev, log] = await Promise.all([
         fetch(`${API}/stats/`, { headers: authH() }).then(r => r.json()).catch(() => null),
         fetch(`${API}/cpu/summary/?hours=${hours}${prefix ? `&prefix=${prefix}` : ''}`, { headers: authH() }).then(r => r.json()).catch(() => []),
         fetch(`${API}/devices/`, { headers: authH() }).then(r => r.json()).catch(() => []),
         fetch(`${API}/log/?n=50`, { headers: authH() }).then(r => r.json()).catch(() => []),
-        fetch(`${API}/cpu/alerts/`, { headers: authH() }).then(r => r.json()).catch(() => []),
       ])
       setStats(s)
-      setSummary(Array.isArray(sum) ? sum : [])
+      const sumArr = Array.isArray(sum) ? sum : []
+      setSummary(sumArr)
       setDevices(Array.isArray(dev) ? dev : [])
       setLogs(Array.isArray(log) ? log : [])
-      setAlerts(Array.isArray(alt) ? alt : [])
+      // Derivar alertas del summary ya cargado (evita llamada extra al backend)
+      const { CPU_AVG_TH = 70, CPU_PEAK_TH = 90 } = {}
+      setAlerts(sumArr.filter(r => r.cpu_avg_mean >= 70 || r.cpu_peak_max >= 90).map(r => ({
+        ...r, alert_level: r.cpu_peak_max >= 90 ? 'CRÍTICO' : 'ADVERTENCIA'
+      })))
       setLastUpdate(new Date())
     } finally { setLoading(false) }
   }, [hours, prefix])

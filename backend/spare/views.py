@@ -439,6 +439,17 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
     ordering_fields = ['fecha_asignacion', 'red', 'status_folio', 'created_at']
     pagination_class = FlexPagePagination
 
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        sap            = serializer.validated_data.get('sap')
+        cantidad_serie = serializer.validated_data.get('cantidad_serie')
+        if sap and cantidad_serie:
+            if Seguimiento.objects.filter(sap=sap, cantidad_serie=cantidad_serie).exists():
+                raise ValidationError(
+                    {'detail': f'Ya existe un registro con SAP {sap} y N serie {cantidad_serie}.'}
+                )
+        serializer.save()
+
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
     def import_xlsx(self, request):
         file = request.FILES.get('file')
@@ -492,7 +503,7 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
         sap_catalog = {s.sap: s for s in SAPCatalog.objects.only('sap', 'texto_breve')}
 
         # 3. Insertar registros nuevos
-        created = skipped = 0
+        created = skipped = updated = 0
         errors  = []
 
         for _, row in df.iterrows():
@@ -523,13 +534,26 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
                     skipped += 1
                     continue
 
-                Seguimiento.objects.create(**kwargs)
-                created += 1
+                sap_val    = kwargs.get('sap')
+                serie_val  = kwargs.get('cantidad_serie')
+                if sap_val and serie_val:
+                    _, was_created = Seguimiento.objects.update_or_create(
+                        sap=sap_val, cantidad_serie=serie_val,
+                        defaults=kwargs
+                    )
+                else:
+                    Seguimiento.objects.create(**kwargs)
+                    was_created = True
+                if was_created:
+                    created += 1
+                else:
+                    updated += 1
             except Exception as e:
                 errors.append(str(e))
 
         return Response({
             'imported':    created,
+            'updated':     updated,
             'deleted':     deleted,
             'skipped':     skipped,
             'errors':      len(errors),
@@ -551,108 +575,6 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
                          .annotate(count=Count('id')).order_by('-count'))
         return Response({'total': total, 'by_status': by_status, 'by_red': by_red})
 
-
-# ─── Seguimiento Spare ViewSet (legacy) ──────────────────────────────────────
-
-
-
-    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
-    def import_xlsx(self, request):
-        file = request.FILES.get('file')
-        if not file:
-            return Response({'error': 'No se envió archivo.'}, status=400)
-        try:
-            df = pd.read_excel(file, header=0)
-            df.columns = [str(col).strip().upper() for col in df.columns]
-            if 'RED' not in df.columns and 'SAP' not in df.columns:
-                file.seek(0)
-                df = pd.read_excel(file, header=1)
-                df.columns = [str(col).strip().upper() for col in df.columns]
-        except Exception as e:
-            return Response({'error': str(e)}, status=400)
-
-        df = df.dropna(how='all')
-        created, updated, errors = 0, 0, []
-
-        def g(row, *keys):
-            """Busca el valor en múltiples posibles nombres de columna."""
-            for k in keys:
-                v = row.get(k)
-                if v is not None and str(v).strip() not in ('', 'nan', 'None'):
-                    return v
-            return None
-
-        def safe_date(val):
-            if val is None: return None
-            if hasattr(val, 'date'): return val.date()
-            try:
-                from datetime import datetime
-                return datetime.strptime(str(val)[:10], '%Y-%m-%d').date()
-            except Exception:
-                return None
-
-        df.columns = [str(col).strip().upper() for col in df.columns]
-
-        for _, row in df.iterrows():
-            try:
-                red   = safe_str(row.get('RED'))
-                sap   = safe_str(row.get('SAP'))
-                if not sap and not red:
-                    updated += 1  # contar como skip
-                    continue
-
-                def rv(col):
-                    v = row.get(col)
-                    try:
-                        import pandas as _pd
-                        if _pd.isna(v): return None
-                    except: pass
-                    return safe_str(v) if v is not None else None
-
-                fields = dict(
-                    red               = red,
-                    proveedor         = rv('PROVEEDOR'),
-                    sap               = sap,
-                    descripcion       = rv('DESCRIPCION'),
-                    cantidad_serie    = rv('N SERIE'),
-                    lote              = rv('LOTE'),
-                    motivo_asignacion = rv('MOTIVO ASIGNACION'),
-                    fecha_asignacion  = safe_date(row.get('FECHA ASIGNACION')),
-                    site              = rv('SITE'),
-                    codigo_site       = rv('CODIGO SITE'),
-                    elemento_pep      = rv('ELEMENTO PEP'),
-                    numero_pedido     = rv('NUMERO PEDIDO'),
-                    folio             = rv('FOLIO'),
-                    usuario_folio     = rv('USUARIO FOLIO'),
-                    status_folio      = rv('STATUS FOLIO'),
-                    oym_encargado     = rv('OYM ENCARGADO'),
-                    comentarios       = rv('COMENTARIO'),
-                )
-                Seguimiento.objects.create(**fields)
-                created += 1
-            except Exception as e:
-                import traceback; traceback.print_exc()
-                errors.append(str(e))
-
-        return Response({
-            'imported': created, 'deleted': 0,
-            'skipped': updated, 'errors': len(errors),
-            'error_details': errors[:20]
-        })
-
-    @action(detail=False, methods=['delete'], url_path='clear_all')
-    def clear_all(self, request):
-        count, _ = Seguimiento.objects.all().delete()
-        return Response({'deleted': count})
-
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        total     = Seguimiento.objects.count()
-        by_status = list(Seguimiento.objects.values('status_folio')
-                         .annotate(count=Count('id')).order_by('-count'))
-        by_red    = list(Seguimiento.objects.values('red')
-                         .annotate(count=Count('id')).order_by('-count'))
-        return Response({'total': total, 'by_status': by_status, 'by_red': by_red})
 
 
 # ─── Seguimiento Averiadas ViewSet ────────────────────────────────────────────
@@ -806,13 +728,13 @@ class SeguimientoUpgradesViewSet(viewsets.ModelViewSet):
             'CANTIDAD':             'cantidad',
             'NUMERO DE SERIE':      'numero_serie',
             'N° SERIE':             'numero_serie',
-            'LOTE':                 'lote',
             'FECHA ASIGNACION':     'fecha_asignacion',
             'FECHA ASIGNACIÓN':     'fecha_asignacion',
             'N° PEDIDO':            'numero_pedido',
             'N° DE PEDIDO':         'numero_pedido',
             'GUIA DE REMISION':     'guia_remision',
             'GUÍA REMISIÓN':        'guia_remision',
+            'LOTE':                 'lote',
             'OYM ENCARGADO':        'oym_encargado',
             'MOTIVO DE ASIGNACION': 'motivo_asignacion',
             'MOTIVO':               'motivo_asignacion',
