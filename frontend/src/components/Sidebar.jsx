@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Package, PieChart, Users, ChevronDown, ChevronUp,
   Zap, BookOpen, FileText, Activity, ClipboardList,
-  PanelLeftClose, PanelLeftOpen, AlertTriangle
+  PanelLeftClose, PanelLeftOpen, AlertTriangle, Server
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -14,6 +14,7 @@ const NAV_GROUPS = [
       { label:'Seguimiento', icon:ClipboardList, to:'/seguimiento' },
       { label:'RMA',         icon:AlertTriangle, to:'/rma'         },
       { label:'Catálogos',   icon:BookOpen,      to:'/catalogo'    },
+      { label:'Inventario',  icon:Server,        to:'/inventario'  },
     ],
   },
   {

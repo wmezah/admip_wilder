@@ -12,6 +12,7 @@ const SpareList       = lazy(() => import('./pages/SpareList'))
 const ImportPage      = lazy(() => import('./pages/ImportPage'))
 const CatalogPage     = lazy(() => import('./pages/CatalogPage'))
 const UsersPage       = lazy(() => import('./pages/UsersPage'))
+const InventarioPage = lazy(() => import('./pages/InventarioPage'))
 
 // Loading fallback
 function PageLoader() {
@@ -201,6 +202,7 @@ export default function App() {
               <Route path="/catalogo"    element={<CatalogPage />}     />
               <Route path="/usuarios"    element={<UsersPage />}       />
               <Route path="*"            element={<Navigate to="/" />} />
+              <Route path="/inventario" element={<InventarioPage />} />
             </Routes>
           </Suspense>
         </main>
