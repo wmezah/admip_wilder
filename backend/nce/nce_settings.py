@@ -15,8 +15,8 @@ NCE_HOST     = os.environ.get('NCE_HOST',     '10.96.209.54')
 NCE_USER     = os.environ.get('NCE_USER',     'ftpuser')
 NCE_PASSWORD = os.environ.get('NCE_PASSWORD', 'Changeme_123')
 NCE_BASE_DIR = os.environ.get('NCE_BASE_DIR', '/hfs_public/nbi/text/pfm_output/')
-NCE_USE_SFTP = os.environ.get('NCE_USE_SFTP', 'true').lower() == 'true'   # SFTP por defecto
-NCE_PORT     = int(os.environ.get('NCE_PORT', 22))
+NCE_USE_SFTP = True   # el servidor NCE solo acepta SFTP
+NCE_PORT     = 22
 
 # ── Filtro de equipos ─────────────────────────────────────────────────────────
 DEVICE_PREFIXES = ['rMPLS', 'rHUB']
