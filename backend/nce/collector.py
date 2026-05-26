@@ -1,43 +1,57 @@
 from __future__ import annotations
 """
-nce/collector.py  –  Descarga archivos PM desde NCE por SFTP (Paramiko) o FTP.
-Usa Paramiko si NCE_USE_SFTP=true, si no usa ftplib estándar.
+nce/collector.py  —  Descarga CSVs desde SFTP del NCE.
+
+Estructura real del servidor:
+    /hfs_public/nbi/text/pfm_output/
+        20260525/
+            PM_IG45046_5_202605250000_01.csv
+            PM_IG45046_5_202605250005_01.csv
+            ...
+
+Cambios respecto a la versión anterior:
+  - Siempre usa SFTP (Paramiko) — FTP deshabilitado
+  - Los archivos están en subdirectorios por fecha (YYYYMMDD/)
+  - list_files() usa `find` remoto: instantáneo en directorios grandes
+  - list_files() devuelve SOLO el archivo más reciente de hoy
+    para no re-procesar todo el histórico en cada ciclo de 5 min
 """
-import ftplib
 import io
 import logging
-import re
-from pathlib import Path
+from datetime import date
 
 logger = logging.getLogger('nce.collector')
 
 
 class NCECollector:
-    """
-    Colector unificado: usa SFTP (Paramiko) o FTP según configuración.
-    """
-    def __init__(self, host, user, password, base_dir, use_sftp=False, port=None):
+
+    def __init__(self, host, user, password, base_dir,
+                 use_sftp=True, port=22):
         self.host     = host
         self.user     = user
         self.password = password
         self.base_dir = base_dir.rstrip('/')
-        self.use_sftp = use_sftp
-        self.port     = port or (22 if use_sftp else 21)
-        self._client  = None   # paramiko SSHClient or ftplib.FTP
+        self.use_sftp = use_sftp          # mantenido por compatibilidad
+        self.port     = port
+        self._client  = None              # paramiko SSHClient
+        self._sftp    = None              # paramiko SFTPClient
 
-    # ── Conexión ──────────────────────────────────────────────
+    # ── Contexto ──────────────────────────────────────────────────────────────
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, *_):
+        self.disconnect()
+
+    # ── Conexión ──────────────────────────────────────────────────────────────
     def connect(self):
-        if self.use_sftp:
-            self._connect_sftp()
-        else:
-            self._connect_ftp()
-
-    def _connect_sftp(self):
         try:
             import paramiko
         except ImportError:
-            raise ImportError("Instala paramiko: pip install paramiko --break-system-packages")
-
+            raise ImportError(
+                "Instala paramiko: pip install paramiko --break-system-packages"
+            )
         logger.info("Conectando SFTP a %s:%s ...", self.host, self.port)
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -54,19 +68,9 @@ class NCECollector:
         self._client = ssh
         logger.info("SFTP conectado correctamente.")
 
-    def _connect_ftp(self):
-        logger.info("Conectando FTP a %s:%s ...", self.host, self.port)
-        ftp = ftplib.FTP()
-        ftp.connect(self.host, self.port, timeout=30)
-        ftp.login(self.user, self.password)
-        ftp.set_pasv(True)
-        self._client = ftp
-        self._sftp   = None
-        logger.info("FTP conectado correctamente.")
-
     def disconnect(self):
         try:
-            if self.use_sftp and self._sftp:
+            if self._sftp:
                 self._sftp.close()
             if self._client:
                 self._client.close()
@@ -75,44 +79,59 @@ class NCECollector:
         self._client = None
         self._sftp   = None
 
-    # ── Listar archivos ───────────────────────────────────────
-    def list_files(self, pm_code: str) -> list[str]:
-        """Lista archivos que coincidan con {pm_code}_YYYYMMDDHHII_NN.csv"""
-        pattern = re.compile(
-            rf"^{re.escape(pm_code)}_\d{{12}}_\d{{2}}\.csv$", re.IGNORECASE
+    # ── Directorio de hoy ─────────────────────────────────────────────────────
+    def _today_path(self) -> str:
+        return f'{self.base_dir}/{date.today().strftime("%Y%m%d")}'
+
+    # ── Listar archivos ───────────────────────────────────────────────────────
+    def list_files(self, pm_code: str, days_back: int = 0) -> list[str]:
+        """
+        Devuelve SOLO el CSV más reciente del pm_code en el directorio de hoy.
+        Usa `find` remoto vía SSH — no lee el directorio completo,
+        por eso es instantáneo aunque haya miles de archivos.
+
+        El nombre devuelto incluye el subdirectorio de fecha:
+            '20260525/PM_IG45046_5_202605251610_01.csv'
+
+        Así el NCECollectionLog guarda la ruta relativa completa
+        y no confunde archivos de días diferentes con el mismo nombre.
+        """
+        today     = date.today().strftime('%Y%m%d')
+        dir_path  = self._today_path()
+
+        # find + sort + tail -1 → solo el más reciente, sin leer todo el dir
+        cmd = (
+            f'find {dir_path} -maxdepth 1 '
+            f'-name "{pm_code}_*.csv" '
+            f'| sort | tail -1'
         )
         try:
-            if self.use_sftp:
-                names = self._sftp.listdir(self.base_dir)
-            else:
-                names = [Path(n).name for n in self._client.nlst(self.base_dir)]
-            matches = sorted(n for n in names if pattern.match(n))
-            logger.info("PM %s → %d archivos encontrados.", pm_code, len(matches))
-            return matches
+            _, stdout, _ = self._client.exec_command(cmd, timeout=10)
+            line = stdout.read().decode().strip()
+            if not line:
+                logger.info("list_files(%s): sin archivos en %s", pm_code, today)
+                return []
+            fname  = line.split('/')[-1]
+            result = [f'{today}/{fname}']
+            logger.info("list_files(%s): %s", pm_code, result[0])
+            return result
         except Exception as e:
-            logger.error("Error listando directorio para %s: %s", pm_code, e)
+            logger.error("find remoto falló para %s: %s", pm_code, e)
             return []
 
-    # ── Descargar archivo ─────────────────────────────────────
-    def download_file(self, filename: str) -> bytes | None:
-        remote = f"{self.base_dir}/{filename}"
+    # ── Descargar archivo ─────────────────────────────────────────────────────
+    def download_file(self, relative_path: str) -> bytes | None:
+        """
+        Descarga el archivo dado su path relativo
+        (ej: '20260525/PM_IG45046_5_202605251610_01.csv').
+        """
+        full_path = f'{self.base_dir}/{relative_path}'
         buf = io.BytesIO()
         try:
-            if self.use_sftp:
-                self._sftp.getfo(remote, buf)
-            else:
-                self._client.retrbinary(f"RETR {remote}", buf.write)
+            self._sftp.getfo(full_path, buf)
             size = buf.tell()
-            logger.debug("Descargado: %s (%d bytes)", filename, size)
+            logger.info("Descargado %s (%d bytes)", relative_path, size)
             return buf.getvalue()
         except Exception as e:
-            logger.error("No se pudo descargar %s: %s", filename, e)
+            logger.error("No se pudo descargar %s: %s", relative_path, e)
             return None
-
-    # ── Contexto ──────────────────────────────────────────────
-    def __enter__(self):
-        self.connect()
-        return self
-
-    def __exit__(self, *_):
-        self.disconnect()
