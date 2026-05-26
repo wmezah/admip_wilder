@@ -1,10 +1,7 @@
 from __future__ import annotations
 """
 nce/pipeline.py  -  Orquestador de recoleccion. Guarda datos en Django ORM.
-
-Cambios:
-  - bulk_create con ignore_conflicts en lugar de get_or_create fila por fila
-  - El filename incluye subdirectorio de fecha para evitar colisiones
+Compatibe con MySQL (no usa update_conflicts con unique_fields).
 """
 import logging
 from typing import Optional
@@ -52,15 +49,21 @@ def run_collection(
                         "rows_loaded": 0, "status": "skipped"}
 
             if dry_run:
-                logger.info("[DRY RUN] %s -> %d filas no escritas.", fname, len(parsed["rows"]))
+                logger.info("[DRY RUN] %s -> %d filas.", fname, len(parsed["rows"]))
                 return {"filename": fname, "rows_total": parsed["rows_total"],
                         "rows_loaded": 0, "status": "dry_run"}
 
             rows = parsed["rows"]
 
-            # 1. Upsert devices en bulk
-            device_objs = {
-                row["device_id"]: NCEDevice(
+            # 1. Devices — MySQL no soporta update_conflicts con unique_fields
+            #    Solo insertar los que no existen
+            existing_ids = set(
+                NCEDevice.objects.filter(
+                    device_id__in=[r["device_id"] for r in rows]
+                ).values_list("device_id", flat=True)
+            )
+            new_devices = [
+                NCEDevice(
                     device_id=row["device_id"],
                     device_name=row["device_name"],
                     prefix=next(
@@ -68,16 +71,23 @@ def run_collection(
                          if row["device_name"].startswith(p)), ""),
                 )
                 for row in rows
-            }
-            NCEDevice.objects.bulk_create(
-                list(device_objs.values()),
-                update_conflicts=True,
-                unique_fields=["device_id"],
-                update_fields=["device_name", "prefix"],
-                batch_size=500,
-            )
+                if row["device_id"] not in existing_ids
+            ]
+            if new_devices:
+                NCEDevice.objects.bulk_create(
+                    new_devices,
+                    ignore_conflicts=True,
+                    batch_size=500,
+                )
 
-            # 2. Insertar PM data en bulk
+            # 2. PM data — filtrar duplicados antes de insertar
+            valid_rows = [r for r in rows if r["collection_time"] is not None]
+            existing_keys = set(
+                NCEPMData.objects.filter(
+                    pm_code=pm["code"],
+                    collection_time__in=[r["collection_time"] for r in valid_rows],
+                ).values_list("device_id", "resource", "collection_time")
+            )
             pm_objs = [
                 NCEPMData(
                     pm_code=pm["code"],
@@ -89,18 +99,19 @@ def run_collection(
                     kpi_data=row["kpi_data"],
                     filename=fname,
                 )
-                for row in rows
-                if row["collection_time"] is not None
+                for row in valid_rows
+                if (row["device_id"], row["resource"], row["collection_time"])
+                not in existing_keys
             ]
 
             from django.db import transaction
             with transaction.atomic():
-                created_objs = NCEPMData.objects.bulk_create(
+                NCEPMData.objects.bulk_create(
                     pm_objs,
                     ignore_conflicts=True,
                     batch_size=500,
                 )
-            loaded = len([o for o in created_objs if o.pk])
+            loaded = len(pm_objs)
 
             NCECollectionLog.objects.create(
                 pm_code=pm["code"], filename=fname,
