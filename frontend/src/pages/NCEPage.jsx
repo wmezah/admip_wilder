@@ -775,7 +775,7 @@ export default function NCEPage() {
           Auto-refresco cada 5 min ·{' '}
           Recolección automática:{' '}
           <code style={{ background:'#dbeafe', padding:'1px 6px', borderRadius:3, fontFamily:'monospace' }}>
-            python nce_dashboard.py
+            python nce_scheduler.py
           </code>
           {' '}· Manual:{' '}
           <code style={{ background:'#dbeafe', padding:'1px 6px', borderRadius:3, fontFamily:'monospace' }}>
