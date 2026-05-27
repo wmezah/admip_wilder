@@ -54,7 +54,7 @@ def _build_summary(hours, prefix=''):
             device_data[d]['avgs'].append(float(avg_val))
         if max_val is not None:
             device_data[d]['maxs'].append(float(max_val))
-        device_data[d]['times'].append(str(row['collection_time']))
+        device_data[d]['times'].append(row['collection_time'].strftime('%Y-%m-%d %H:%M') if row['collection_time'] else '')
 
     result = []
     for dev, data in device_data.items():
@@ -105,7 +105,7 @@ class CPUTimeSeriesView(APIView):
             rows.append({
                 'device':   row['device_name'],
                 'resource': row['resource'],
-                'time':     str(row['collection_time']),
+                'time': row['collection_time'].strftime('%Y-%m-%d %H:%M') if row['collection_time'] else None,
                 'cpu_avg':  float(avg) if avg is not None else None,
                 'cpu_max':  float(mx)  if mx  is not None else None,
             })
