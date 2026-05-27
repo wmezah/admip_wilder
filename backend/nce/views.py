@@ -12,7 +12,6 @@ from django.db.models import Avg, Max, Count
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 
 from .models import NCEDevice, NCECollectionLog, NCEPMData
@@ -55,7 +54,7 @@ def _build_summary(hours, prefix=''):
             device_data[d]['avgs'].append(float(avg_val))
         if max_val is not None:
             device_data[d]['maxs'].append(float(max_val))
-        device_data[d]['times'].append(row['collection_time'].strftime('%Y-%m-%d %H:%M') if row['collection_time'] else '')
+        device_data[d]['times'].append(str(row['collection_time']))
 
     result = []
     for dev, data in device_data.items():
@@ -106,7 +105,7 @@ class CPUTimeSeriesView(APIView):
             rows.append({
                 'device':   row['device_name'],
                 'resource': row['resource'],
-                'time': row['collection_time'].strftime('%Y-%m-%d %H:%M') if row['collection_time'] else None,
+                'time':     str(row['collection_time']),
                 'cpu_avg':  float(avg) if avg is not None else None,
                 'cpu_max':  float(mx)  if mx  is not None else None,
             })
@@ -150,37 +149,6 @@ class CollectionLogView(APIView):
             'rows_total', 'rows_loaded', 'status', 'message'
         )
         return Response(list(logs))
-
-
-# ── Upload CSV (manual load from browser) ──────────────────────────────────────
-class UploadCSVView(APIView):
-    parser_classes = [MultiPartParser]
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        files = request.FILES.getlist('files')
-        if not files:
-            return Response({'error': 'No se enviaron archivos.'}, status=400)
-
-        local_files = {f.name: f.read() for f in files}
-        dry_run = request.data.get('dry_run', 'false').lower() == 'true'
-
-        try:
-            from .pipeline import run_collection
-            results = run_collection(dry_run=dry_run, local_files=local_files)
-        except Exception as e:
-            logger.exception("Error en carga CSV: %s", e)
-            return Response({'error': str(e)}, status=500)
-
-        # Invalidar caché después de cargar datos nuevos
-        cache.delete_many([f'nce_summary_{h}_' for h in [1,3,6,12,24,48,72,168,720]])
-
-        return Response({
-            'files':   len(results),
-            'loaded':  sum(r['rows_loaded'] for r in results),
-            'errors':  sum(1 for r in results if r['status'] == 'error'),
-            'details': results,
-        })
 
 
 # ── Stats summary ──────────────────────────────────────────────────────────────

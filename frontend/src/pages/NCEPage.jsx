@@ -4,7 +4,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine, Cell,
 } from 'recharts'
 import {
-  Activity, Upload, RefreshCw, Cpu, Server,
+  Activity, RefreshCw, Cpu, Server,
   AlertTriangle, Database, Clock,
 } from 'lucide-react'
 
@@ -48,70 +48,6 @@ function StatCard({ icon: Icon, label, value, color = C.primary, sub }) {
   )
 }
 
-function UploadPanel({ onDone, onClose }) {
-  const [dragging, setDragging]   = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const [result, setResult]       = useState(null)
-  const [error, setError]         = useState(null)
-  const upload = async (files) => {
-    setUploading(true); setResult(null); setError(null)
-    const fd = new FormData()
-    Array.from(files).forEach(f => fd.append('files', f))
-    try {
-      const r = await fetch(`${API}/upload/`, {
-        method:'POST', body:fd,
-        headers:{ Authorization:`Bearer ${localStorage.getItem('access_token')}` }
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || 'Error al cargar')
-      setResult(d); onDone()
-    } catch(e) { setError(e.message) }
-    finally { setUploading(false) }
-  }
-  return (
-    <div className="card p-5" style={{ marginBottom:20, border:`1px solid ${C.primary}40` }}>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-        <p style={{ fontWeight:700, fontSize:14, margin:0 }}>
-          <Upload size={14} style={{ marginRight:6, verticalAlign:'middle' }} />
-          Cargar archivos PM CSV
-        </p>
-        <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:C.muted, fontSize:18 }}>×</button>
-      </div>
-      <div
-        onDragOver={e => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); upload(e.dataTransfer.files) }}
-        onClick={() => document.getElementById('nce-file-input').click()}
-        style={{ border:`2px dashed ${dragging ? C.primary : C.border}`, borderRadius:10,
-          padding:'28px 16px', textAlign:'center', cursor:'pointer',
-          background: dragging ? '#f5f3ff' : '#fafafa', transition:'all .2s', marginBottom:12 }}>
-        <p style={{ fontSize:32, margin:'0 0 8px' }}>📂</p>
-        <p style={{ fontSize:13, color:C.muted, margin:0 }}>
-          {uploading ? 'Cargando...' : 'Arrastra archivos CSV del NCE aquí o haz clic'}
-        </p>
-        <p style={{ fontSize:11, color:'#9ca3af', margin:'4px 0 0' }}>
-          Formato: PM_IG45046_5_YYYYMMDDHHII_NN.csv
-        </p>
-      </div>
-      <input id="nce-file-input" type="file" accept=".csv" multiple
-        style={{ display:'none' }} onChange={e => upload(e.target.files)} />
-      {result && (
-        <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:8, padding:'10px 14px', fontSize:12 }}>
-          <p style={{ fontWeight:700, color:C.ok, margin:'0 0 4px' }}>
-            ✅ {result.files} archivo(s) — {result.loaded} filas insertadas
-          </p>
-          {result.errors > 0 && <p style={{ color:C.danger, margin:0 }}>{result.errors} errores</p>}
-        </div>
-      )}
-      {error && (
-        <div style={{ background:'#fef2f2', borderRadius:8, padding:'10px 14px', fontSize:12, color:C.danger }}>
-          ❌ {error}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function CPUTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
@@ -135,7 +71,6 @@ export default function NCEPage() {
   const [logs,       setLogs]       = useState([])
   const [alerts,     setAlerts]     = useState([])
   const [loading,    setLoading]    = useState(true)
-  const [showUpload, setShowUpload] = useState(false)
   const [selDevice,  setSelDevice]  = useState('')
   const [hours,      setHours]      = useState(720)
   const [prefix,     setPrefix]     = useState('')
@@ -236,18 +171,12 @@ export default function NCEPage() {
             <option value='rMPLS'>rMPLS</option>
             <option value='rHUB'>rHUB</option>
           </select>
-          <button className="btn-ghost flex items-center gap-2" onClick={() => setShowUpload(v => !v)}>
-            <Upload size={14} /> Cargar CSV
-          </button>
           <button className="btn-ghost flex items-center gap-2" onClick={loadAll} disabled={loading}>
             <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
             Actualizar
           </button>
         </div>
       </div>
-
-      {showUpload && <UploadPanel onDone={() => { loadAll(); setShowUpload(false) }} onClose={() => setShowUpload(false)} />}
-
       {/* KPI Cards */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16, marginBottom:24 }}>
         <StatCard icon={Server} label="Equipos monitoreados"
@@ -285,7 +214,7 @@ export default function NCEPage() {
                 <p style={{ color:C.muted, textAlign:'center', padding:40, fontSize:13 }}>Cargando...</p>
               ) : top20.length === 0 ? (
                 <p style={{ color:'#9ca3af', textAlign:'center', padding:40, fontSize:13 }}>
-                  Sin datos — carga archivos CSV para comenzar.
+                  Sin datos disponibles.
                 </p>
               ) : (
                 <ResponsiveContainer width="100%" height={400}>
@@ -483,7 +412,7 @@ export default function NCEPage() {
               {loading ? (
                 <p style={{ color:C.muted, textAlign:'center', padding:40, fontSize:13 }}>Cargando...</p>
               ) : top20.length === 0 ? (
-                <p style={{ color:'#9ca3af', textAlign:'center', padding:40, fontSize:13 }}>Sin datos — carga archivos CSV para comenzar.</p>
+                <p style={{ color:'#9ca3af', textAlign:'center', padding:40, fontSize:13 }}>Sin datos disponibles.</p>
               ) : (
                 <ResponsiveContainer width="100%" height={400}>
                   <BarChart data={[...top20].reverse()} layout="vertical" margin={{ left:130, right:60, top:5, bottom:5 }}>
@@ -775,7 +704,7 @@ export default function NCEPage() {
           Auto-refresco cada 5 min ·{' '}
           Recolección automática:{' '}
           <code style={{ background:'#dbeafe', padding:'1px 6px', borderRadius:3, fontFamily:'monospace' }}>
-            python nce_scheduler.py
+            python nce_dashboard.py
           </code>
           {' '}· Manual:{' '}
           <code style={{ background:'#dbeafe', padding:'1px 6px', borderRadius:3, fontFamily:'monospace' }}>
