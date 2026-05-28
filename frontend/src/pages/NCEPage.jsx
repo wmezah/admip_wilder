@@ -79,6 +79,59 @@ export default function NCEPage() {
   const intervalRef = useRef(null)
 
   const [hiddenEngines, setHiddenEngines] = useState({})
+  const [rangeMode, setRangeMode]         = useState('1D')
+
+  // Filtra series según el rango seleccionado (siempre desde 00:00 del día)
+  const filterSeriesByRange = useCallback((data) => {
+    if (!data || data.length === 0) return data
+    const now   = new Date()
+    const tz    = 'America/Lima'
+    const today = new Date(now.toLocaleString('sv-SE', { timeZone: tz }).substring(0, 10) + 'T00:00:00')
+    const rangeMs = { '1D': 1, '3D': 3, '1S': 7, '1M': 30 }[rangeMode] * 86400000
+    const from  = new Date(today.getTime() - (rangeMs - 86400000)) // desde 00:00 del primer día
+    return data.filter(row => new Date(row.time) >= from)
+  }, [rangeMode])
+
+  // Formateador del eje X según el rango
+  const xTickFormatter = useCallback((val) => {
+    if (!val) return ''
+    try {
+      const d = new Date(val)
+      const tz = 'America/Lima'
+      const hora  = d.toLocaleString('es-PE', { timeZone: tz, hour:'2-digit', minute:'2-digit', hour12:false })
+      if (rangeMode === '1D') return hora
+      const fecha = d.toLocaleString('es-PE', { timeZone: tz, day:'2-digit', month:'2-digit' })
+      return `${fecha} ${hora}`
+    } catch { return val.substring(11, 16) }
+  }, [rangeMode])
+
+  // Formateador multi-línea del eje X (tick personalizado)
+  const CustomXTick = useCallback(({ x, y, payload }) => {
+    if (!payload?.value) return null
+    try {
+      const d   = new Date(payload.value)
+      const tz  = 'America/Lima'
+      const hora  = d.toLocaleString('es-PE', { timeZone: tz, hour:'2-digit', minute:'2-digit', hour12:false })
+      const fecha = d.toLocaleString('es-PE', { timeZone: tz, day:'2-digit', month:'2-digit' })
+      const dias  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+      const dia   = dias[d.getDay()]
+      if (rangeMode === '1D') {
+        return (
+          <g transform={`translate(${x},${y})`}>
+            <text x={0} y={0}  dy={12} textAnchor="middle" fontSize={9} fill="#6b7280">{hora}</text>
+            <text x={0} y={0}  dy={22} textAnchor="middle" fontSize={9} fill="#1877f2" fontWeight="600">{fecha}</text>
+            <text x={0} y={0}  dy={32} textAnchor="middle" fontSize={9} fill="#9ca3af">{dia}</text>
+          </g>
+        )
+      }
+      return (
+        <g transform={`translate(${x},${y})`}>
+          <text x={0} y={0} dy={12} textAnchor="middle" fontSize={9} fill="#6b7280">{hora}</text>
+          <text x={0} y={0} dy={22} textAnchor="middle" fontSize={9} fill="#1877f2" fontWeight="600">{fecha}</text>
+        </g>
+      )
+    } catch { return null }
+  }, [rangeMode])
 
   const toggleEngine = (key) => {
     setHiddenEngines(prev => ({ ...prev, [key]: !prev[key] }))
@@ -123,11 +176,13 @@ export default function NCEPage() {
   }, [hours])
 
   useEffect(() => { loadAll() }, [loadAll])
-  useEffect(() => { loadSeries(selDevice); setHiddenEngines({}) }, [selDevice, loadSeries])
+  useEffect(() => { loadSeries(selDevice); setHiddenEngines({}); }, [selDevice, loadSeries])
   useEffect(() => {
     intervalRef.current = setInterval(loadAll, 5 * 60 * 1000)
     return () => clearInterval(intervalRef.current)
   }, [loadAll])
+
+  const filteredSeries = filterSeriesByRange(series)
 
   const top20 = summary.slice(0, 20)
   const seriesKeys     = series.length > 0 ? Object.keys(series[0]).filter(k => k !== 'time' && k.endsWith('_avg'))  : []
@@ -285,13 +340,26 @@ export default function NCEPage() {
 
           {/* Series */}
           <div className="card p-5" style={{ marginBottom:20 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
-              <p style={{ fontWeight:700, fontSize:14, margin:0 }}>Serie Temporal</p>
-              <select className="input" style={{ fontSize:12, padding:'4px 10px', width:240 }}
-                value={selDevice} onChange={e => setSelDevice(e.target.value)}>
-                <option value=''>— Selecciona un equipo —</option>
-                {summary.map(r => <option key={r.device} value={r.device}>{r.device}</option>)}
-              </select>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom:14 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <p style={{ fontWeight:700, fontSize:14, margin:0 }}>Serie Temporal</p>
+                <select className="input" style={{ fontSize:12, padding:'4px 10px', width:240 }}
+                  value={selDevice} onChange={e => setSelDevice(e.target.value)}>
+                  <option value=''>— Selecciona un equipo —</option>
+                  {summary.map(r => <option key={r.device} value={r.device}>{r.device}</option>)}
+                </select>
+              </div>
+              <div style={{ display:'flex', gap:3, background:'#f3f4f6', padding:3, borderRadius:8, border:'0.5px solid #e5e7eb' }}>
+                {['1D','3D','1S','1M'].map(r => (
+                  <button key={r} onClick={() => setRangeMode(r)}
+                    style={{ padding:'4px 12px', fontSize:11, borderRadius:6, border:'none', cursor:'pointer',
+                      fontWeight: rangeMode===r ? 700 : 400,
+                      background: rangeMode===r ? '#1877f2' : 'transparent',
+                      color: rangeMode===r ? '#fff' : '#6b7280', transition:'all .15s' }}>
+                    {r}
+                  </button>
+                ))}
+              </div>
             </div>
             {!selDevice ? (
               <p style={{ color:C.muted, fontSize:13, textAlign:'center', padding:30 }}>
@@ -303,7 +371,6 @@ export default function NCEPage() {
               </p>
             ) : (
               <>
-                {/* Leyenda clickeable por engine */}
                 <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
                   {seriesKeys.slice(0,6).map((k,i) => {
                     const color = [C.primary,C.rmpls,C.rhub,C.warn,C.ok,C.danger][i%6]
@@ -316,7 +383,7 @@ export default function NCEPage() {
                           background: hidden ? '#f3f4f6' : color+'18',
                           cursor:'pointer', fontSize:11, fontWeight:600,
                           color: hidden ? '#9ca3af' : color,
-                          opacity: hidden ? 0.6 : 1, transition:'all .15s' }}>
+                          opacity: hidden ? 0.5 : 1, transition:'all .15s' }}>
                         <span style={{ width:16, height:3, borderRadius:2, display:'inline-block',
                           background: hidden ? '#d1d5db' : color }}/>
                         {k.split('/').slice(-1)[0]}
@@ -331,16 +398,22 @@ export default function NCEPage() {
                     </button>
                   )}
                 </div>
-                <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={series} margin={{ left:0, right:20, top:5, bottom:5 }}>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={filteredSeries} margin={{ left:0, right:20, top:5, bottom:45 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                    <XAxis dataKey="time" tick={{ fontSize:10 }} tickFormatter={v=>v.substring(11)} />
+                    <XAxis dataKey="time" tick={<CustomXTick />} interval="preserveStartEnd" height={55} />
                     <YAxis domain={[0,100]} tickFormatter={v=>`${v}%`} tick={{ fontSize:11 }} />
-                    <Tooltip content={<CPUTooltip />} />
+                    <Tooltip content={<CPUTooltip />} labelFormatter={v => {
+                      try {
+                        return new Date(v).toLocaleString('es-PE', { timeZone:'America/Lima',
+                          day:'2-digit', month:'2-digit', year:'numeric',
+                          hour:'2-digit', minute:'2-digit', hour12:false })
+                      } catch { return v }
+                    }} />
                     <ReferenceLine y={CPU_AVG_TH} stroke={C.danger} strokeDasharray="4 4"
                       label={{ value:`${CPU_AVG_TH}%`, fontSize:10, fill:C.danger }} />
                     {seriesKeys.slice(0,6).map((k,i) => (
-                      <Line key={k} type="monotone" dataKey={k} name={k}
+                      <Line key={k} type="monotone" dataKey={k} name={k.split('/').slice(-1)[0]}
                         stroke={[C.primary,C.rmpls,C.rhub,C.warn,C.ok,C.danger][i%6]}
                         dot={false} strokeWidth={hiddenEngines[k] ? 0 : 2}
                         hide={!!hiddenEngines[k]}
@@ -475,13 +548,26 @@ export default function NCEPage() {
           </div>
 
           <div className="card p-5" style={{ marginBottom:20 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:14 }}>
-              <p style={{ fontWeight:700, fontSize:14, margin:0 }}>Serie Temporal — CPU Pico</p>
-              <select className="input" style={{ fontSize:12, padding:'4px 10px', width:240 }}
-                value={selDevice} onChange={e => setSelDevice(e.target.value)}>
-                <option value=''>— Selecciona un equipo —</option>
-                {summary.map(r => <option key={r.device} value={r.device}>{r.device}</option>)}
-              </select>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8, marginBottom:14 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <p style={{ fontWeight:700, fontSize:14, margin:0 }}>Serie Temporal — CPU Pico</p>
+                <select className="input" style={{ fontSize:12, padding:'4px 10px', width:240 }}
+                  value={selDevice} onChange={e => setSelDevice(e.target.value)}>
+                  <option value=''>— Selecciona un equipo —</option>
+                  {summary.map(r => <option key={r.device} value={r.device}>{r.device}</option>)}
+                </select>
+              </div>
+              <div style={{ display:'flex', gap:3, background:'#f3f4f6', padding:3, borderRadius:8, border:'0.5px solid #e5e7eb' }}>
+                {['1D','3D','1S','1M'].map(r => (
+                  <button key={r} onClick={() => setRangeMode(r)}
+                    style={{ padding:'4px 12px', fontSize:11, borderRadius:6, border:'none', cursor:'pointer',
+                      fontWeight: rangeMode===r ? 700 : 400,
+                      background: rangeMode===r ? '#1877f2' : 'transparent',
+                      color: rangeMode===r ? '#fff' : '#6b7280', transition:'all .15s' }}>
+                    {r}
+                  </button>
+                ))}
+              </div>
             </div>
             {!selDevice ? (
               <p style={{ color:C.muted, fontSize:13, textAlign:'center', padding:30 }}>Selecciona un equipo para ver su serie temporal de pico</p>
@@ -498,19 +584,25 @@ export default function NCEPage() {
                         style={{ display:'flex', alignItems:'center', gap:6, padding:'4px 10px', borderRadius:20,
                           border:`1.5px solid ${color}`, background:hidden?'#f3f4f6':color+'18',
                           cursor:'pointer', fontSize:11, fontWeight:600, color:hidden?'#9ca3af':color,
-                          opacity:hidden?0.6:1, transition:'all .15s' }}>
+                          opacity:hidden?0.5:1, transition:'all .15s' }}>
                         <span style={{ width:16, height:3, borderRadius:2, display:'inline-block', background:hidden?'#d1d5db':color }}/>
                         {k.replace('_peak','').split('/').slice(-1)[0]}
                       </button>
                     )
                   })}
                 </div>
-                <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={series} margin={{ left:0, right:20, top:5, bottom:5 }}>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={filteredSeries} margin={{ left:0, right:20, top:5, bottom:45 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                    <XAxis dataKey="time" tick={{ fontSize:10 }} tickFormatter={v=>v.substring(11)} />
+                    <XAxis dataKey="time" tick={<CustomXTick />} interval="preserveStartEnd" height={55} />
                     <YAxis domain={[0,100]} tickFormatter={v=>`${v}%`} tick={{ fontSize:11 }} />
-                    <Tooltip content={<CPUTooltip />} />
+                    <Tooltip content={<CPUTooltip />} labelFormatter={v => {
+                      try {
+                        return new Date(v).toLocaleString('es-PE', { timeZone:'America/Lima',
+                          day:'2-digit', month:'2-digit', year:'numeric',
+                          hour:'2-digit', minute:'2-digit', hour12:false })
+                      } catch { return v }
+                    }} />
                     <ReferenceLine y={CPU_PEAK_TH} stroke={C.danger} strokeDasharray="4 4"
                       label={{ value:`${CPU_PEAK_TH}%`, fontSize:10, fill:C.danger }} />
                     {seriesPeakKeys.slice(0,6).map((k,i)=>(
