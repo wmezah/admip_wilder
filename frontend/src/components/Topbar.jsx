@@ -3,11 +3,11 @@ import { Moon, Sun, ChevronRight, LogOut, User } from 'lucide-react'
 
 const ROUTE_LABELS = {
   '/':         ['Dashboard',     'Resumen general'],
-  '/spare':    ['Inventario',    'Gestión de equipos spare'],
-  '/seguimiento': ['Seguimiento', 'Spares asignados en campo'],
-  '/nce':      ['CGNAT KPIs',    'CPU Report — NCE'],  '/import':   ['Importar',      'Carga masiva'],
+  '/spare':    ['Spares',        'Gestión de equipos spare'],
+  '/nce':      ['CGNAT KPIs',    'CPU Report — NCE'],
+  '/rma':      ['RMA',            'Seguimiento de averiadas'],
+  '/seguimiento': ['Seguimiento',  'Spares asignados en campo'],
   '/catalogo': ['Catálogos',     'SAP / Centros / Stock'],
-  '/reportes': ['Reportes',      'Reportes y análisis'],
   '/usuarios': ['Usuarios',      'Administración de usuarios'],
 }
 

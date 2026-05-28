@@ -435,7 +435,7 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields   = ['sap', 'descripcion', 'red', 'codigo_site', 'site',
                        'usuario_folio', 'oym_encargado', 'status_folio',
-                       'folio', 'proveedor']
+                       'folio', 'proveedor', 'cantidad_serie']
     ordering_fields = ['fecha_asignacion', 'red', 'status_folio', 'created_at']
     pagination_class = FlexPagePagination
 

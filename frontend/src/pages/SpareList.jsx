@@ -23,6 +23,48 @@ async function bulkImportSpares(rows, createFn) {
 }
 
 // ── SpareDetailModal ──────────────────────────────────────────────────────────
+// ─── Modal confirmación Limpiar todo ─────────────────────────────────────────
+function ConfirmClearModal({ count, entity, onClose, onConfirm }) {
+  const [loading, setLoading] = useState(false)
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)',
+      zIndex:2000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:16, padding:32, maxWidth:420,
+        width:'100%', textAlign:'center', boxShadow:'0 24px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ width:56, height:56, borderRadius:'50%', background:'#fef2f2',
+          display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+          <span style={{ fontSize:28 }}>⚠️</span>
+        </div>
+        <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:800, color:'#111827' }}>
+          ¿Limpiar todos los registros?
+        </h3>
+        <p style={{ margin:'0 0 6px', color:'#6b7280', fontSize:14 }}>
+          Esta acción eliminará <strong style={{ color:'#dc2626' }}>{count.toLocaleString()} {entity || 'registros'}</strong> de forma permanente.
+        </p>
+        <p style={{ margin:'0 0 24px', color:'#9ca3af', fontSize:12 }}>
+          Esta acción <strong>no se puede deshacer</strong>.
+        </p>
+        <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+          <button onClick={onClose}
+            style={{ padding:'10px 24px', borderRadius:8, border:'1px solid #dadde1',
+              background:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', color:'#374151' }}>
+            Cancelar
+          </button>
+          <button onClick={async () => { setLoading(true); await onConfirm(); setLoading(false) }}
+            disabled={loading}
+            style={{ padding:'10px 24px', borderRadius:8, border:'none',
+              background: loading ? '#fca5a5' : '#ef4444',
+              fontSize:14, fontWeight:700, color:'#fff', cursor: loading ? 'default' : 'pointer',
+              display:'flex', alignItems:'center', gap:6 }}>
+            {loading ? 'Eliminando...' : '🗑 Sí, limpiar todo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SpareDetailModal({ spare, onClose, onEdit }) {
   const SECTIONS = [
     {
@@ -994,6 +1036,7 @@ function TabControlInventario() {
   const fileRef = useRef()
   const token = localStorage.getItem('access_token')
   const [isAdmin, setIsAdmin] = useState(false)
+  const [confirmClear, setConfirmClear] = useState(false)
 
   useEffect(() => {
     // Obtener rol del usuario actual desde la API
@@ -1583,27 +1626,23 @@ function TabControlInventario() {
               <X size={12}/> Limpiar filtros
             </button>
           )}
-          <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
             onClick={()=>setShowImportModal(true)}>
             <Upload size={14}/> Importar XLSX
-          </button>
-          <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          </button>}
+          {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
             onClick={exportXLSX}>
             <Download size={14}/>
             {(hasColFilters || search)
               ? `Exportar filtro (${filteredItems.length})`
               : `Exportar Excel (${items.length})`}
-          </button>
+          </button>}
           <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
             onClick={load}>
             <RefreshCw size={14}/> Actualizar
           </button>
           {isAdmin && (
-          <button onClick={async ()=>{
-              if (!confirm(`¿Eliminar todos los ${total.toLocaleString()} registros? Esta acción no se puede deshacer.`)) return
-              await fetch('/api/spare/items/clear_all/', { method:'DELETE', headers:{ Authorization:`Bearer ${token}` } })
-              load()
-            }}
+          <button onClick={()=>setConfirmClear(true)}
             disabled={total===0}
             style={{ fontSize:13, display:'flex', alignItems:'center', gap:6,
               padding:'7px 14px', borderRadius:8, border:'1.5px solid #fecaca',
@@ -1843,6 +1882,18 @@ function TabControlInventario() {
         />
       )}
 
+      {confirmClear && createPortal(
+        <ConfirmClearModal
+          count={total}
+          entity="spares"
+          onClose={()=>setConfirmClear(false)}
+          onConfirm={async () => {
+            await fetch('/api/spare/items/clear_all/', { method:'DELETE', headers:{ Authorization:`Bearer ${token}` } })
+            setConfirmClear(false); load()
+          }}
+        />,
+        document.body
+      )}
       {showImportModal && createPortal(
         <SpareImportModal onClose={()=>setShowImportModal(false)} onDone={()=>{ load() }} />,
         document.body

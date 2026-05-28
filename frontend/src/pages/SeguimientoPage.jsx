@@ -307,26 +307,33 @@ function ConfirmClearModal({ count, onClose, onConfirm }) {
   const [loading, setLoading] = useState(false)
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)',
-      zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style={{ background:'#fff', borderRadius:16, padding:32, maxWidth:400,
-        width:'90%', textAlign:'center', boxShadow:'0 24px 60px rgba(0,0,0,.2)' }}>
-        <div style={{ width:52, height:52, borderRadius:'50%', background:'#fef2f2',
+      zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:16, padding:32, maxWidth:420,
+        width:'100%', textAlign:'center', boxShadow:'0 24px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ width:56, height:56, borderRadius:'50%', background:'#fef2f2',
           display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
-          <Trash2 size={24} color="#ef4444" />
+          <span style={{ fontSize:28 }}>⚠️</span>
         </div>
-        <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:700 }}>¿Limpiar todos los registros?</h3>
-        <p style={{ margin:'0 0 24px', color:'#6b7280', fontSize:14 }}>
-          Se eliminarán <strong>{count} registros</strong> permanentemente.
+        <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:800, color:'#111827' }}>¿Limpiar todos los registros?</h3>
+        <p style={{ margin:'0 0 6px', color:'#6b7280', fontSize:14 }}>
+          Esta acción eliminará <strong style={{ color:'#dc2626' }}>{count} registros</strong> de forma permanente.
+        </p>
+        <p style={{ margin:'0 0 24px', color:'#9ca3af', fontSize:12 }}>
+          Esta acción <strong>no se puede deshacer</strong>.
         </p>
         <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
-          <button onClick={onClose} style={{ padding:'9px 20px', borderRadius:8,
-            border:'1px solid #dadde1', background:'#fff', fontSize:14, fontWeight:600, cursor:'pointer' }}>
+          <button onClick={onClose} style={{ padding:'10px 24px', borderRadius:8,
+            border:'1px solid #dadde1', background:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', color:'#374151' }}>
             Cancelar
           </button>
           <button onClick={async () => { setLoading(true); await onConfirm(); setLoading(false) }}
-            style={{ padding:'9px 20px', borderRadius:8, border:'none',
-              background:'#ef4444', fontSize:14, fontWeight:700, color:'#fff', cursor:'pointer' }}>
-            {loading ? 'Eliminando...' : 'Sí, limpiar'}
+            disabled={loading}
+            style={{ padding:'10px 24px', borderRadius:8, border:'none',
+              background: loading ? '#fca5a5' : '#ef4444',
+              fontSize:14, fontWeight:700, color:'#fff', cursor: loading ? 'default' : 'pointer',
+              display:'flex', alignItems:'center', gap:6 }}>
+            {loading ? 'Eliminando...' : '🗑 Sí, limpiar todo'}
           </button>
         </div>
       </div>
@@ -492,6 +499,19 @@ const COLS_ASIGNADO = [
 
 function TabAsignado() {
   const [data,   setData]   = useState([])
+  const [isAdmin, setIsAdmin] = useState(false)
+  useEffect(() => {
+    const token = localStorage.getItem('access_token')
+    fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        const username = localStorage.getItem('username')
+        const users = Array.isArray(data) ? data : (data.results || [])
+        const me = users.find(u => u.username === username)
+        if (me?.role === 'admin') setIsAdmin(true)
+      }).catch(() => {})
+  }, [])
+
   const [loading,setLoading]= useState(true)
   const [query,  setQuery]  = useState('')
   const [dQ,     setDQ]     = useState('')
@@ -525,7 +545,7 @@ function TabAsignado() {
   const filtered = useMemo(()=>{
     const q = dQ.toLowerCase()
     return data.filter(r=>{
-      const mQ = !q||[r.sap,r.descripcion,r.site,r.red,r.oym_encargado,r.folio,r.proveedor,r.lote]
+      const mQ = !q||[r.sap,r.descripcion,r.site,r.red,r.oym_encargado,r.folio,r.proveedor,r.lote,r.cantidad_serie]
         .some(v=>String(v||'').toLowerCase().includes(q))
       const EXACT=['red','status_folio','lote','proveedor','status','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
       return mQ && (!fStatus||r.status_folio===fStatus) && (!fRed||r.red===fRed) && mC
@@ -597,7 +617,7 @@ function TabAsignado() {
           </td>
         </tr>
       )
-  const hasFilter = !!(fStatus||fRed||query)
+  const hasFilter = !!(fStatus||fRed||query||Object.values(colF).some(Boolean))
   const exportXLSX = () => {
     const src = hasFilter ? filtered : data
     const cols = COLS_ASIGNADO.map(c=>c.key)
@@ -740,13 +760,6 @@ function TabAsignado() {
           </div>
         </div>
       </div>
-      {/* Filters row — solo selector de columnas */}
-      <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap', alignItems:'center', justifyContent:'flex-end' }}>
-        <div style={{ marginLeft:'auto' }}>
-        </div>
-      </div>
-
-
       {/* Toolbar unificado — mismo formato Spare */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14, alignItems:'center' }}>
         <div style={{ position:'relative', flex:1, minWidth:220 }}>
@@ -757,20 +770,26 @@ function TabAsignado() {
               clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
         </div>
         <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{filtered.length} registros</span>
-        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
-        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {hasFilter && (
+          <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#1877f2', borderColor:'#cce0ff' }}
+            onClick={()=>{ setColF({}); setQuery(''); setDQ(''); setFS(''); setFR(''); setPage(1) }}>
+            ✕ Limpiar filtros
+          </button>
+        )}
+        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>}
+        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={exportXLSX}><Download size={14}/>
           {hasFilter ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
-        </button>
+        </button>}
         <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={load}><RefreshCw size={14}/> Actualizar</button>
-        <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
+        {isAdmin && <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
           style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
             borderRadius:8, border:'1.5px solid #fecaca', fontSize:13, fontWeight:600, cursor:data.length===0?'default':'pointer',
             background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626' }}>
           <Trash2 size={14}/> Limpiar todo
-        </button>
+        </button>}
         <ColumnSelector allCols={COLS_ASIGNADO} visibleCols={visibleCols} onChange={setVisibleCols} />
         <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
@@ -880,8 +899,9 @@ function TabAsignado() {
           onSapLookup={sapLookup}
         />
       )}
-      {confirmClear && (
-        <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll} />
+      {confirmClear && createPortal(
+        <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll} />,
+        document.body
       )}
     </div>
   )
@@ -891,14 +911,14 @@ function TabAsignado() {
 // PESTAÑA 3 — Seguimiento Upgrade / Mantenimiento
 // ═══════════════════════════════════════════════════════════════════════════════
 const COLS_UPGRADES = [
-  { key:'region',           label:'Zona',             default:true  },
-  { key:'proveedor',        label:'Proveedor',        default:true  },
+  { key:'region',           label:'Zona',             default:true,  dropdown:['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR'] },
+  { key:'proveedor',        label:'Proveedor',        default:true,  dropdown:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON'] },
   { key:'part_number',      label:'Modelo de Equipo', default:true  },
   { key:'sap',              label:'SAP',              default:true  },
   { key:'descripcion',      label:'Descripción',      default:true  },
   { key:'cantidad',         label:'Cantidad',         default:true  },
   { key:'numero_serie',     label:'N° Serie',         default:true  },
-  { key:'lote',             label:'LOTE',             default:true  },
+  { key:'lote',             label:'LOTE',             default:true,  dropdown:['VALORADO','NOVALORADO'] },
   { key:'fecha_asignacion', label:'Fecha Asignación', default:true  },
   { key:'numero_pedido',    label:'N° Pedido',        default:true  },
   { key:'guia_remision',    label:'Guía Remisión',    default:true  },
@@ -909,6 +929,19 @@ const COLS_UPGRADES = [
 
 function TabUpgrades() {
   const [data,   setData]   = useState([])
+  const [isAdmin, setIsAdmin] = useState(false)
+  useEffect(() => {
+    const token = localStorage.getItem('access_token')
+    fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        const username = localStorage.getItem('username')
+        const users = Array.isArray(data) ? data : (data.results || [])
+        const me = users.find(u => u.username === username)
+        if (me?.role === 'admin') setIsAdmin(true)
+      }).catch(() => {})
+  }, [])
+
   const [loading,setLoading]= useState(true)
   const [query,  setQuery]  = useState('')
   const [dQ,     setDQ]     = useState('')
@@ -942,10 +975,10 @@ function TabUpgrades() {
     return data.filter(r=>{
       const mQ = !q||[r.proveedor,r.sap,r.part_number,r.numero_serie,r.folio,r.descripcion,r.region]
         .some(v=>String(v||'').toLowerCase().includes(q))
-      const EXACT=['red','status_folio','lote','proveedor','status','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
-      return mQ && (!fEstado||r.proveedor===fEstado) && mC
+      const EXACT=['region','proveedor','lote']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
+      return mQ && mC
     })
-  },[data,dQ,fEstado,colF])
+  },[data,dQ,colF])
 
   const pages = Math.ceil(filtered.length/PER_PAGE)
   const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
@@ -985,7 +1018,7 @@ function TabUpgrades() {
       </td>
     </tr>
   )
-  const hasFilter = !!(fEstado||query)
+  const hasFilter = !!(query||Object.values(colF).some(Boolean))
   const exportXLSX = () => {
     const src = hasFilter ? filtered : data
     const cols = COLS_UPGRADES.map(c=>c.key)
@@ -1064,21 +1097,36 @@ function TabUpgrades() {
       </div>
 
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14, alignItems:'center' }}>
-        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
-        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        <div style={{ position:'relative', flex:1, minWidth:220 }}>
+          <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }}/>
+          <input className="input" style={{ paddingLeft:30, fontSize:13 }}
+            placeholder="Buscar SAP, serie, proveedor, descripción..."
+            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
+              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
+        </div>
+        <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{filtered.length} registros</span>
+        {hasFilter && (
+          <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#1877f2', borderColor:'#cce0ff' }}
+            onClick={()=>{ setColF({}); setQuery(''); setDQ(''); setFEstado(''); setPage(1) }}>
+            ✕ Limpiar filtros
+          </button>
+        )}
+        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>}
+        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={exportXLSX}><Download size={14}/>
           {hasFilter ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
-        </button>
+        </button>}
         <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={load}><RefreshCw size={14}/> Actualizar</button>
-        <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
-          className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6,
-            color:data.length===0?'#d1d5db':'#dc2626', borderColor:'#fecaca' }}>
+        {isAdmin && <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
+          style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
+            borderRadius:8, border:'1.5px solid #fecaca', fontSize:13, fontWeight:600, cursor:data.length===0?'default':'pointer',
+            background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626' }}>
           <Trash2 size={14}/> Limpiar todo
-        </button>
+        </button>}
         <ColumnSelector allCols={COLS_UPGRADES} visibleCols={visibleCols} onChange={setVisibleCols} />
-        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}
+        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
           <Plus size={14}/> Nuevo
         </button>
@@ -1177,7 +1225,10 @@ function TabUpgrades() {
           onSapLookup={sapLookup}
         />
       )}
-      {confirmClear && <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>}
+      {confirmClear && createPortal(
+        <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>,
+        document.body
+      )}
     </div>
   )
 }
@@ -1205,6 +1256,19 @@ const COLS_PROVEEDOR = [
 
 function TabProveedor() {
   const [data,   setData]   = useState([])
+  const [isAdmin, setIsAdmin] = useState(false)
+  useEffect(() => {
+    const token = localStorage.getItem('access_token')
+    fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        const username = localStorage.getItem('username')
+        const users = Array.isArray(data) ? data : (data.results || [])
+        const me = users.find(u => u.username === username)
+        if (me?.role === 'admin') setIsAdmin(true)
+      }).catch(() => {})
+  }, [])
+
   const [loading,setLoading]= useState(true)
   const [query,  setQuery]  = useState('')
   const [dQ,     setDQ]     = useState('')
@@ -1283,7 +1347,7 @@ function TabProveedor() {
       </td>
     </tr>
   )
-    const hasFilter = !!(fEstado||query)
+    const hasFilter = !!(fEstado||query||Object.values(colF).some(Boolean))
   const exportXLSX = () => {
     const cols = COLS_PROVEEDOR.map(c=>c.key)
     const header = COLS_PROVEEDOR.map(c=>c.label)
@@ -1371,21 +1435,27 @@ function TabProveedor() {
               clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
         </div>
         <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{filtered.length} registros</span>
-        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>
-        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {hasFilter && (
+          <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#1877f2', borderColor:'#cce0ff' }}
+            onClick={()=>{ setColF({}); setQuery(''); setDQ(''); setFEstado(''); setPage(1) }}>
+            ✕ Limpiar filtros
+          </button>
+        )}
+        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>}
+        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={exportXLSX}><Download size={14}/>
           {hasFilter ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
-        </button>
+        </button>}
         <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={load}><RefreshCw size={14}/> Actualizar</button>
-        <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
+        {isAdmin && <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
           style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
             borderRadius:8, border:'1.5px solid #fecaca', fontSize:13, fontWeight:600,
             background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626',
             cursor:data.length===0?'default':'pointer' }}>
           <Trash2 size={14}/> Limpiar todo
-        </button>
+        </button>}
         <ColumnSelector allCols={COLS_PROVEEDOR} visibleCols={visibleCols} onChange={setVisibleCols} />
         <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>{ setEditItem(null); setShowModal(true) }}>
@@ -1493,7 +1563,10 @@ function TabProveedor() {
           withCentroAlmacen={true}
         />
       )}
-      {confirmClear && <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>}
+      {confirmClear && createPortal(
+        <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>,
+        document.body
+      )}
     </div>
   )
 }
