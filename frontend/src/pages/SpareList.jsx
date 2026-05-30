@@ -216,8 +216,8 @@ function SpareImportModal({ onClose, onDone }) {
 
   const cleanVal = (val) => {
     if (val === null || val === undefined || val === '') return ''
-    if (typeof val === 'number') return String(Math.trunc(val))
     const s = String(val).trim()
+    // Remove trailing .0 from numbers but preserve full string values
     return s.replace(/^(\d+)\.0+$/, '$1')
   }
 
@@ -226,13 +226,19 @@ function SpareImportModal({ onClose, onDone }) {
       const wb = XLSX.read(buffer, { type: 'array', cellDates: true, raw: true })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const data = XLSX.utils.sheet_to_json(ws, { defval: '', raw: true })
+      // Also get formatted (text) values for numeric-looking cells
+      const dataFmt = XLSX.utils.sheet_to_json(ws, { defval: '', raw: false })
       if (data.length === 0) { setError('El archivo no tiene datos'); return }
-      const parsed = data.map(row => {
+      const parsed = data.map((row, idx) => {
+        const rowFmt = dataFmt[idx] || {}
         const obj = {}
         SPARE_IMPORT_COLS.forEach(col => {
-          // Buscar por label (nombre original) o por key
-          const val = row[col.label] ?? row[col.key] ??
+          let val = row[col.label] ?? row[col.key] ??
             row[col.label.toLowerCase()] ?? row[col.key.toLowerCase()] ?? ''
+          // For serial_number: use formatted value to preserve exact string
+          if (col.key === 'serial_number') {
+            val = rowFmt[col.label] ?? rowFmt[col.key] ?? val
+          }
           const raw = cleanVal(val)
           if (['fecha_ingreso','fecha_asignacion'].includes(col.key) && !raw) return
           if (raw && raw !== 'undefined') obj[col.key] = raw
@@ -2351,23 +2357,33 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
       // Si estatus es Asignado → crear fila en Seguimiento automáticamente
       if (payload.estatus === 'Asignado') {
         try {
-          await fetch('/api/spare/seguimiento/', {
+          const segPayload = {
+            sap:              payload.sap               || '',
+            descripcion:      payload.descripcion       || '',
+            cantidad_serie:   payload.serial_number     || '',
+            lote:             payload.valor_lote        || '',
+            motivo_asignacion:payload.motivo_asignacion || '',
+            proveedor:        payload.proveedor         || '',
+            red: '', site: '', codigo_site: '', elemento_pep: '',
+            numero_pedido: '', folio: '', usuario_folio: '',
+            status_folio: '', oym_encargado: '', comentarios: '',
+          }
+          // Solo enviar fecha si tiene formato YYYY-MM-DD válido
+          const fa = payload.fecha_asignacion
+          if (fa && /^\d{4}-\d{2}-\d{2}$/.test(fa)) {
+            segPayload.fecha_asignacion = fa
+          }
+          const segRes = await fetch('/api/spare/seguimiento/', {
             method: 'POST',
             headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-            body: JSON.stringify({
-              sap:              payload.sap               || '',
-              descripcion:      payload.descripcion       || '',
-              cantidad_serie:   payload.serial_number     || '',
-              lote:             payload.valor_lote        || '',
-              motivo_asignacion:payload.motivo_asignacion || '',
-              fecha_asignacion: payload.fecha_asignacion  || '',
-              proveedor:        payload.proveedor         || '',
-              red: '', site: '', codigo_site: '', elemento_pep: '',
-              numero_pedido: '', folio: '', usuario_folio: '',
-              status_folio: '', oym_encargado: '', comentarios: '',
-            })
+            body: JSON.stringify(segPayload)
           })
-        } catch(_) {}
+          if (!segRes.ok) {
+            const segErr = await segRes.json().catch(()=>({}))
+            console.error('Seguimiento POST error:', segRes.status, segErr)
+            alert(`Error al crear en Seguimiento (${segRes.status}): ${JSON.stringify(segErr)}`)
+          }
+        } catch(e) { console.error('Seguimiento fetch error:', e); alert('Error de red al crear en Seguimiento: ' + e.message) }
       }
       onSaved()
     } catch(e) { alert('Error al guardar') }

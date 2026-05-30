@@ -440,14 +440,16 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
     pagination_class = FlexPagePagination
 
     def perform_create(self, serializer):
-        from rest_framework.exceptions import ValidationError
         sap            = serializer.validated_data.get('sap')
         cantidad_serie = serializer.validated_data.get('cantidad_serie')
         if sap and cantidad_serie:
-            if Seguimiento.objects.filter(sap=sap, cantidad_serie=cantidad_serie).exists():
-                raise ValidationError(
-                    {'detail': f'Ya existe un registro con SAP {sap} y N serie {cantidad_serie}.'}
-                )
+            existing = Seguimiento.objects.filter(sap=sap, cantidad_serie=cantidad_serie).first()
+            if existing:
+                # Actualizar registro existente con los nuevos datos
+                for attr, value in serializer.validated_data.items():
+                    setattr(existing, attr, value)
+                existing.save()
+                return
         serializer.save()
 
     @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
@@ -517,7 +519,9 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
                     except Exception:
                         pass
                     if is_na:
-                        kwargs[field] = None
+                        # Solo setear None si el field aún no tiene valor
+                        if field not in kwargs:
+                            kwargs[field] = None
                     elif field == 'fecha_asignacion':
                         kwargs[field] = safe_date(str(val))
                     else:
@@ -1047,7 +1051,7 @@ class ImportSpareCSVView(APIView):
                     sap               =sap_val,
                     part_number       =pn_val,
                     proveedor         =proveedor_val,
-                    serial_number     =safe_str(row.get('Serial Number') or row.get('serial_number')),
+                    serial_number     =safe_str(row.get('Serial Number') or row.get('serial_number') or row.get('N Serie') or row.get('N° Serie')),
                     centro            =centro_val,
                     almacen           =almacen_val,
                     zona              =safe_str(row.get('Zona') or row.get('zona')),

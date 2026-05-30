@@ -232,6 +232,31 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
       })
       const data = await r.json()
       if (!r.ok) throw new Error(JSON.stringify(data))
+
+      // Si status_folio es Concluido → actualizar spare a Utilizado
+      if (payload.status_folio === 'Concluido' && payload.sap && payload.cantidad_serie) {
+        try {
+          // Buscar el spare por SAP + serial_number
+          const searchRes = await fetch(
+            `/api/spare/items/?sap=${encodeURIComponent(payload.sap)}&serial_number=${encodeURIComponent(payload.cantidad_serie)}`,
+            { headers: { Authorization:`Bearer ${token}` } }
+          )
+          const searchData = await searchRes.json()
+          const spares = Array.isArray(searchData) ? searchData : (searchData.results || [])
+          const spare = spares.find(s =>
+            s.sap === payload.sap &&
+            (s.serial_number === payload.cantidad_serie || s.serial_number?.trim() === payload.cantidad_serie?.trim())
+          )
+          if (spare) {
+            await fetch(`/api/spare/items/${spare.id}/`, {
+              method: 'PATCH',
+              headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
+              body: JSON.stringify({ estatus: 'Utilizado' })
+            })
+          }
+        } catch(e) { console.error('Error actualizando spare a Utilizado:', e) }
+      }
+
       onSave()
     } catch(e) { alert(e.message) }
     finally { setSaving(false) }
@@ -518,6 +543,8 @@ function TabAsignado() {
   const [fStatus,setFS]     = useState('')
   const [fRed,   setFR]     = useState('')
   const [colF,   setColF]   = useState({})
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
   const [showUpload, setShowUpload] = useState(false)
   const [showModal,  setShowModal]  = useState(false)
   const [editItem,   setEditItem]   = useState(null)
@@ -525,6 +552,8 @@ function TabAsignado() {
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_ASIGNADO.filter(c=>c.default).map(c=>c.key))
   const [colWidths, setColWidths] = useState({})
+  const [sortFecha, setSortFecha] = useState('') // '' | 'asc' | 'desc'
+  const [expandedCard, setExpandedCard] = useState(null) // null | 'proveedor' | 'status' | 'sap'
   const [page, setPage] = useState(1)
   const debRef = useRef(null)
   const PER_PAGE = 50
@@ -548,9 +577,11 @@ function TabAsignado() {
       const mQ = !q||[r.sap,r.descripcion,r.site,r.red,r.oym_encargado,r.folio,r.proveedor,r.lote,r.cantidad_serie]
         .some(v=>String(v||'').toLowerCase().includes(q))
       const EXACT=['red','status_folio','lote','proveedor','status','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
-      return mQ && (!fStatus||r.status_folio===fStatus) && (!fRed||r.red===fRed) && mC
+      const fa = r.fecha_asignacion ? String(r.fecha_asignacion).substring(0,10) : ''
+      const mFecha = (!fechaDesde || fa >= fechaDesde) && (!fechaHasta || fa <= fechaHasta)
+      return mQ && (!fStatus||r.status_folio===fStatus) && (!fRed||r.red===fRed) && mC && mFecha
     })
-  },[data,dQ,fStatus,fRed,colF])
+  },[data,dQ,fStatus,fRed,colF,fechaDesde,fechaHasta])
 
   const RED_COLORS = { 'IPRAN':'#1877f2','ACCESO':'#2563eb','METRO':'#0891b2','CORE':'#dc2626' }
   const PROV_COLORS = { 'HUAWEI':'#CF0A2C','ZTE':'#16a34a','NOKIA':'#9c6fe4','CISCO':'#059669' }
@@ -576,11 +607,67 @@ function TabAsignado() {
       'No se Utilizó':   src.filter(r=>r.status_folio==='No se Utilizó').length,
       'Pendiente Crear': src.filter(r=>r.status_folio==='Pendiente Crear').length,
     }
-    return { total:src.length, topRed, topProv, maxRed, maxProv, STATUS_COUNTS }
+    // ── Última fecha asignación ──
+    const ultimaFecha = src
+      .map(r => r.fecha_asignacion).filter(Boolean).sort().at(-1)?.substring(0,10) ?? '—'
+    // ── Asignaciones por semana (últimas 8) ──
+    const weekMap = {}
+    src.forEach(r => {
+      if (!r.fecha_asignacion) return
+      const d = new Date(r.fecha_asignacion)
+      const day = d.getDay()
+      const mon = new Date(d); mon.setDate(d.getDate() - ((day+6)%7))
+      const key = mon.toISOString().substring(0,10)
+      if (!weekMap[key]) weekMap[key] = { total:0, pendiente:0 }
+      weekMap[key].total++
+      if (r.status_folio === 'Pendiente Crear') weekMap[key].pendiente++
+    })
+    const byWeek = Object.entries(weekMap).sort((a,b)=>a[0]<b[0]?-1:1).slice(-8)
+    // ── Top SAP por RED ──
+    const RED_LIST = ['ACCESO','IPRAN','CORE','METRO']
+    const sapPorRed = {}
+    RED_LIST.forEach(red => {
+      const rows = src.filter(r => r.red === red)
+      const sapMap = {}
+      rows.forEach(r => { const s = r.sap||'Sin SAP'; sapMap[s]=(sapMap[s]||0)+1 })
+      const top = Object.entries(sapMap).sort((a,b)=>b[1]-a[1]).slice(0,4)
+      const topTotal = top.reduce((a,[,v])=>a+v,0)
+      const otros = rows.length - topTotal
+      sapPorRed[red] = { total: rows.length, top, otros, max: top[0]?.[1]||1 }
+    })
+    // ── KPIs de fecha asignación ──
+    const hoy = new Date()
+    const pendientes = src.filter(r => r.status_folio === 'Pendiente Crear')
+    const pendConFecha = pendientes.filter(r => r.fecha_asignacion)
+    const diasPend = pendConFecha.map(r => Math.floor((hoy - new Date(r.fecha_asignacion)) / 86400000))
+    const pendCriticos = diasPend.filter(d => d > 30).length
+    const pendPromDias = diasPend.length ? Math.round(diasPend.reduce((a,b)=>a+b,0) / diasPend.length) : 0
+    const pendMaxDias  = diasPend.length ? Math.max(...diasPend) : 0
+    const foliosPend   = src.filter(r => String(r.folio||'').toUpperCase() === 'PENDIENTE').length
+    // Lote counts
+    const valorado   = src.filter(r => String(r.lote||'').toUpperCase() === 'VALORADO').length
+    const noValorado = src.length - valorado
+    // Tasa conclusión por RED
+    const RED_LIST_TASA = ['ACCESO','IPRAN','CORE','METRO']
+    const tasaRed = {}
+    RED_LIST_TASA.forEach(red => {
+      const rows = src.filter(r => r.red === red)
+      const conc = rows.filter(r => r.status_folio === 'Concluido').length
+      tasaRed[red] = { total: rows.length, concluido: conc, tasa: rows.length ? Math.round(conc/rows.length*100) : 0 }
+    })
+    return { total:src.length, topRed, topProv, maxRed, maxProv, STATUS_COUNTS, ultimaFecha, byWeek, sapPorRed,
+      pendCriticos, pendPromDias, pendMaxDias, foliosPend, valorado, noValorado, tasaRed }
   }, [filtered])
 
   const pages = Math.ceil(filtered.length/PER_PAGE)
-  const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
+  const sortedFiltered = sortFecha
+    ? [...filtered].sort((a,b) => {
+        const fa = a.fecha_asignacion || ''
+        const fb = b.fecha_asignacion || ''
+        return sortFecha === 'asc' ? fa.localeCompare(fb) : fb.localeCompare(fa)
+      })
+    : filtered
+  const shown  = sortedFiltered.slice((page-1)*PER_PAGE, page*PER_PAGE)
   const activeCols = COLS_ASIGNADO.filter(c=>visibleCols.includes(c.key))
 
 
@@ -596,7 +683,22 @@ function TabAsignado() {
               boxShadow: active ? '0 0 0 2px #cce0ff' : 'none' }
             return (
               <td key={col.key} style={{ padding:'3px 6px' }}>
-                {col.dropdown ? (
+                {col.key === 'fecha_asignacion' ? (
+                  <div style={{ display:'flex', gap:3, alignItems:'center' }}>
+                    <input type="date" value={fechaDesde}
+                      onChange={e=>{ setFechaDesde(e.target.value); setPage(1) }}
+                      style={{ ...base, width:112, fontSize:10, padding:'3px 5px' }}
+                      title="Desde"/>
+                    <span style={{ fontSize:9, color:'#9ca3af' }}>–</span>
+                    <input type="date" value={fechaHasta}
+                      onChange={e=>{ setFechaHasta(e.target.value); setPage(1) }}
+                      style={{ ...base, width:112, fontSize:10, padding:'3px 5px',
+                        border:`1px solid ${fechaHasta?'#6babf5':'#d1d5db'}`,
+                        background: fechaHasta ? '#e7f3ff' : '#fff',
+                        boxShadow: fechaHasta ? '0 0 0 2px #cce0ff' : 'none' }}
+                      title="Hasta"/>
+                  </div>
+                ) : col.dropdown ? (
                   <select value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }} style={base}>
                     <option value=''>Todos</option>
                     {col.dropdown.map(o => <option key={o} value={o}>{o}</option>)}
@@ -610,14 +712,14 @@ function TabAsignado() {
           })}
           <td style={{ padding:'3px 6px' }}>
             {Object.values(colF).some(Boolean) && (
-              <button onClick={()=>setColF({})} title="Limpiar filtros"
+              <button onClick={()=>{ setColF({}); setFechaDesde(''); setFechaHasta('') }} title="Limpiar filtros"
                 style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4,
                   padding:'3px 8px', fontSize:10, color:'#dc2626', cursor:'pointer' }}>✕</button>
             )}
           </td>
         </tr>
       )
-  const hasFilter = !!(fStatus||fRed||query||Object.values(colF).some(Boolean))
+  const hasFilter = !!(fStatus||fRed||query||Object.values(colF).some(Boolean)||fechaDesde||fechaHasta)
   const exportXLSX = () => {
     const src = hasFilter ? filtered : data
     const cols = COLS_ASIGNADO.map(c=>c.key)
@@ -673,92 +775,252 @@ function TabAsignado() {
   return (
     <div style={{ paddingBottom:20 }}>
       {/* ── Dashboard ── */}
-      {/* ── Dashboard ── */}
-      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
-        {/* KPIs — mismo formato que Spare */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:14 }}>
-          {[
-            { l:'Total',          v:dash.total,                           color:'#1877f2', bg:'#e7f3ff', est:'' },
-            { l:'Concluido',      v:dash.STATUS_COUNTS['Concluido'],      color:'#15803d', bg:'#f0fdf4', est:'Concluido' },
-            { l:'Aprobado',       v:dash.STATUS_COUNTS['Aprobado'],       color:'#2563eb', bg:'#eff6ff', est:'Aprobado' },
-            { l:'No se Utilizó',  v:dash.STATUS_COUNTS['No se Utilizó'],  color:'#ca8a04', bg:'#fefce8', est:'No se Utilizó' },
-            { l:'Pendiente Crear',v:dash.STATUS_COUNTS['Pendiente Crear'],color:'#dc2626', bg:'#fef2f2', est:'Pendiente Crear' },
-          ].map(k=>(
-            <div key={k.l} onClick={()=>{ setFS(fStatus===k.est&&k.est?'':k.est); setPage(1) }}
-              style={{ background:'#fff', borderRadius:12, padding:'12px 16px',
-                display:'flex', alignItems:'center', gap:12, cursor:'pointer',
-                boxShadow: fStatus===k.est&&k.est ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)',
-                transition:'box-shadow .15s' }}>
-              <div style={{ width:44, height:44, borderRadius:12, background:k.bg,
-                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <span style={{ fontSize:20, color:k.color }}>●</span>
+      <style>{`@keyframes cardZoomIn{from{transform:scale(.93);opacity:0}to{transform:scale(1);opacity:1}}`}</style>
+      {/* Zoom modal */}
+      {expandedCard && createPortal(
+        <div onClick={()=>setExpandedCard(null)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', zIndex:2000,
+            display:'flex', alignItems:'center', justifyContent:'center', padding:32 }}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{ background:'#fff', borderRadius:16, padding:'24px 28px',
+              width:'min(860px,92vw)', maxHeight:'85vh', overflowY:'auto',
+              display:'flex', flexDirection:'column', gap:8,
+              boxShadow:'0 24px 64px rgba(0,0,0,0.25)', animation:'cardZoomIn .18s ease' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+              <span style={{ fontSize:15, fontWeight:700, color:'#374151' }}>
+                {expandedCard==='proveedor'&&'Por Proveedor'}
+                {expandedCard==='status'&&'Por Status Folio'}
+                {expandedCard==='sap'&&'Top SAP por RED'}
+              </span>
+              <button onClick={()=>setExpandedCard(null)}
+                style={{ background:'#f3f4f6', border:'none', borderRadius:8, width:32, height:32,
+                  cursor:'pointer', fontSize:20, color:'#6b7280', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+            </div>
+            {/* Proveedor expandido */}
+            {expandedCard==='proveedor' && (
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {dash.topProv.map(([prov,cnt],i)=>{ const col=PROV_COLORS[prov]||PALETTE[i%PALETTE.length]; return (
+                  <div key={prov} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <span style={{ fontSize:13, width:80, flexShrink:0, textAlign:'right', color:'#374151', fontWeight:600 }}>{prov}</span>
+                    <div style={{ flex:1, background:'#f0f2f5', borderRadius:4, height:14 }}>
+                      <div style={{ width:`${(cnt/dash.maxProv)*100}%`, height:'100%', background:col, borderRadius:4, opacity:.85 }}/>
+                    </div>
+                    <span style={{ fontSize:13, color:'#374151', width:28, textAlign:'right', fontWeight:700 }}>{cnt}</span>
+                  </div>
+                )})}
               </div>
-              <div>
-                <div style={{ fontSize:26, fontWeight:700, color:'#111827', lineHeight:1 }}>{k.v}</div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:3 }}>{k.l}</div>
+            )}
+            {/* Status expandido */}
+            {expandedCard==='status' && (
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {Object.entries(dash.STATUS_COUNTS).filter(([,v])=>v>0).map(([st,cnt])=>{ const col=STATUS_COLORS[st]||'#6b7280'; const max=Math.max(...Object.values(dash.STATUS_COUNTS))||1; return (
+                  <div key={st} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <span style={{ fontSize:13, width:110, flexShrink:0, textAlign:'right', color:col, fontWeight:600 }}>{st}</span>
+                    <div style={{ flex:1, background:'#f0f2f5', borderRadius:4, height:14 }}>
+                      <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background:col, borderRadius:4, opacity:.85 }}/>
+                    </div>
+                    <span style={{ fontSize:13, color:'#374151', width:28, textAlign:'right', fontWeight:700 }}>{cnt}</span>
+                  </div>
+                )})}
               </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ fontSize:10, fontWeight:700, color:'#6b7280', letterSpacing:'.06em',
-          textTransform:'uppercase', marginBottom:10 }}>
-          Distribución y tendencias
-          {(fStatus||fRed) && <span style={{ background:'#1877f2', color:'#fff', borderRadius:8,
-            padding:'1px 8px', marginLeft:6, fontSize:9 }}>filtrado</span>}
-        </div>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10 }}>
-          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
-            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por RED</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              {dash.topRed.map(([red,cnt])=>{ const col=RED_COLORS[red]||'#6b7280'; return (
-                <div key={red} onClick={()=>{ setFR(fRed===red?'':red); setPage(1) }}
-                  style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', opacity:fRed&&fRed!==red?.4:1 }}>
-                  <span style={{ fontSize:10, width:60, flexShrink:0, textAlign:'right', color:fRed===red?col:'#65676b', fontWeight:fRed===red?700:400, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{red}</span>
-                  <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
-                    <div style={{ width:`${(cnt/dash.maxRed)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
-                  </div>
-                  <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
-                </div>
-              )})}
-            </div>
-          </div>
-          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
-            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por Proveedor</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              {dash.topProv.map(([prov,cnt],i)=>{ const col=PROV_COLORS[prov]||PALETTE[i%PALETTE.length]; return (
-                <div key={prov} style={{ display:'flex', alignItems:'center', gap:8 }}>
-                  <span style={{ fontSize:10, width:60, flexShrink:0, textAlign:'right', color:'#65676b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prov}</span>
-                  <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
-                    <div style={{ width:`${(cnt/dash.maxProv)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
-                  </div>
-                  <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
-                </div>
-              )})}
-            </div>
-          </div>
-          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
-            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por Status Folio</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
-              {Object.entries(dash.STATUS_COUNTS).filter(([,v])=>v>0).map(([st,cnt])=>{ const col=STATUS_COLORS[st]||'#6b7280'; const max=Math.max(...Object.values(dash.STATUS_COUNTS))||1; return (
-                <div key={st} onClick={()=>{ setFS(fStatus===st?'':st); setPage(1) }}
-                  style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', opacity:fStatus&&fStatus!==st?.4:1 }}>
-                  <span style={{ fontSize:10, width:80, flexShrink:0, textAlign:'right', color:fStatus===st?col:'#65676b', fontWeight:fStatus===st?700:400, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{st}</span>
-                  <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}>
-                    <div style={{ width:`${(cnt/max)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
-                  </div>
-                  <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
-                </div>
-              )})}
-              {!Object.values(dash.STATUS_COUNTS).some(v=>v>0) && <p style={{ fontSize:11, color:'#d1d5db', textAlign:'center', margin:'10px 0' }}>Sin datos</p>}
-            </div>
-            {(fStatus||fRed) && (
-              <button onClick={()=>{ setFS(''); setFR(''); setPage(1) }}
-                style={{ marginTop:8, fontSize:10, color:'#dc2626', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4, padding:'3px 8px', cursor:'pointer' }}>
-                ✕ Limpiar filtros
-              </button>
+            )}
+            {/* SAP expandido */}
+            {expandedCard==='sap' && (
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:16 }}>
+                {['ACCESO','IPRAN','CORE','METRO'].map(red => {
+                  const col = RED_COLORS[red]||'#6b7280'
+                  const d = dash.sapPorRed[red]||{ total:0, top:[], otros:0, max:1 }
+                  if (!d.total) return null
+                  return (
+                    <div key={red}>
+                      <p style={{ fontSize:13, fontWeight:700, color:col, marginBottom:8 }}>{red} <span style={{ fontSize:11, color:'#6b7280', fontWeight:400 }}>· {d.total}</span></p>
+                      {d.top.map(([sap,cnt])=>(
+                        <div key={sap} style={{ display:'flex', alignItems:'center', gap:7, marginBottom:6 }}>
+                          <span style={{ fontSize:11, width:60, flexShrink:0, textAlign:'right', color:'#374151' }}>{sap}</span>
+                          <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:10 }}>
+                            <div style={{ width:`${(cnt/d.max)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
+                          </div>
+                          <span style={{ fontSize:11, color:'#374151', fontWeight:700, minWidth:14, textAlign:'right' }}>{cnt}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
             )}
           </div>
+        </div>,
+        document.body
+      )}
+
+      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
+
+        {/* ── Fila 1: Status KPIs ── */}
+        <div style={{ fontSize:9, fontWeight:700, color:'#9ca3af', letterSpacing:'.06em', textTransform:'uppercase', marginBottom:6 }}>Estado de asignaciones</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:8, marginBottom:8 }}>
+          {/* Total */}
+          <div style={{ background:'#fff', borderRadius:12, padding:'10px 12px', display:'flex', flexDirection:'column', gap:6, boxShadow:'0 2px 8px rgba(0,0,0,0.06)', cursor:'pointer' }}
+            onClick={()=>{ setFS(''); setPage(1) }}>
+            <div style={{ display:'flex', alignItems:'center', gap:9 }}>
+              <div style={{ width:36, height:36, borderRadius:9, background:'#e7f3ff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <span style={{ fontSize:16, color:'#1877f2' }}>●</span>
+              </div>
+              <div>
+                <div style={{ fontSize:20, fontWeight:700, color:'#1877f2', lineHeight:1 }}>{dash.total}</div>
+                <div style={{ fontSize:10, color:'#6b7280', marginTop:2 }}>Total</div>
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:4 }}>
+              <span style={{ fontSize:9, fontWeight:700, background:'#dbeafe', color:'#1e40af', padding:'1px 5px', borderRadius:4 }}>{dash.valorado} Valorado</span>
+              <span style={{ fontSize:9, fontWeight:700, background:'#f3f4f6', color:'#374151', padding:'1px 5px', borderRadius:4 }}>{dash.noValorado} No val.</span>
+            </div>
+          </div>
+          {/* Concluido */}
+          <div onClick={()=>{ setFS(fStatus==='Concluido'?'':'Concluido'); setPage(1) }}
+            style={{ background:'#fff', borderRadius:12, padding:'10px 12px', boxShadow: fStatus==='Concluido'?'0 0 0 2px #15803d':'0 2px 8px rgba(0,0,0,0.06)', cursor:'pointer', transition:'box-shadow .15s' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:6 }}>
+              <div style={{ width:36, height:36, borderRadius:9, background:'#f0fdf4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><span style={{ fontSize:16, color:'#15803d' }}>●</span></div>
+              <div><div style={{ fontSize:20, fontWeight:700, color:'#15803d', lineHeight:1 }}>{dash.STATUS_COUNTS['Concluido']}</div><div style={{ fontSize:10, color:'#6b7280', marginTop:2 }}>Concluido</div></div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:9, marginBottom:3 }}><span style={{ color:'#6b7280' }}>Tasa conclusión</span><span style={{ color:'#15803d', fontWeight:700 }}>{dash.total?Math.round(dash.STATUS_COUNTS['Concluido']/dash.total*100):0}%</span></div>
+            <div style={{ background:'#f0f2f5', borderRadius:4, height:5 }}><div style={{ width:`${dash.total?Math.round(dash.STATUS_COUNTS['Concluido']/dash.total*100):0}%`, height:'100%', borderRadius:4, background:'#15803d' }}/></div>
+          </div>
+          {/* Aprobado */}
+          <div onClick={()=>{ setFS(fStatus==='Aprobado'?'':'Aprobado'); setPage(1) }}
+            style={{ background:'#fff', borderRadius:12, padding:'10px 12px', display:'flex', alignItems:'center', gap:9, boxShadow: fStatus==='Aprobado'?'0 0 0 2px #2563eb':'0 2px 8px rgba(0,0,0,0.06)', cursor:'pointer', transition:'box-shadow .15s' }}>
+            <div style={{ width:36, height:36, borderRadius:9, background:'#eff6ff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><span style={{ fontSize:16, color:'#2563eb' }}>●</span></div>
+            <div><div style={{ fontSize:20, fontWeight:700, color:'#2563eb', lineHeight:1 }}>{dash.STATUS_COUNTS['Aprobado']}</div><div style={{ fontSize:10, color:'#6b7280', marginTop:2 }}>Aprobado</div></div>
+          </div>
+          {/* No se Utilizó */}
+          <div onClick={()=>{ setFS(fStatus==='No se Utilizó'?'':'No se Utilizó'); setPage(1) }}
+            style={{ background:'#fff', borderRadius:12, padding:'10px 12px', boxShadow: fStatus==='No se Utilizó'?'0 0 0 2px #ca8a04':'0 2px 8px rgba(0,0,0,0.06)', cursor:'pointer', transition:'box-shadow .15s' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:6 }}>
+              <div style={{ width:36, height:36, borderRadius:9, background:'#fefce8', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><span style={{ fontSize:16, color:'#ca8a04' }}>●</span></div>
+              <div><div style={{ fontSize:20, fontWeight:700, color:'#ca8a04', lineHeight:1 }}>{dash.STATUS_COUNTS['No se Utilizó']}</div><div style={{ fontSize:10, color:'#6b7280', marginTop:2 }}>No se Utilizó</div></div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:9, marginBottom:3 }}><span style={{ color:'#6b7280' }}>Del total</span><span style={{ color:'#ca8a04', fontWeight:700 }}>{dash.total?Math.round(dash.STATUS_COUNTS['No se Utilizó']/dash.total*100):0}%</span></div>
+            <div style={{ background:'#f0f2f5', borderRadius:4, height:5 }}><div style={{ width:`${dash.total?Math.round(dash.STATUS_COUNTS['No se Utilizó']/dash.total*100):0}%`, height:'100%', borderRadius:4, background:'#ca8a04' }}/></div>
+          </div>
+          {/* Pendiente Crear */}
+          <div onClick={()=>{ setFS(fStatus==='Pendiente Crear'?'':'Pendiente Crear'); setPage(1) }}
+            style={{ background:'#fff', borderRadius:12, padding:'10px 12px', border:'1.5px solid #fecaca', boxShadow: fStatus==='Pendiente Crear'?'0 0 0 2px #dc2626':'0 2px 8px rgba(0,0,0,0.06)', cursor:'pointer', transition:'box-shadow .15s' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:6 }}>
+              <div style={{ width:36, height:36, borderRadius:9, background:'#fef2f2', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><span style={{ fontSize:16, color:'#dc2626' }}>●</span></div>
+              <div><div style={{ fontSize:20, fontWeight:700, color:'#dc2626', lineHeight:1 }}>{dash.STATUS_COUNTS['Pendiente Crear']}</div><div style={{ fontSize:10, color:'#6b7280', marginTop:2 }}>Pendiente Crear</div></div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:9, marginBottom:3 }}><span style={{ color:'#6b7280' }}>Del total</span><span style={{ color:'#dc2626', fontWeight:700 }}>{dash.total?Math.round(dash.STATUS_COUNTS['Pendiente Crear']/dash.total*100):0}%</span></div>
+            <div style={{ background:'#f0f2f5', borderRadius:4, height:5 }}><div style={{ width:`${dash.total?Math.round(dash.STATUS_COUNTS['Pendiente Crear']/dash.total*100):0}%`, height:'100%', borderRadius:4, background:'#dc2626' }}/></div>
+          </div>
         </div>
+
+        {/* ── Fila 2: Tasa RED + alerta crítica ── */}
+        <div style={{ fontSize:9, fontWeight:700, color:'#9ca3af', letterSpacing:'.06em', textTransform:'uppercase', marginBottom:6 }}>Tasa de conclusión por RED · alerta crítica</div>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr) 1.3fr', gap:8, marginBottom:8 }}>
+          {['ACCESO','IPRAN','CORE','METRO'].map(red => {
+            const col = RED_COLORS[red]||'#6b7280'
+            const d = dash.tasaRed[red]||{ total:0, concluido:0, tasa:0 }
+            const isCrit = d.tasa < 30
+            return (
+              <div key={red} onClick={()=>{ setFR(fRed===red?'':red); setPage(1) }}
+                style={{ background:'#fff', borderRadius:12, padding:'9px 11px', cursor:'pointer',
+                  border: isCrit?'1.5px solid #fecaca':'0.5px solid #e5e7eb',
+                  boxShadow: fRed===red?`0 0 0 2px ${col}`:'0 2px 8px rgba(0,0,0,0.06)', transition:'box-shadow .15s' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                  <span style={{ fontSize:12, fontWeight:700, color:col }}>{red}</span>
+                  <span style={{ fontSize:12, fontWeight:700, color:isCrit?'#dc2626':col }}>{d.tasa}%{isCrit?' ⚠':''}</span>
+                </div>
+                <div style={{ background:'#f0f2f5', borderRadius:4, height:5, marginBottom:3 }}>
+                  <div style={{ width:`${d.tasa}%`, height:'100%', borderRadius:4, background:isCrit?'#dc2626':col }}/>
+                </div>
+                <div style={{ fontSize:9, color:isCrit?'#dc2626':'#6b7280', fontWeight:isCrit?600:400 }}>{d.concluido} / {d.total} total{isCrit?' — crítico':''}</div>
+              </div>
+            )
+          })}
+          {/* KPI crítico >30 días */}
+          <div style={{ background:'#fff', borderRadius:12, padding:'10px 12px', border:'1.5px solid #fecaca', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:6 }}>
+              <div style={{ width:36, height:36, borderRadius:9, background:'#fef2f2', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:16 }}>⏰</div>
+              <div><div style={{ fontSize:20, fontWeight:700, color:'#dc2626', lineHeight:1 }}>{dash.pendCriticos}</div><div style={{ fontSize:10, color:'#6b7280', marginTop:2 }}>Pendientes &gt;30 días</div></div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:9, marginBottom:3 }}><span style={{ color:'#6b7280' }}>De {dash.STATUS_COUNTS['Pendiente Crear']} pendientes</span><span style={{ color:'#dc2626', fontWeight:700 }}>{dash.STATUS_COUNTS['Pendiente Crear']?Math.round(dash.pendCriticos/dash.STATUS_COUNTS['Pendiente Crear']*100):0}%</span></div>
+            <div style={{ background:'#f0f2f5', borderRadius:4, height:5, marginBottom:4 }}><div style={{ width:`${dash.STATUS_COUNTS['Pendiente Crear']?Math.round(dash.pendCriticos/dash.STATUS_COUNTS['Pendiente Crear']*100):0}%`, height:'100%', borderRadius:4, background:'#dc2626' }}/></div>
+            <div style={{ fontSize:9, color:'#6b7280' }}>Más antiguo: <span style={{ fontWeight:700, color:'#dc2626' }}>{dash.pendMaxDias} días</span></div>
+          </div>
+        </div>
+
+        {/* ── Fila 3: Distribución + Top SAP (con zoom) ── */}
+        <div style={{ fontSize:9, fontWeight:700, color:'#9ca3af', letterSpacing:'.06em', textTransform:'uppercase', marginBottom:6 }}>
+          Distribución y tendencias · top SAP por RED
+          {(fStatus||fRed) && <span style={{ background:'#1877f2', color:'#fff', borderRadius:8, padding:'1px 8px', marginLeft:6, fontSize:9 }}>filtrado</span>}
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 2fr', gap:10, alignItems:'start' }}>
+          {/* Por Proveedor */}
+          {[
+            { id:'proveedor', title:'Por Proveedor', content: (
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                {dash.topProv.map(([prov,cnt],i)=>{ const col=PROV_COLORS[prov]||PALETTE[i%PALETTE.length]; return (
+                  <div key={prov} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <span style={{ fontSize:10, width:60, flexShrink:0, textAlign:'right', color:'#65676b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prov}</span>
+                    <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}><div style={{ width:`${(cnt/dash.maxProv)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/></div>
+                    <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
+                  </div>
+                )})}
+              </div>
+            )},
+            { id:'status', title:'Por Status Folio', content: (
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                {Object.entries(dash.STATUS_COUNTS).filter(([,v])=>v>0).map(([st,cnt])=>{ const col=STATUS_COLORS[st]||'#6b7280'; const max=Math.max(...Object.values(dash.STATUS_COUNTS))||1; return (
+                  <div key={st} onClick={e=>{ e.stopPropagation(); setFS(fStatus===st?'':st); setPage(1) }} style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', opacity:fStatus&&fStatus!==st?.4:1 }}>
+                    <span style={{ fontSize:10, width:80, flexShrink:0, textAlign:'right', color:fStatus===st?col:'#65676b', fontWeight:fStatus===st?700:400, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{st}</span>
+                    <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:9 }}><div style={{ width:`${(cnt/max)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/></div>
+                    <span style={{ fontSize:10, color:'#374151', width:22, textAlign:'right', fontWeight:600 }}>{cnt}</span>
+                  </div>
+                )})}
+              </div>
+            )},
+          ].map(card => (
+            <div key={card.id}
+              onClick={()=>setExpandedCard(card.id)}
+              title="Clic para ampliar"
+              style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'11px 13px',
+                cursor:'zoom-in', boxShadow:'0 2px 8px rgba(0,0,0,0.06)', transition:'box-shadow .15s, border-color .15s, transform .15s' }}
+              onMouseEnter={e=>{ e.currentTarget.style.boxShadow='0 6px 20px rgba(24,119,242,.14)'; e.currentTarget.style.borderColor='#b0c4f0'; e.currentTarget.style.transform='translateY(-2px)' }}
+              onMouseLeave={e=>{ e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'; e.currentTarget.style.borderColor='#dde3ee'; e.currentTarget.style.transform='none' }}>
+              <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 8px' }}>{card.title} <span style={{ fontSize:9, color:'#9ca3af', fontWeight:400 }}>🔍</span></p>
+              {card.content}
+            </div>
+          ))}
+
+          {/* Top SAP por RED */}
+          <div onClick={()=>setExpandedCard('sap')}
+            title="Clic para ampliar"
+            style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:12, padding:'11px 13px',
+              cursor:'zoom-in', boxShadow:'0 2px 8px rgba(0,0,0,0.06)', transition:'box-shadow .15s, border-color .15s, transform .15s' }}
+            onMouseEnter={e=>{ e.currentTarget.style.boxShadow='0 6px 20px rgba(24,119,242,.14)'; e.currentTarget.style.borderColor='#b0c4f0'; e.currentTarget.style.transform='translateY(-2px)' }}
+            onMouseLeave={e=>{ e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.06)'; e.currentTarget.style.borderColor='#dde3ee'; e.currentTarget.style.transform='none' }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 8px' }}>Top SAP por RED <span style={{ fontSize:9, color:'#9ca3af', fontWeight:400 }}>🔍</span></p>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
+              {['ACCESO','IPRAN','CORE','METRO'].map(red => {
+                const col = RED_COLORS[red]||'#6b7280'
+                const d = dash.sapPorRed[red]||{ total:0, top:[], otros:0, max:1 }
+                if (!d.total) return null
+                return (
+                  <div key={red}>
+                    <p style={{ fontSize:11, fontWeight:700, color:col, margin:'0 0 5px' }}>{red}</p>
+                    {d.top.map(([sap,cnt])=>(
+                      <div key={sap} style={{ display:'flex', alignItems:'center', gap:5, marginBottom:3 }}>
+                        <span style={{ fontSize:9, width:46, flexShrink:0, textAlign:'right', color:'#65676b', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{sap}</span>
+                        <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:6 }}><div style={{ width:`${(cnt/d.max)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/></div>
+                        <span style={{ fontSize:9, color:'#374151', fontWeight:600, minWidth:12, textAlign:'right' }}>{cnt}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+
       </div>
       {/* Toolbar unificado — mismo formato Spare */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14, alignItems:'center' }}>
@@ -772,7 +1034,7 @@ function TabAsignado() {
         <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{filtered.length} registros</span>
         {hasFilter && (
           <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#1877f2', borderColor:'#cce0ff' }}
-            onClick={()=>{ setColF({}); setQuery(''); setDQ(''); setFS(''); setFR(''); setPage(1) }}>
+            onClick={()=>{ setColF({}); setQuery(''); setDQ(''); setFS(''); setFR(''); setFechaDesde(''); setFechaHasta(''); setPage(1) }}>
             ✕ Limpiar filtros
           </button>
         )}
@@ -813,18 +1075,26 @@ function TabAsignado() {
             <colgroup>{activeCols.map(col=><col key={col.key} style={{ width: colWidths[col.key] || 130 }} />)}<col style={{ width:70 }} /></colgroup>
             <thead>
               <tr style={{ background:'#f3f4f6' }}>
-                {activeCols.map(col=>(
-                  <th key={col.key} style={{ padding:'7px 12px 4px', textAlign:'left', fontSize:10,
-                    fontWeight:700, color: colF[col.key] ? '#1877f2' : '#6b7280',
-                    textTransform:'uppercase', letterSpacing:'.4px', whiteSpace:'nowrap',
-                    borderBottom:'1px solid #e5e7eb',
-                    borderTop: colF[col.key] ? '2px solid #1877f2' : '2px solid transparent',
-                    background: colF[col.key] ? '#cce0ff' : '#f3f4f6',
-                    position:'relative', userSelect:'none', overflow:'visible' }}>
-                    {col.label}
+                {activeCols.map(col=>{
+                  const isFecha = col.key === 'fecha_asignacion'
+                  const sortIcon = isFecha ? (sortFecha==='asc' ? ' ↑' : sortFecha==='desc' ? ' ↓' : ' ↕') : ''
+                  return (
+                  <th key={col.key}
+                    onClick={isFecha ? ()=>{ setSortFecha(s=> s===''?'desc': s==='desc'?'asc':''); setPage(1) } : undefined}
+                    style={{ padding:'7px 12px 4px', textAlign: isFecha ? 'center' : 'left', fontSize:10,
+                      fontWeight:700,
+                      color: (isFecha && sortFecha) ? '#1877f2' : colF[col.key] ? '#1877f2' : '#6b7280',
+                      textTransform:'uppercase', letterSpacing:'.4px', whiteSpace:'nowrap',
+                      borderBottom:'1px solid #e5e7eb',
+                      borderTop: (isFecha && sortFecha) ? '2px solid #1877f2' : colF[col.key] ? '2px solid #1877f2' : '2px solid transparent',
+                      background: (isFecha && sortFecha) ? '#e7f3ff' : colF[col.key] ? '#cce0ff' : '#f3f4f6',
+                      cursor: isFecha ? 'pointer' : 'default',
+                      position:'relative', userSelect:'none', overflow:'visible' }}>
+                    {col.label}{sortIcon}
                     <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
                   </th>
-                ))}
+                  )
+                })}
                 <th style={{ padding:'10px 12px', borderBottom:'1px solid #dadde1' }}/>
               </tr>
               {filterRow}
@@ -852,7 +1122,7 @@ function TabAsignado() {
                       {v ? <span style={{ display:'flex', alignItems:'center', gap:4 }}><MapPin size={11} style={{ color:C.primary }}/>{v}</span> : <span style={{ color:'#d1d5db' }}>—</span>}
                     </td>
                     if (col.key==='sap') return <td key={col.key} onClick={()=>setViewItem(row)} style={{ padding:'8px 12px', fontFamily:'monospace', fontWeight:700, fontSize:11, color:'#1877f2', whiteSpace:'nowrap', cursor:'pointer', textDecoration:'underline', textDecorationStyle:'dotted', textUnderlineOffset:3 }}>{v||'—'}</td>
-                    if (col.key==='fecha_asignacion') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
+                    if (col.key==='fecha_asignacion') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap', textAlign:'center' }}>{v?String(v).substring(0,10):'—'}</td>
                     return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
                   })}
                   <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
@@ -1180,7 +1450,7 @@ function TabUpgrades() {
                   {activeCols.map(col=>{
                     const v = row[col.key]
                     if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:'#0891b2', whiteSpace:'nowrap' }}>{v||'—'}</td>
-                    if (col.key==='fecha_asignacion') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
+                    if (col.key==='fecha_asignacion') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap', textAlign:'center' }}>{v?String(v).substring(0,10):'—'}</td>
                     if (col.key==='proveedor') return <td key={col.key} style={{ padding:'8px 12px' }}>
                       {v ? <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:4, background:'#e0f2fe', color:'#0369a1' }}>{v}</span> : '—'}
                     </td>
