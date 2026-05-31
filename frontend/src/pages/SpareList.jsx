@@ -1254,27 +1254,31 @@ function TabControlInventario() {
         {/* KPIs */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:16 }}>
           {[
-            { label:'Total spares', val:dashStats.total,    color:'#1877f2', bg:'#e7f3ff', est:null },
-            { label:'Operativo',   val:dashStats.operativo, color:'#16a34a', bg:'#f0fdf4', est:'operativo' },
-            { label:'Utilizado',   val:dashStats.utilizado, color:'#dc2626', bg:'#fef2f2', est:'utilizado' },
-            { label:'Asignado',    val:dashStats.asignado,  color:'#d97706', bg:'#fffbeb', est:'asignado' },
+            { label:'Total spares', val:dashStats.total,    color:'#1877f2', bg:'#e7f3ff', est:null,
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
+            { label:'Operativo',   val:dashStats.operativo, color:'#16a34a', bg:'#f0fdf4', est:'operativo',
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg> },
+            { label:'Utilizado',   val:dashStats.utilizado, color:'#dc2626', bg:'#fef2f2', est:'utilizado',
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> },
+            { label:'Asignado',    val:dashStats.asignado,  color:'#d97706', bg:'#fffbeb', est:'asignado',
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
           ].map(k => (
             <div key={k.label}
               onClick={() => k.est && handleDashClick('estatus', k.est)}
               style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:14,
-                padding:'14px 18px', display:'flex', alignItems:'center', gap:14,
+                padding:'11px 13px', display:'flex', alignItems:'center', gap:10,
                 cursor: k.est ? 'pointer' : 'default',
                 boxShadow: k.est && colFilters.estatus?.toLowerCase().includes(k.est) ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)',
                 transition:'box-shadow .15s, transform .15s' }}
               onMouseEnter={e=>{ if(k.est){ e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow=`0 6px 18px rgba(0,0,0,0.1)` }}}
               onMouseLeave={e=>{ e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow= k.est && colFilters.estatus?.toLowerCase().includes(k.est) ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)' }}>
-              <div style={{ width:44, height:44, borderRadius:12, background:k.bg,
+              <div style={{ width:40, height:40, borderRadius:10, background:k.bg,
                 display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <span style={{ fontSize:20, color:k.color }}>●</span>
+                {k.icon}
               </div>
               <div>
-                <div style={{ fontSize:26, fontWeight:700, color:'#111827', lineHeight:1 }}>{k.val.toLocaleString()}</div>
-                <div style={{ fontSize:12, color:'#6b7280', marginTop:3 }}>{k.label}</div>
+                <div style={{ fontSize:26, fontWeight:800, color:k.color, lineHeight:1, letterSpacing:'-0.5px' }}>{k.val.toLocaleString()}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>{k.label}</div>
               </div>
             </div>
           ))}

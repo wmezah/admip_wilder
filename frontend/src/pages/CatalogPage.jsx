@@ -932,27 +932,28 @@ function PartNumbersTab() {
   return (
     <div>
       {/* ── Dashboard ── */}
-      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
+      <div style={{ background:'#eef1f6', borderRadius:14, padding:'16px', marginBottom:12 }}>
         {/* KPIs */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:12 }}>
           {[
-            { label:'Total registros', val:dash.total,                    color:'#1877f2', bg:'#e7f3ff' },
-            { label:'Con precio',      val:dash.conPrecio,                color:'#16a34a', bg:'#f0fdf4' },
-            { label:'Sin precio',      val:dash.total - dash.conPrecio,   color:'#dc2626', bg:'#fef2f2' },
+            { label:'Total registros', val:dash.total,                    color:'#1877f2', bg:'#e7f3ff',
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
+            { label:'Con precio',      val:dash.conPrecio,                color:'#16a34a', bg:'#f0fdf4',
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg> },
+            { label:'Sin precio',      val:dash.total - dash.conPrecio,   color:'#dc2626', bg:'#fef2f2',
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> },
           ].map(k => (
             <div key={k.label} style={{ background:'#fff', border:`1px solid ${(Object.values(dashF).some(Boolean)||Object.values(colF).some(Boolean)) ? k.color+'55' : '#dde3ee'}`, borderRadius:12,
-              padding:'12px 16px', display:'flex', alignItems:'center', gap:12,
-              boxShadow:'0 2px 6px rgba(0,0,0,0.05)',
-              transition:'border-color .2s' }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:k.bg,
+              border:'1px solid #dde3ee', borderRadius:14, padding:'11px 13px', display:'flex', alignItems:'center', gap:10, boxShadow:'0 2px 8px rgba(0,0,0,0.06)', transition:'border-color .2s' }}>
+              <div style={{ width:40, height:40, borderRadius:10, background:k.bg,
                 display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <span style={{ fontSize:16, color:k.color }}>●</span>
+                {k.icon}
               </div>
               <div>
-                <div style={{ fontSize:20, fontWeight:700, color:'#111827', lineHeight:1 }}>
+                <div style={{ fontSize:26, fontWeight:800, color:k.color, lineHeight:1, letterSpacing:'-0.5px' }}>
                   {k.val.toLocaleString()}
                 </div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>
                   {k.label}
                   {(Object.values(dashF).some(Boolean) || Object.values(colF).some(Boolean)) && <span style={{ marginLeft:5, fontSize:9, background:k.color, color:'#fff', borderRadius:8, padding:'1px 6px', fontWeight:700 }}>filtrado</span>}
                 </div>
@@ -1693,8 +1694,17 @@ function StockSAPTab() {
 
   // Filtrado combinado
   const filtered = useMemo(() => allItems.filter(r => {
-    return STOCK_COLS.every(c => !colF[c.key] || String(r[c.key]||'').toLowerCase().includes(colF[c.key].toLowerCase())) &&
-           Object.entries(dashF).every(([k,v]) => !v || String(r[k]||'').toLowerCase().includes(v.toLowerCase()))
+    const EXACT_COLS = ['lote', 'centro', 'almacen']
+    return STOCK_COLS.every(c => !colF[c.key] || (
+      EXACT_COLS.includes(c.key)
+        ? String(r[c.key]||'').toLowerCase() === colF[c.key].toLowerCase()
+        : String(r[c.key]||'').toLowerCase().includes(colF[c.key].toLowerCase())
+    )) &&
+           Object.entries(dashF).every(([k,v]) => !v || (
+      EXACT_COLS.includes(k)
+        ? String(r[k]||'').toLowerCase() === v.toLowerCase()
+        : String(r[k]||'').toLowerCase().includes(v.toLowerCase())
+    ))
   }), [allItems, colF, dashF])
 
   const hasFilters = Object.values(colF).some(Boolean) || Object.values(dashF).some(Boolean)
@@ -1749,24 +1759,27 @@ function StockSAPTab() {
   return (
     <div>
       {/* ── Dashboard ── */}
-      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
+      <div style={{ background:'#eef1f6', borderRadius:14, padding:'16px', marginBottom:12 }}>
         {/* KPIs */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:12 }}>
           {[
-            { label:'Total registros',  val:dash.total,                    color:'#1877f2', bg:'#e7f3ff' },
-            { label:'Stock acumulado',  val:dash.totalStock.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}), color:'#16a34a', bg:'#f0fdf4', raw:true },
-            { label:'Centros activos',  val:dash.topCentro.length,         color:'#d97706', bg:'#fffbeb' },
+            { label:'Total registros',  val:dash.total,                    color:'#1877f2', bg:'#e7f3ff', raw:false,
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
+            { label:'Stock acumulado',  val:dash.totalStock.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0}), color:'#16a34a', bg:'#f0fdf4', raw:true,
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+            { label:'Centros activos',  val:dash.topCentro.length,         color:'#d97706', bg:'#fffbeb', raw:false,
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg> },
           ].map(k => (
             <div key={k.label} style={{ background:'#fff', border:`1px solid ${hasFilters ? k.color+'55' : '#dde3ee'}`, borderRadius:12,
-              padding:'12px 16px', display:'flex', alignItems:'center', gap:12, boxShadow:'0 2px 6px rgba(0,0,0,0.05)' }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:k.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <span style={{ fontSize:16, color:k.color }}>●</span>
+              border:'1px solid #dde3ee', borderRadius:14, padding:'11px 13px', display:'flex', alignItems:'center', gap:10, boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+              <div style={{ width:40, height:40, borderRadius:10, background:k.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                {k.icon}
               </div>
               <div>
-                <div style={{ fontSize:20, fontWeight:700, color:'#111827', lineHeight:1 }}>
+                <div style={{ fontSize:26, fontWeight:800, color:k.color, lineHeight:1, letterSpacing:'-0.5px' }}>
                   {k.raw ? k.val : k.val.toLocaleString()}
                 </div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>
                   {k.label}
                   {hasFilters && <span style={{ marginLeft:5, fontSize:9, background:k.color, color:'#fff', borderRadius:8, padding:'1px 6px', fontWeight:700 }}>filtrado</span>}
                 </div>

@@ -567,29 +567,183 @@ export default function RMAPage() {
 
   const statCounts = STATUSES.reduce((acc,s)=>{ acc[s]=filtered.filter(r=>r.status===s).length; return acc },{})
 
+  // ── Dashboard pro ──────────────────────────────────────────────────────────
+  const dash = useMemo(()=>{
+    const src = filtered
+    const total = src.length
+    const completado = src.filter(r => r.status === 'Proceso COMPLETADO').length
+    const enProceso  = src.filter(r => ['Pieza ubicada/En traslado a CD VES','PROVEEDOR recogió averiado'].includes(r.status)).length
+    const requieren  = src.filter(r => ['Se envió correo a OYM para devolución',
+      'Enviar correo a PROVEEDOR','Solicitar BAJA SISTEMA',
+      'Se envió correo a OYM para devolución, Pendiente de cambio'].includes(r.status)).length
+    // Acciones detalle
+    const correoOYM  = src.filter(r => r.status === 'Se envió correo a OYM para devolución' || r.status === 'Se envió correo a OYM para devolución, Pendiente de cambio').length
+    const correoP    = src.filter(r => r.status === 'Enviar correo a PROVEEDOR').length
+    const baja       = src.filter(r => r.status === 'Solicitar BAJA SISTEMA').length
+    // Por RED
+    const byRed = {}
+    src.forEach(r => { if(r.red) byRed[r.red]=(byRed[r.red]||0)+1 })
+    const topRed = Object.entries(byRed).sort((a,b)=>b[1]-a[1])
+    const maxRed = topRed[0]?.[1]||1
+    // Por Proveedor
+    const byProv = {}
+    src.forEach(r => { if(r.proveedor) byProv[r.proveedor]=(byProv[r.proveedor]||0)+1 })
+    const topProv = Object.entries(byProv).sort((a,b)=>b[1]-a[1])
+    const maxProv = topProv[0]?.[1]||1
+    // Proveedores para badges en Total
+    const provList = topProv.slice(0,3).map(([p,c])=>({ p, c }))
+    return { total, completado, enProceso, requieren, correoOYM, correoP, baja, topRed, maxRed, topProv, maxProv, provList }
+  },[filtered])
+
+  const RED_COLORS = { 'IPRAN':'#1877f2','ACCESO':'#2563eb','METRO':'#0891b2','CORE':'#dc2626','PRONATEC':'#6b7280','PRONATEC_2':'#6b7280' }
+  const PROV_COLORS = { 'HUAWEI':'#CF0A2C','ZTE':'#16a34a','NOKIA':'#9c6fe4' }
+
   return (
     <div style={{ paddingBottom:20 }}>
-      {/* KPIs */}
-      <div style={{ background:'#eef1f6', borderRadius:14, padding:'14px', marginBottom:14 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:10 }}>
-          {[
-            { l:'Total', v:filtered.length, color:'#dc2626', bg:'#fef2f2', est:'' },
-            ...STATUSES.map(s=>({ l:s, v:statCounts[s]||0, color:STAT_COLORS[s], bg:'#f9fafb', est:s }))
-          ].map(k=>(
-            <div key={k.l} onClick={()=>{ setFS(fStatus===k.est&&k.est?'':k.est); setPage(1) }}
-              style={{ background:'#fff', borderRadius:12, padding:'12px 16px',
-                display:'flex', alignItems:'center', gap:12, cursor:'pointer',
-                boxShadow: fStatus===k.est&&k.est ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)' }}>
-              <div style={{ width:44, height:44, borderRadius:12, background:k.bg,
-                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <span style={{ fontSize:20, color:k.color }}>●</span>
+      {/* ── Dashboard Pro ── */}
+      <div style={{ background:'#eef1f6', borderRadius:14, padding:'16px', marginBottom:12 }}>
+        
+
+        {/* Fila 1: 4 KPIs */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:10 }}>
+          {/* Total */}
+          <div onClick={()=>{ setFS(''); setPage(1) }}
+            style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:14, padding:'11px 13px', cursor:'pointer',
+              boxShadow: !fStatus ? '0 0 0 2px #1877f2' : '0 2px 8px rgba(0,0,0,0.06)', transition:'box-shadow .15s' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:7 }}>
+              <div style={{ width:40, height:40, borderRadius:10, background:'#e7f3ff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
               </div>
               <div>
-                <div style={{ fontSize:26, fontWeight:700, color:'#111827', lineHeight:1 }}>{k.v}</div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:3 }}>{k.l}</div>
+                <div style={{ fontSize:26, fontWeight:800, color:'#1877f2', lineHeight:1, letterSpacing:'-0.5px' }}>{dash.total}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>Total RMAs</div>
               </div>
             </div>
-          ))}
+            <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+              {dash.provList.map(({p,c})=>(
+                <span key={p} style={{ fontSize:9, fontWeight:700, padding:'2px 6px', borderRadius:4,
+                  background: p==='HUAWEI'?'#fee2e2': p==='ZTE'?'#dcfce7':'#f3f4f6',
+                  color: p==='HUAWEI'?'#991b1b': p==='ZTE'?'#15803d':'#374151' }}>{c} {p}</span>
+              ))}
+            </div>
+          </div>
+
+          {/* Proceso Completado */}
+          <div onClick={()=>{ setFS(fStatus==='Proceso COMPLETADO'?'':'Proceso COMPLETADO'); setPage(1) }}
+            style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:14, padding:'11px 13px', cursor:'pointer',
+              boxShadow: fStatus==='Proceso COMPLETADO'?'0 0 0 2px #15803d':'0 2px 8px rgba(0,0,0,0.06)', transition:'box-shadow .15s' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:7 }}>
+              <div style={{ width:40, height:40, borderRadius:10, background:'#f0fdf4', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803d" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize:26, fontWeight:800, color:'#15803d', lineHeight:1, letterSpacing:'-0.5px' }}>{dash.completado}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>Proceso Completado</div>
+              </div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, marginBottom:3 }}><span style={{ color:'#6b7280' }}>Tasa cierre</span><span style={{ color:'#15803d', fontWeight:700 }}>{dash.total?Math.round(dash.completado/dash.total*100):0}%</span></div>
+            <div style={{ background:'#f0f2f5', borderRadius:4, height:5 }}><div style={{ width:`${dash.total?Math.round(dash.completado/dash.total*100):0}%`, height:'100%', borderRadius:4, background:'#15803d' }}/></div>
+          </div>
+
+          {/* En Proceso */}
+          <div onClick={()=>{ setFS(''); setPage(1) }}
+            style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:14, padding:'11px 13px', cursor:'pointer',
+              boxShadow:'0 2px 8px rgba(0,0,0,0.06)', transition:'box-shadow .15s' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:7 }}>
+              <div style={{ width:40, height:40, borderRadius:10, background:'#eff6ff', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize:26, fontWeight:800, color:'#2563eb', lineHeight:1, letterSpacing:'-0.5px' }}>{dash.enProceso}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>En Proceso</div>
+              </div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, marginBottom:3 }}><span style={{ color:'#6b7280' }}>Del total</span><span style={{ color:'#2563eb', fontWeight:700 }}>{dash.total?Math.round(dash.enProceso/dash.total*100):0}%</span></div>
+            <div style={{ background:'#f0f2f5', borderRadius:4, height:5 }}><div style={{ width:`${dash.total?Math.round(dash.enProceso/dash.total*100):0}%`, height:'100%', borderRadius:4, background:'#2563eb' }}/></div>
+          </div>
+
+          {/* Requieren acción */}
+          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:14, padding:'11px 13px', border:'1.5px solid #fecaca',
+            boxShadow:'0 2px 8px rgba(0,0,0,0.06)', cursor:'default' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:7 }}>
+              <div style={{ width:40, height:40, borderRadius:10, background:'#fef2f2', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize:26, fontWeight:800, color:'#dc2626', lineHeight:1, letterSpacing:'-0.5px' }}>{dash.requieren}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>Requieren acción</div>
+              </div>
+            </div>
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, marginBottom:3 }}><span style={{ color:'#6b7280' }}>Del total</span><span style={{ color:'#dc2626', fontWeight:700 }}>{dash.total?Math.round(dash.requieren/dash.total*100):0}%</span></div>
+            <div style={{ background:'#f0f2f5', borderRadius:4, height:5 }}><div style={{ width:`${dash.total?Math.round(dash.requieren/dash.total*100):0}%`, height:'100%', borderRadius:4, background:'#dc2626' }}/></div>
+          </div>
+        </div>
+
+        {/* Fila 2: Acción requerida + Por RED + Por Proveedor */}
+        
+        <div style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr 1fr', gap:8 }}>
+          {/* ¿Qué necesita atención? */}
+          <div style={{ background:'#fff', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>¿Qué necesita atención ahora?</p>
+            {[
+              { label:'Correo pendiente a OYM', sub:'Devolución no confirmada', v:dash.correoOYM, bg:'#fef3c7', color:'#92400e', numColor:'#ca8a04', est:'Se envió correo a OYM para devolución' },
+              { label:'Enviar correo a Proveedor', sub:'Sin contacto registrado', v:dash.correoP, bg:'#fee2e2', color:'#991b1b', numColor:'#dc2626', est:'Enviar correo a PROVEEDOR' },
+              { label:'Solicitar Baja Sistema', sub:'Trámite pendiente', v:dash.baja, bg:'#f3e8ff', color:'#6b21a8', numColor:'#9333ea', est:'Solicitar BAJA SISTEMA' },
+            ].map(a=>(
+              <div key={a.label} onClick={()=>{ setFS(fStatus===a.est?'':a.est); setPage(1) }}
+                style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                  padding:'7px 10px', borderRadius:8, marginBottom:5, cursor:'pointer',
+                  background: fStatus===a.est ? a.bg.replace('f','e') : a.bg,
+                  boxShadow: fStatus===a.est ? `0 0 0 2px ${a.numColor}` : 'none',
+                  transition:'all .15s' }}>
+                <div>
+                  <div style={{ fontSize:11, fontWeight:500, color:a.color }}>{a.label}</div>
+                  <div style={{ fontSize:9, color:a.color, opacity:.75, marginTop:1 }}>{a.sub}</div>
+                </div>
+                <div style={{ fontSize:18, fontWeight:800, color:a.numColor, letterSpacing:'-0.5px' }}>{a.v}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Por RED */}
+          <div style={{ background:'#fff', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por RED</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {dash.topRed.map(([red,cnt])=>{
+                const col = RED_COLORS[red]||'#6b7280'
+                return (
+                  <div key={red} onClick={()=>{ setColF(p=>({...p, red: colF.red===red?'':red })); setPage(1) }}
+                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                    <span style={{ fontSize:10, fontWeight:700, color:col, minWidth:60 }}>{red}</span>
+                    <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:8 }}>
+                      <div style={{ width:`${(cnt/dash.maxRed)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
+                    </div>
+                    <span style={{ fontSize:10, fontWeight:700, color:col, minWidth:18, textAlign:'right' }}>{cnt}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Por Proveedor */}
+          <div style={{ background:'#fff', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>Por Proveedor</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {dash.topProv.map(([prov,cnt])=>{
+                const col = PROV_COLORS[prov]||'#6b7280'
+                return (
+                  <div key={prov} onClick={()=>{ setColF(p=>({...p, proveedor: colF.proveedor===prov?'':prov })); setPage(1) }}
+                    style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+                    <span style={{ fontSize:10, fontWeight:700, color:col, minWidth:60 }}>{prov}</span>
+                    <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:8 }}>
+                      <div style={{ width:`${(cnt/dash.maxProv)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
+                    </div>
+                    <span style={{ fontSize:10, fontWeight:700, color:col, minWidth:18, textAlign:'right' }}>{cnt}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       </div>
 
