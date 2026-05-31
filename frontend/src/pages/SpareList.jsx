@@ -2385,9 +2385,8 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
           if (!segRes.ok) {
             const segErr = await segRes.json().catch(()=>({}))
             console.error('Seguimiento POST error:', segRes.status, segErr)
-            alert(`Error al crear en Seguimiento (${segRes.status}): ${JSON.stringify(segErr)}`)
           }
-        } catch(e) { console.error('Seguimiento fetch error:', e); alert('Error de red al crear en Seguimiento: ' + e.message) }
+        } catch(e) { console.error('Seguimiento fetch error:', e) }
       }
       onSaved()
     } catch(e) { alert('Error al guardar') }
