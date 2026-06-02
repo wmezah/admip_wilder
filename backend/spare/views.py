@@ -140,6 +140,36 @@ class SpareViewSet(viewsets.ModelViewSet):
             )
         return Response(result)
 
+    # ── Auto-crear entrada en Upgrades al poner estatus Reserva ──────────────
+    def _sync_reserva(self, spare):
+        """
+        Si el spare pasa a estatus 'Reserva', crea una fila en
+        SeguimientoUpgrades con los datos comunes del spare.
+        No elimina filas existentes si el estatus cambia después.
+        """
+        if (spare.estatus or '').strip().lower() != 'reserva':
+            return
+
+        SeguimientoUpgrades.objects.create(
+            proveedor         = spare.proveedor or '',
+            part_number       = spare.part_number or '',
+            sap               = spare.sap or '',
+            descripcion       = spare.descripcion or '',
+            numero_serie      = spare.serial_number or '',
+            fecha_asignacion  = spare.fecha_asignacion,
+            lote              = spare.valor_lote or '',
+            motivo_asignacion = spare.motivo_asignacion or '',
+            numero_pedido     = spare.pedido_traslado or '',
+        )
+
+    def perform_create(self, serializer):
+        spare = serializer.save()
+        self._sync_reserva(spare)
+
+    def perform_update(self, serializer):
+        spare = serializer.save()
+        self._sync_reserva(spare)
+
     @action(detail=False, methods=['delete'], url_path='clear_all')
     def clear_all(self, request):
         count, _ = Spare.objects.all().delete()
@@ -853,6 +883,7 @@ class DashboardStatsView(APIView):
             pendiente=Count(Case(When(estatus__icontains='pendiente', then=1), output_field=IntegerField())),
             revision =Count(Case(When(estatus__icontains='revision',  then=1), output_field=IntegerField())),
             baja     =Count(Case(When(estatus__icontains='baja',      then=1), output_field=IntegerField())),
+            reserva  =Count(Case(When(estatus__icontains='reserva',   then=1), output_field=IntegerField())),
         )
 
         # ── Agrupaciones con slicing para limitar payload ───────────────────

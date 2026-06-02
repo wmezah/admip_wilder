@@ -454,7 +454,7 @@ function SpareImportModal({ onClose, onDone }) {
 
 
 const ESTATUS_LIST = [
-  'Operativo','Utilizado','Asignado'
+  'Operativo','Utilizado','Asignado','Reserva'
 ]
 
 const EMPTY = {
@@ -1150,6 +1150,7 @@ function TabControlInventario() {
       pendiente:  count('pendiente'),
       revision:   count('revision'),
       baja:       count('baja'),
+      reserva:    count('reserva'),
       byTipo:     byKey('tipo'),
       byProveedor:byKey('proveedor'),
       byCentro:   byKey('centro'),
@@ -1252,7 +1253,7 @@ function TabControlInventario() {
       <div style={{ marginBottom:14 }}>
 
         {/* KPIs */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:16 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:16 }}>
           {[
             { label:'Total spares', val:dashStats.total,    color:'#1877f2', bg:'#e7f3ff', est:null,
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
@@ -1262,6 +1263,8 @@ function TabControlInventario() {
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> },
             { label:'Asignado',    val:dashStats.asignado,  color:'#d97706', bg:'#fffbeb', est:'asignado',
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+            { label:'Reserva',     val:dashStats.reserva ?? 0, color:'#9333ea', bg:'#fdf4ff', est:'reserva',
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2.5" strokeLinecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> },
           ].map(k => (
             <div key={k.label}
               onClick={() => k.est && handleDashClick('estatus', k.est)}

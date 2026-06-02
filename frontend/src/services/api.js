@@ -140,3 +140,9 @@ export const importSeguimientoXLS = (file)     => {
   return api.post('/seguimiento/import_xlsx/', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
 }
 export const clearSeguimiento     = ()         => api.delete('/seguimiento/clear_all/')
+
+// ─── Seguimiento Upgrades / Mantenimiento ─────────────────────────────────────
+export const getSeguimientoUpgrades    = (params)   => api.get('/seguimiento-upgrades/', { params })
+export const createSeguimientoUpgrade  = (data)     => api.post('/seguimiento-upgrades/', data)
+export const updateSeguimientoUpgrade  = (id, data) => api.patch(`/seguimiento-upgrades/${id}/`, data)
+export const deleteSeguimientoUpgrade  = (id)       => api.delete(`/seguimiento-upgrades/${id}/`)
