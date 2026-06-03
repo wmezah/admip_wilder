@@ -1094,6 +1094,13 @@ function TabControlInventario() {
           if (val === 'lt1') return dias <= 365
           return true
         }
+        if (key === '_sinOperativo') {
+          // Mostrar solo filas cuyo SAP no tiene ningún spare operativo en items
+          const sapsConOp = new Set(
+            items.filter(r => (r.estatus||'').toLowerCase().includes('operativo')).map(r => r.sap).filter(Boolean)
+          )
+          return row.sap && !sapsConOp.has(row.sap)
+        }
         const cell = String(row[key] || '').toLowerCase()
         if (key === 'estatus') return cell.includes(val.toLowerCase())
         if (DROPDOWN_COLS.includes(key)) return cell === val.toLowerCase()
@@ -1151,6 +1158,13 @@ function TabControlInventario() {
       revision:   count('revision'),
       baja:       count('baja'),
       reserva:    count('reserva'),
+      sapsSinOperativo: (() => {
+        const sapsConOp = new Set(
+          rows.filter(r => (r.estatus||'').toLowerCase().includes('operativo')).map(r => r.sap).filter(Boolean)
+        )
+        const todosLosSaps = [...new Set(rows.map(r => r.sap).filter(Boolean))]
+        return todosLosSaps.filter(s => !sapsConOp.has(s)).length
+      })(),
       byTipo:     byKey('tipo'),
       byProveedor:byKey('proveedor'),
       byCentro:   byKey('centro'),
@@ -1253,7 +1267,7 @@ function TabControlInventario() {
       <div style={{ marginBottom:14 }}>
 
         {/* KPIs */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:16 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(6,1fr)', gap:10, marginBottom:16 }}>
           {[
             { label:'Total spares', val:dashStats.total,    color:'#1877f2', bg:'#e7f3ff', est:null,
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
@@ -1265,15 +1279,28 @@ function TabControlInventario() {
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
             { label:'Reserva',     val:dashStats.reserva ?? 0, color:'#9333ea', bg:'#fdf4ff', est:'reserva',
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9333ea" strokeWidth="2.5" strokeLinecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> },
+            { label:'SAP sin operativo', val:dashStats.sapsSinOperativo ?? 0, color:'#dc2626', bg:'#fef2f2', est:null, sinOp:true,
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> },
           ].map(k => (
             <div key={k.label}
-              onClick={() => k.est && handleDashClick('estatus', k.est)}
-              style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:14,
+              onClick={() => {
+                if (k.sinOp) {
+                  const active = !!colFilters._sinOperativo
+                  setColFilters(prev => ({ ...prev, _sinOperativo: active ? '' : '1' }))
+                  setPage(1)
+                  setTimeout(() => document.getElementById('spare-table-section')?.scrollIntoView({ behavior:'smooth', block:'start' }), 100)
+                } else if (k.est) {
+                  handleDashClick('estatus', k.est)
+                }
+              }}
+              style={{ background: k.sinOp && colFilters._sinOperativo ? '#fef2f2' : '#fff',
+                border: k.sinOp && colFilters._sinOperativo ? '2px solid #dc2626' : '1px solid #dde3ee',
+                borderRadius:14,
                 padding:'11px 13px', display:'flex', alignItems:'center', gap:10,
-                cursor: k.est ? 'pointer' : 'default',
+                cursor: (k.est || k.sinOp) ? 'pointer' : 'default',
                 boxShadow: k.est && colFilters.estatus?.toLowerCase().includes(k.est) ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)',
                 transition:'box-shadow .15s, transform .15s' }}
-              onMouseEnter={e=>{ if(k.est){ e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow=`0 6px 18px rgba(0,0,0,0.1)` }}}
+              onMouseEnter={e=>{ if(k.est||k.sinOp){ e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow=`0 6px 18px rgba(0,0,0,0.1)` }}}
               onMouseLeave={e=>{ e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow= k.est && colFilters.estatus?.toLowerCase().includes(k.est) ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)' }}>
               <div style={{ width:40, height:40, borderRadius:10, background:k.bg,
                 display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -1617,6 +1644,19 @@ function TabControlInventario() {
 
       {/* ══════════════ TABLA ══════════════ */}
       <div id="spare-table-section">
+      {/* Banner filtro SAP sin operativo */}
+      {colFilters._sinOperativo && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:'#fef2f2',
+          border:'1px solid #fca5a5', borderRadius:10, padding:'8px 14px', marginBottom:12 }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span style={{ fontSize:13, color:'#dc2626', fontWeight:500 }}>Mostrando solo SAP sin spare operativo</span>
+          <button onClick={() => { setColFilters(prev => ({ ...prev, _sinOperativo:'' })); setPage(1) }}
+            style={{ marginLeft:'auto', fontSize:12, padding:'2px 10px', borderRadius:8,
+              border:'1px solid #fca5a5', background:'transparent', color:'#dc2626', cursor:'pointer' }}>
+            Quitar filtro ×
+          </button>
+        </div>
+      )}
       {/* Toolbar */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
         marginBottom:16, gap:10, flexWrap:'wrap' }}>
