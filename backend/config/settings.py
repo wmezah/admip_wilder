@@ -60,6 +60,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
+# ─── Bases de datos ───────────────────────────────────────────────────────────
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
@@ -71,8 +72,22 @@ DATABASES = {
         'OPTIONS': {
             'charset': 'utf8mb4',
         },
-    }
+    },
+    'nce': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.getenv('NCE_DB_NAME', 'nce_cgnat'),
+        'USER': os.getenv('NCE_DB_USER', 'cgnat'),
+        'PASSWORD': os.getenv('NCE_DB_PASSWORD', ''),
+        'HOST': os.getenv('NCE_DB_HOST', 'localhost'),
+        'PORT': os.getenv('NCE_DB_PORT', '3306'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+        },
+    },
 }
+
+# La app 'nce' usa la base 'nce', todo lo demás usa 'default'
+DATABASE_ROUTERS = ['config.routers.NCERouter']
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -132,4 +147,3 @@ SIMPLE_JWT = {
     'ROTATE_REFRESH_TOKENS':  True,
     'AUTH_HEADER_TYPES':      ('Bearer',),
 }
-
