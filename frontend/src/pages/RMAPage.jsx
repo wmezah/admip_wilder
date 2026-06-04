@@ -417,6 +417,78 @@ function RedBadge({ red }) {
   )
 }
 
+// ── ViewRMAModal ──────────────────────────────────────────────────────────────
+function ViewRMAModal({ item, onClose, onEdit }) {
+  const SECTIONS = [
+    { title:'Identificación', color:'#dc2626', fields:[
+      ['SAP', item.sap], ['Equipo', item.equipo], ['Modelo', item.modelo],
+      ['Descripción', item.description], ['Proveedor', item.proveedor],
+    ]},
+    { title:'Ubicación', color:'#059669', fields:[
+      ['Zona', item.region], ['Red', item.red],
+    ]},
+    { title:'Avería', color:'#d97706', fields:[
+      ['Part Number Averiado', item.part_number_averiado],
+      ['Serie Averiada', item.serie_averiada],
+      ['Fecha Cambio', item.fecha_cambio_retiro],
+      ['Encargado OyM', item.encargado_oym],
+      ['Incidencia OyM', item.incidencia_oym],
+    ]},
+    { title:'RMA / Seguimiento', color:'#7c3aed', fields:[
+      ['Status', item.status], ['RMA', item.rma], ['Ticket', item.ticket],
+      ['Serie Proveedor', item.serie_proveedor],
+      ['Ingreso Almacén', item.ingresado_almacen],
+      ['Acta Ingreso', item.acta_ingreso],
+      ['Modalidad Entrega', item.modalidad_entrega],
+    ]},
+  ]
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,.55)',
+      display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:'#fff', borderRadius:14, width:720,
+        maxHeight:'80vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ padding:'12px 16px', borderBottom:'1px solid #e5e7eb',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>Detalle RMA</p>
+            <p style={{ margin:0, fontWeight:800, color:'#dc2626', fontFamily:'monospace', fontSize:15 }}>
+              {item.sap||'—'}{item.serie_averiada&&<span style={{ fontSize:12, color:'#6b7280', fontWeight:400 }}> · {item.serie_averiada}</span>}
+            </p>
+          </div>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <button onClick={onEdit} style={{ fontSize:12, padding:'5px 12px', borderRadius:8,
+              background:'#fef2f2', color:'#dc2626', border:'1px solid #fecaca', cursor:'pointer', fontWeight:600 }}>✏️ Editar</button>
+            <button onClick={onClose} style={{ background:'#f3f4f6', border:'none', borderRadius:8,
+              width:30, height:30, cursor:'pointer', fontSize:18, color:'#374151',
+              display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+          </div>
+        </div>
+        <div style={{ overflowY:'auto', padding:'14px 16px', flex:1,
+          display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          {SECTIONS.map(sec=>(
+            <div key={sec.title} style={{ border:'1px solid #e5e7eb', borderRadius:10, overflow:'hidden' }}>
+              <div style={{ background:sec.color, padding:'7px 14px' }}>
+                <p style={{ margin:0, fontSize:10, fontWeight:700, color:'#fff', textTransform:'uppercase', letterSpacing:'.5px' }}>{sec.title}</p>
+              </div>
+              <div style={{ padding:'10px 14px', display:'flex', flexDirection:'column', gap:6 }}>
+                {sec.fields.map(([label, val])=>(
+                  <div key={label} style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+                    <span style={{ fontSize:11, color:'#9ca3af', flexShrink:0 }}>{label}</span>
+                    <span style={{ fontSize:11, color:'#111827', fontWeight:500, textAlign:'right' }}>{val||'—'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 export default function RMAPage() {
   const [data,   setData]   = useState([])
   const [loading,setLoading]= useState(true)
@@ -440,6 +512,7 @@ export default function RMAPage() {
   const [showUpload, setShowUpload] = useState(false)
   const [showModal,  setShowModal]  = useState(false)
   const [editItem,   setEditItem]   = useState(null)
+  const [viewItem,   setViewItem]   = useState(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_AVERIADAS.filter(c=>c.default).map(c=>c.key))
   const [colWidths, setColWidths] = useState({})
@@ -663,7 +736,7 @@ export default function RMAPage() {
           </div>
 
           {/* Requieren acción */}
-          <div style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:14, padding:'11px 13px', border:'1.5px solid #fecaca',
+          <div style={{ background:'#fff', border:'1.5px solid #fecaca', borderRadius:14, padding:'11px 13px',
             boxShadow:'0 2px 8px rgba(0,0,0,0.06)', cursor:'default' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:7 }}>
               <div style={{ width:40, height:40, borderRadius:10, background:'#fef2f2', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -834,7 +907,7 @@ export default function RMAPage() {
                     const v = row[col.key]
                     if (col.key==='red') return <td key={col.key} style={{ padding:'8px 12px' }}><RedBadge red={v}/></td>
                     if (col.key==='status') return <td key={col.key} style={{ padding:'8px 12px' }}><Badge status={v}/></td>
-                    if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:'#dc2626', whiteSpace:'nowrap' }}>{v||'—'}</td>
+                    if (col.key==='sap') return <td key={col.key} onClick={()=>setViewItem(row)} style={{ padding:'8px 12px', fontFamily:'monospace', fontWeight:700, fontSize:11, color:'#dc2626', whiteSpace:'nowrap', cursor:'pointer', textDecoration:'underline', textDecorationStyle:'dotted', textUnderlineOffset:3 }}>{v||'—'}</td>
                     if (col.key==='costo_usd') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, fontWeight:600, color:'#059669', textAlign:'right' }}>{v?`$${Number(v).toLocaleString()}`:'—'}</td>
                     if (col.key?.startsWith('fecha_')) return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
                     return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
@@ -880,6 +953,12 @@ export default function RMAPage() {
       )}
       {confirmClear && createPortal(
         <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>,
+        document.body
+      )}
+      {viewItem && createPortal(
+        <ViewRMAModal item={viewItem}
+          onClose={()=>setViewItem(null)}
+          onEdit={()=>{ setEditItem({...viewItem}); setShowModal(true); setViewItem(null) }} />,
         document.body
       )}
     </div>

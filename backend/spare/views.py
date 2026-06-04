@@ -145,12 +145,20 @@ class SpareViewSet(viewsets.ModelViewSet):
         """
         Si el spare pasa a estatus 'Reserva', crea una fila en
         SeguimientoUpgrades con los datos comunes del spare.
-        No elimina filas existentes si el estatus cambia después.
+        No crea duplicados si ya existe una fila con el mismo sap y numero_serie.
         """
         if (spare.estatus or '').strip().lower() != 'reserva':
             return
 
+        # Evitar duplicados
+        if SeguimientoUpgrades.objects.filter(
+            sap=spare.sap or '',
+            numero_serie=spare.serial_number or '',
+        ).exists():
+            return
+
         SeguimientoUpgrades.objects.create(
+            zona              = spare.zona or '',
             proveedor         = spare.proveedor or '',
             part_number       = spare.part_number or '',
             sap               = spare.sap or '',

@@ -1,5 +1,6 @@
 import { useLocation } from 'react-router-dom'
-import { Moon, Sun, ChevronRight, LogOut, User } from 'lucide-react'
+import { Moon, Sun, ChevronRight, LogOut, User, Clock } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 const ROUTE_LABELS = {
   '/':         ['Dashboard',     'Resumen general'],
@@ -11,9 +12,26 @@ const ROUTE_LABELS = {
   '/usuarios': ['Usuarios',      'Administración de usuarios'],
 }
 
+const DIAS  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+const MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+
+function useClock() {
+  const [now, setNow] = useState(new Date())
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+  const h = String(now.getHours()).padStart(2,'0')
+  const m = String(now.getMinutes()).padStart(2,'0')
+  const s = String(now.getSeconds()).padStart(2,'0')
+  const fecha = `${DIAS[now.getDay()]} ${now.getDate()} ${MESES[now.getMonth()]}`
+  return { time: `${h}:${m}:${s}`, fecha }
+}
+
 export default function Topbar({ darkMode, onToggleDark, onLogout, sideWidth = 220 }) {
   const { pathname } = useLocation()
   const [section, page] = ROUTE_LABELS[pathname] ?? ['—', '—']
+  const { time, fecha } = useClock()
 
   return (
     <header style={{
@@ -30,6 +48,17 @@ export default function Topbar({ darkMode, onToggleDark, onLogout, sideWidth = 2
       </nav>
 
       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+
+        {/* Reloj */}
+        <div style={{ display:'flex', alignItems:'center', gap:7,
+          background:'#f0f2f5', borderRadius:8, padding:'4px 10px',
+          border:'1px solid #dadde1' }}>
+          <Clock size={13} style={{ color:'#65676b' }} />
+          <span style={{ fontSize:11, color:'#65676b' }}>{fecha}</span>
+          <div style={{ width:1, height:12, background:'#dadde1' }} />
+          <span style={{ fontSize:12, fontWeight:500, color:'#1c1e21', fontFamily:'monospace', minWidth:52 }}>{time}</span>
+        </div>
+
         <button onClick={onToggleDark}
           style={{ width:32, height:32, borderRadius:8, border:'1px solid #dadde1',
             background:'transparent', display:'flex', alignItems:'center', justifyContent:'center',

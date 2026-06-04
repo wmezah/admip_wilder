@@ -7,7 +7,6 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 // ─── APIs ─────────────────────────────────────────────────────────────────────
 const API_ASIGNADO   = '/api/spare/seguimiento'
 const API_UPGRADES   = '/api/spare/seguimiento-upgrades'
-const API_PROVEEDOR  = '/api/spare/seguimiento-proveedor'
 
 const getToken = () => localStorage.getItem('access_token')
 
@@ -24,7 +23,7 @@ const STATUS_META = {
 }
 
 const RED_COLOR = {
-  'IPRAN':'#1877f2', 'ACCESO':'#2563eb', 'METRO':'#0891b2', 'CORE':'#dc2626',
+  'IPRAN':'#1877f2', 'ACCESO':'#2563eb', 'METRO':'#0891b2', 'CORE':'#dc2626', 'PRONATEL':'#16a34a',
 }
 
 function Badge({ status }) {
@@ -504,7 +503,7 @@ function ViewSeguimientoModal({ item, onClose, onEdit }) {
 // PESTAÑA 1 — Seguimiento de Spare Asignado
 // ═══════════════════════════════════════════════════════════════════════════════
 const COLS_ASIGNADO = [
-  { key:'red',              label:'Red',               default:true,  dropdown:['ACCESO','IPRAN','CORE','METRO'] },
+  { key:'red',              label:'Red',               default:true,  dropdown:['ACCESO','IPRAN','CORE','METRO','PRONATEL'] },
   { key:'proveedor',        label:'Proveedor',          default:true,  dropdown:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON'] },
   { key:'sap',              label:'SAP',                default:true  },
   { key:'descripcion',      label:'Descripcion',        default:true  },
@@ -609,7 +608,7 @@ function TabAsignado() {
     })
   },[data,dQ,fStatus,fRed,colF,fechaDesde,fechaHasta,fLote,fPendCrit,filtroFecha])
 
-  const RED_COLORS = { 'IPRAN':'#1877f2','ACCESO':'#2563eb','METRO':'#0891b2','CORE':'#dc2626' }
+  const RED_COLORS = { 'IPRAN':'#1877f2','ACCESO':'#2563eb','METRO':'#0891b2','CORE':'#dc2626','PRONATEL':'#16a34a' }
   const PROV_COLORS = { 'HUAWEI':'#CF0A2C','ZTE':'#16a34a','NOKIA':'#9c6fe4','CISCO':'#059669' }
   const PALETTE = ['#1877f2','#CF0A2C','#16a34a','#9c6fe4','#d97706','#0891b2']
   const STATUS_COLORS = { 'Concluido':'#15803d','Aprobado':'#2563eb','No se Utilizó':'#ca8a04','Pendiente Crear':'#dc2626' }
@@ -650,7 +649,7 @@ function TabAsignado() {
     })
     const byWeek = Object.entries(weekMap).sort((a,b)=>a[0]<b[0]?-1:1).slice(-8)
     // ── Top SAP por RED ──
-    const RED_LIST = ['ACCESO','IPRAN','CORE','METRO']
+    const RED_LIST = ['ACCESO','IPRAN','CORE','METRO','PRONATEL']
     const sapPorRed = {}
     RED_LIST.forEach(red => {
       const rows = src.filter(r => r.red === red)
@@ -679,7 +678,7 @@ function TabAsignado() {
     const valorado   = src.filter(r => String(r.lote||'').toUpperCase() === 'VALORADO').length
     const noValorado = src.length - valorado
     // Tasa conclusión por RED
-    const RED_LIST_TASA = ['ACCESO','IPRAN','CORE','METRO']
+    const RED_LIST_TASA = ['ACCESO','IPRAN','CORE','METRO','PRONATEL']
     const tasaRed = {}
     RED_LIST_TASA.forEach(red => {
       const rows = src.filter(r => r.red === red)
@@ -796,7 +795,7 @@ function TabAsignado() {
   }
 
   const MODAL_FIELDS = [
-    { key:'red',              label:'Red',              options:['IPRAN','ACCESO','METRO','CORE'] },
+    { key:'red',              label:'Red',              options:['IPRAN','ACCESO','METRO','CORE','PRONATEL'] },
     { key:'proveedor',        label:'Proveedor' },
     { key:'sap',              label:'SAP' },
     { key:'descripcion',      label:'Descripción',      span:true },
@@ -1182,21 +1181,85 @@ function TabAsignado() {
   )
 }
 
+// ── ViewUpgradeModal ──────────────────────────────────────────────────────────
+function ViewUpgradeModal({ item, onClose, onEdit }) {
+  const SECTIONS = [
+    { title:'Identificación', color:'#0891b2', fields:[
+      ['SAP', item.sap], ['Modelo de Equipo', item.part_number], ['Descripción', item.descripcion],
+      ['Proveedor', item.proveedor], ['Lote', item.lote],
+    ]},
+    { title:'Ubicación', color:'#059669', fields:[
+      ['Región', item.region], ['Zona', item.zona],
+    ]},
+    { title:'Asignación', color:'#1877f2', fields:[
+      ['N° Serie', item.numero_serie], ['Fecha Asignación', item.fecha_asignacion],
+      ['N° Pedido', item.numero_pedido], ['OYM Encargado', item.oym_encargado],
+    ]},
+    { title:'Observaciones', color:'#ca8a04', fields:[
+      ['Motivo', item.motivo_asignacion], ['Seguimiento', item.seguimiento],
+    ]},
+  ]
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, zIndex:9999, background:'rgba(0,0,0,.55)',
+      display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:'#fff', borderRadius:14, width:700,
+        maxHeight:'75vh', display:'flex', flexDirection:'column',
+        boxShadow:'0 20px 60px rgba(0,0,0,.3)' }}>
+        <div style={{ padding:'12px 16px', borderBottom:'1px solid #e5e7eb',
+          display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
+          <div>
+            <p style={{ margin:0, fontSize:10, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'.4px' }}>Detalle Upgrade / Mantenimiento</p>
+            <p style={{ margin:0, fontWeight:800, color:'#0891b2', fontFamily:'monospace', fontSize:15 }}>
+              {item.sap||'—'}{item.numero_serie&&<span style={{ fontSize:12, color:'#6b7280', fontWeight:400 }}> · {item.numero_serie}</span>}
+            </p>
+          </div>
+          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+            <button onClick={onEdit} style={{ fontSize:12, padding:'5px 12px', borderRadius:8,
+              background:'#e0f9f9', color:'#0891b2', border:'1px solid #a5f3fc', cursor:'pointer', fontWeight:600 }}>✏️ Editar</button>
+            <button onClick={onClose} style={{ background:'#f3f4f6', border:'none', borderRadius:8,
+              width:30, height:30, cursor:'pointer', fontSize:18, color:'#374151',
+              display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+          </div>
+        </div>
+        <div style={{ overflowY:'auto', padding:'14px 16px', flex:1,
+          display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          {SECTIONS.map(sec=>(
+            <div key={sec.title} style={{ border:'1px solid #e5e7eb', borderRadius:10, overflow:'hidden' }}>
+              <div style={{ background:sec.color, padding:'7px 14px' }}>
+                <p style={{ margin:0, fontSize:10, fontWeight:700, color:'#fff', textTransform:'uppercase', letterSpacing:'.5px' }}>{sec.title}</p>
+              </div>
+              <div style={{ padding:'10px 14px', display:'flex', flexDirection:'column', gap:6 }}>
+                {sec.fields.map(([label, val])=>(
+                  <div key={label} style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+                    <span style={{ fontSize:11, color:'#9ca3af', flexShrink:0 }}>{label}</span>
+                    <span style={{ fontSize:11, color:'#111827', fontWeight:500, textAlign:'right' }}>{val||'—'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PESTAÑA 3 — Seguimiento Upgrade / Mantenimiento
 // ═══════════════════════════════════════════════════════════════════════════════
 const COLS_UPGRADES = [
-  { key:'region',           label:'Zona',             default:true,  dropdown:['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR'] },
+  { key:'region',           label:'Región',           default:true,  dropdown:['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR'] },
+  { key:'zona',             label:'Zona',             default:true  },
   { key:'proveedor',        label:'Proveedor',        default:true,  dropdown:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON'] },
   { key:'part_number',      label:'Modelo de Equipo', default:true  },
   { key:'sap',              label:'SAP',              default:true  },
   { key:'descripcion',      label:'Descripción',      default:true  },
-  { key:'cantidad',         label:'Cantidad',         default:true  },
   { key:'numero_serie',     label:'N° Serie',         default:true  },
   { key:'lote',             label:'LOTE',             default:true,  dropdown:['VALORADO','NOVALORADO'] },
   { key:'fecha_asignacion', label:'Fecha Asignación', default:true  },
   { key:'numero_pedido',    label:'N° Pedido',        default:true  },
-  { key:'guia_remision',    label:'Guía Remisión',    default:true  },
   { key:'oym_encargado',    label:'OYM Encargado',    default:true  },
   { key:'motivo_asignacion',label:'Motivo',           default:false },
   { key:'seguimiento',      label:'Seguimiento',      default:true  },
@@ -1223,6 +1286,7 @@ function TabUpgrades() {
   const [showUpload, setShowUpload] = useState(false)
   const [showModal,  setShowModal]  = useState(false)
   const [editItem,   setEditItem]   = useState(null)
+  const [viewUpgradeItem, setViewUpgradeItem] = useState(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_UPGRADES.filter(c=>c.default).map(c=>c.key))
   const [colWidths, setColWidths] = useState({})
@@ -1327,17 +1391,16 @@ function TabUpgrades() {
   }
 
   const MODAL_FIELDS = [
-    { key:'region',           label:'Zona' },
-    { key:'proveedor',        label:'Proveedor' },
+    { key:'region',           label:'Región',          options:['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR'] },
+    { key:'zona',             label:'Zona' },
+    { key:'proveedor',        label:'Proveedor',        options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON'] },
     { key:'part_number',      label:'Modelo de Equipo' },
     { key:'sap',              label:'SAP' },
     { key:'descripcion',      label:'Descripción',    span:true },
-    { key:'cantidad',         label:'Cantidad' },
     { key:'numero_serie',     label:'N° Serie' },
     { key:'lote',             label:'LOTE',             options:['VALORADO','NOVALORADO'] },
     { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
     { key:'numero_pedido',    label:'N° Pedido' },
-    { key:'guia_remision',    label:'Guía Remisión' },
     { key:'oym_encargado',    label:'OYM Encargado' },
     { key:'motivo_asignacion',label:'Motivo',          span:true },
     { key:'seguimiento',      label:'Seguimiento',     span:true },
@@ -1458,7 +1521,7 @@ function TabUpgrades() {
                   onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#ffffff':'#f0f2f5'}>
                   {activeCols.map(col=>{
                     const v = row[col.key]
-                    if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:'#0891b2', whiteSpace:'nowrap' }}>{v||'—'}</td>
+                    if (col.key==='sap') return <td key={col.key} onClick={()=>setViewUpgradeItem(row)} style={{ padding:'8px 12px', fontFamily:'monospace', fontWeight:700, fontSize:11, color:'#0891b2', whiteSpace:'nowrap', cursor:'pointer', textDecoration:'underline', textDecorationStyle:'dotted', textUnderlineOffset:3 }}>{v||'—'}</td>
                     if (col.key==='fecha_asignacion') return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap',  }}>{v?String(v).substring(0,10):'—'}</td>
                     if (col.key==='proveedor') return <td key={col.key} style={{ padding:'8px 12px' }}>
                       {v ? <span style={{ fontSize:11, fontWeight:700, padding:'2px 8px', borderRadius:4, background:'#e0f2fe', color:'#0369a1' }}>{v}</span> : '—'}
@@ -1508,351 +1571,21 @@ function TabUpgrades() {
         <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>,
         document.body
       )}
-    </div>
-  )
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PESTAÑA 4 — Seguimiento Spare Asignado a Proveedor
-// ═══════════════════════════════════════════════════════════════════════════════
-const COLS_PROVEEDOR = [
-  { key:'region',           label:'Zona',             default:true  },
-  { key:'proveedor',        label:'Proveedor',           default:true  },
-  { key:'sap',              label:'SAP',                 default:true  },
-  { key:'part_number',      label:'Modelo de Equipo',         default:true  },
-  { key:'descripcion',      label:'Descripción',         default:true  },
-  { key:'numero_serie',     label:'N° Serie',            default:true  },
-  { key:'lote',             label:'Lote',                default:true  },
-  { key:'centro',           label:'Centro',              default:false },
-  { key:'almacen',          label:'Almacén',             default:false },
-  { key:'motivo_asignacion',label:'Motivo',              default:false },
-  { key:'fecha_asignacion', label:'Fecha Asignación',    default:true  },
-  { key:'fecha_devolucion', label:'Fecha Devolución',    default:true  },
-  { key:'gr_devolucion',    label:'GR Devolución',       default:true  },
-  { key:'estado',           label:'Estado',              default:true  },
-  { key:'comentario',       label:'Comentario',          default:true  },
-]
-
-function TabProveedor() {
-  const [data,   setData]   = useState([])
-  const [isAdmin, setIsAdmin] = useState(false)
-  useEffect(() => {
-    const token = localStorage.getItem('access_token')
-    fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
-      .then(r => r.json())
-      .then(data => {
-        const username = localStorage.getItem('username')
-        const users = Array.isArray(data) ? data : (data.results || [])
-        const me = users.find(u => u.username === username)
-        if (me?.role === 'admin') setIsAdmin(true)
-      }).catch(() => {})
-  }, [])
-
-  const [loading,setLoading]= useState(true)
-  const [query,  setQuery]  = useState('')
-  const [dQ,     setDQ]     = useState('')
-  const [fEstado,setFE]     = useState('')
-  const [colF,   setColF]   = useState({})
-  const [showUpload, setShowUpload] = useState(false)
-  const [showModal,  setShowModal]  = useState(false)
-  const [editItem,   setEditItem]   = useState(null)
-  const [confirmClear, setConfirmClear] = useState(false)
-  const [visibleCols, setVisibleCols] = useState(COLS_PROVEEDOR.filter(c=>c.default).map(c=>c.key))
-  const [colWidths, setColWidths] = useState({})
-  const [page, setPage] = useState(1)
-  const debRef = useRef(null)
-  const PER_PAGE = 50
-  const C = { primary:'#1877f2', border:'#e5e7eb', muted:'#6b7280' }
-
-  const ESTADOS = ['EN PROCESO','CERRADO','PENDIENTE']
-  const ESTADO_COLOR = { 'EN PROCESO':'#2563eb', 'CERRADO':'#15803d', 'PENDIENTE':'#ca8a04' }
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const rows = await fetch(`${API_PROVEEDOR}/?page_size=10000`, {
-        headers:{ Authorization:`Bearer ${getToken()}` }
-      }).then(r=>r.json()).catch(()=>[])
-      setData(Array.isArray(rows) ? rows : (rows.results||[]))
-    } finally { setLoading(false) }
-  }, [])
-
-  useEffect(()=>{ load() },[load])
-
-  const filtered = useMemo(()=>{
-    const q = dQ.toLowerCase()
-    return data.filter(r=>{
-      const mQ = !q||[r.proveedor,r.sap,r.part_number,r.numero_serie,r.descripcion,r.region,r.gr_devolucion]
-        .some(v=>String(v||'').toLowerCase().includes(q))
-      const EXACT=['red','status_folio','lote','proveedor','status','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
-      return mQ && (!fEstado||r.estado===fEstado) && mC
-    })
-  },[data,dQ,fEstado,colF])
-
-  const pages = Math.ceil(filtered.length/PER_PAGE)
-  const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
-  const activeCols = COLS_PROVEEDOR.filter(c=>visibleCols.includes(c.key))
-
-  const filterRow = (
-    <tr style={{ background:'#fafafa', borderBottom:'2px solid #e5e7eb' }}>
-      {activeCols.map(col => {
-        const val = colF[col.key] || ''
-        const active = !!val
-        const base = { width:'100%', borderRadius:5, fontSize:11, padding:'4px 7px', outline:'none',
-          boxSizing:'border-box', fontFamily:'inherit', transition:'border-color .15s',
-          border:`1px solid ${active?'#6babf5':'#d1d5db'}`,
-          background: active ? '#e7f3ff' : '#fff',
-          boxShadow: active ? '0 0 0 2px #cce0ff' : 'none' }
-        return (
-          <td key={col.key} style={{ padding:'3px 6px' }}>
-            {col.dropdown ? (
-              <select value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }} style={base}>
-                <option value=''>Todos</option>
-                {col.dropdown.map(o => <option key={o} value={o}>{o}</option>)}
-              </select>
-            ) : (
-              <input value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
-                style={base} placeholder="Filtrar…"/>
-            )}
-          </td>
-        )
-      })}
-      <td style={{ padding:'3px 6px' }}>
-        {Object.values(colF).some(Boolean) && (
-          <button onClick={()=>setColF({})}
-            style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4,
-              padding:'3px 8px', fontSize:10, color:'#dc2626', cursor:'pointer' }}>✕</button>
-        )}
-      </td>
-    </tr>
-  )
-    const hasFilter = !!(fEstado||query||Object.values(colF).some(Boolean))
-  const exportXLSX = () => {
-    const cols = COLS_PROVEEDOR.map(c=>c.key)
-    const header = COLS_PROVEEDOR.map(c=>c.label)
-    const rows = filtered.map(r=>cols.map(k=>r[k]||''))
-    const ws = XLSX.utils.aoa_to_sheet([header,...rows])
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb,ws,'Proveedor')
-    XLSX.writeFile(wb,'seguimiento_proveedor.xlsx')
-  }
-
-  const del = async (id) => {
-    if (!confirm('¿Eliminar?')) return
-    await fetch(`${API_PROVEEDOR}/${id}/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
-    load()
-  }
-
-  const clearAll = async () => {
-    await fetch(`${API_PROVEEDOR}/clear_all/`,{ method:'DELETE', headers:{ Authorization:`Bearer ${getToken()}` }})
-    setConfirmClear(false); load()
-  }
-
-  const sapLookup = async (sap) => {
-    try {
-      const r = await fetch(`/api/spare/part-numbers/lookup-by-sap/?sap=${encodeURIComponent(sap)}`, {
-        headers: { Authorization: `Bearer ${getToken()}` }
-      })
-      if (!r.ok) return null
-      return await r.json()
-    } catch { return null }
-  }
-
-  const MODAL_FIELDS = [
-    { key:'region',           label:'Zona' },
-    { key:'proveedor',        label:'Proveedor' },
-    { key:'sap',              label:'SAP' },
-    { key:'part_number',      label:'Modelo de Equipo' },
-    { key:'descripcion',      label:'Descripción',      span:true },
-    { key:'numero_serie',     label:'N° Serie' },
-    { key:'lote',             label:'Lote',             options:['VALORADO','NOVALORADO'] },
-    { key:'centro',           label:'Centro' },
-    { key:'almacen',          label:'Almacén' },
-    { key:'motivo_asignacion',label:'Motivo',           span:true },
-    { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
-    { key:'fecha_devolucion', label:'Fecha Devolución', type:'date' },
-    { key:'gr_devolucion',    label:'GR Devolución' },
-    { key:'estado',           label:'Estado',           options:ESTADOS },
-    { key:'comentario',       label:'Comentario',       span:true },
-  ]
-
-  const estadoCounts = ESTADOS.reduce((acc,e)=>{ acc[e]=filtered.filter(r=>r.estado===e).length; return acc },{})
-
-  return (
-    <div style={{ paddingBottom:20 }}>
-      {/* KPIs */}
-      <div style={{ background:'#eef1f6', borderRadius:14, padding:'16px', marginBottom:12 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:10 }}>
-          {[
-            { l:'Total', v:filtered.length, color:'#1877f2', bg:'#e7f3ff', est:'',
-              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
-            ...ESTADOS.map(e=>({ l:e, v:estadoCounts[e]||0, color:ESTADO_COLOR[e], bg:'#f9fafb', est:e,
-              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={ESTADO_COLOR[e]} strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            }))
-          ].map(k=>(
-            <div key={k.l} onClick={()=>{ setFE(fEstado===k.est&&k.est?'':k.est); setPage(1) }}
-              style={{ background:'#fff', borderRadius:12, padding:'11px 13px',
-                display:'flex', alignItems:'center', gap:10, cursor:'pointer',
-                boxShadow: fEstado===k.est&&k.est ? `0 0 0 2px ${k.color}` : '0 2px 8px rgba(0,0,0,0.06)' }}>
-              <div style={{ width:40, height:40, borderRadius:10, background:k.bg,
-                display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                {k.icon}
-              </div>
-              <div>
-                <div style={{ fontSize:26, fontWeight:800, color:k.color, lineHeight:1, letterSpacing:'-0.5px' }}>{k.v}</div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>{k.l}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Toolbar */}
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:14, alignItems:'center' }}>
-        <div style={{ position:'relative', flex:1, minWidth:220 }}>
-          <Search size={13} style={{ position:'absolute', left:9, top:'50%', transform:'translateY(-50%)', color:'#9ca3af' }}/>
-          <input className="input" style={{ paddingLeft:30, fontSize:13 }}
-            placeholder="Buscar SAP, part number, serie, proveedor..."
-            value={query} onChange={e=>{ setQuery(e.target.value); setPage(1)
-              clearTimeout(debRef.current); debRef.current=setTimeout(()=>setDQ(e.target.value),250) }} />
-        </div>
-        <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{filtered.length} registros</span>
-        {hasFilter && (
-          <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#1877f2', borderColor:'#cce0ff' }}
-            onClick={()=>{ setColF({}); setQuery(''); setDQ(''); setFEstado(''); setPage(1) }}>
-            ✕ Limpiar filtros
-          </button>
-        )}
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>}
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={exportXLSX}><Download size={14}/>
-          {hasFilter ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
-        </button>}
-        <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={load}><RefreshCw size={14}/> Actualizar</button>
-        {isAdmin && <button disabled={data.length===0} onClick={()=>setConfirmClear(true)}
-          style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 14px',
-            borderRadius:8, border:'1.5px solid #fecaca', fontSize:13, fontWeight:600,
-            background:data.length===0?'#f9fafb':'#fff', color:data.length===0?'#d1d5db':'#dc2626',
-            cursor:data.length===0?'default':'pointer' }}>
-          <Trash2 size={14}/> Limpiar todo
-        </button>}
-        <ColumnSelector allCols={COLS_PROVEEDOR} visibleCols={visibleCols} onChange={setVisibleCols} />
-        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={()=>{ setEditItem(null); setShowModal(true) }}>
-          <Plus size={14}/> Nuevo
-        </button>
-      </div>
-
-      {showUpload && (
-        <ImportPanel api={API_PROVEEDOR} onDone={load}
-          plantillaName="seguimiento_proveedor"
-          plantillaCols={['ZONA','PROVEEDOR','SAP','MODELO DE EQUIPO','DESCRIPCION',
-            'N° Serie','Lote','Centro','Almacén','Motivo',
-            'Fecha Asignación','Fecha Devolución','GR Devolución',
-            'Estado','Comentario']} />
-      )}
-
-
-
-
-      {/* Tabla */}
-      <div className="card overflow-hidden">
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, tableLayout:'fixed' }}>
-            <colgroup>{activeCols.map(col=><col key={col.key} style={{ width: colWidths[col.key] || 130 }} />)}<col style={{ width:70 }} /></colgroup>
-            <thead>
-              <tr style={{ background:'#f3f4f6' }}>
-                {activeCols.map(col=>(
-                  <th key={col.key} style={{ padding:'7px 12px 4px', textAlign:'left', fontSize:10,
-                    fontWeight:700, color: colF[col.key] ? '#1877f2' : '#6b7280',
-                    textTransform:'uppercase', letterSpacing:'.4px', whiteSpace:'nowrap',
-                    borderBottom:'1px solid #e5e7eb',
-                    borderTop: colF[col.key] ? '2px solid #1877f2' : '2px solid transparent',
-                    background: colF[col.key] ? '#cce0ff' : '#f3f4f6',
-                    position:'relative', userSelect:'none', overflow:'visible' }}>
-                    {col.label}
-                    <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
-                  </th>
-                ))}
-                <th style={{ padding:'10px 12px', borderBottom:'1px solid #dadde1' }}/>
-              </tr>
-            {filterRow}
-            </thead>
-            <tbody>
-              {loading && <tr><td colSpan={activeCols.length+1} style={{ padding:40, color:C.muted }}>Cargando...</td></tr>}
-              {!loading && shown.length===0 && (
-                <tr><td colSpan={activeCols.length+1} style={{ padding:40, color:'#9ca3af' }}>
-                  {data.length===0 ? 'Sin datos — importa el Excel para comenzar.' : 'Sin resultados.'}
-                </td></tr>
-              )}
-              {shown.map((row,i)=>(
-                <tr key={row.id||i} style={{ borderBottom:'1px solid #dadde1', background:i%2===0?'#ffffff':'#f0f2f5', transition:'background .12s' }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#e7f3ff'}
-                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#ffffff':'#f0f2f5'}>
-                  {activeCols.map(col=>{
-                    const v = row[col.key]
-                    if (col.key==='sap') return <td key={col.key} style={{ padding:'8px 12px', fontFamily:'monospace', fontSize:11, color:C.primary, whiteSpace:'nowrap' }}>{v||'—'}</td>
-                    if (col.key==='estado') return <td key={col.key} style={{ padding:'8px 12px' }}>
-                      {v ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:4,
-                        background: ESTADO_COLOR[v]+'18', color: ESTADO_COLOR[v]||'#6b7280' }}>{v}</span> : '—'}
-                    </td>
-                    if (col.key==='lote') return <td key={col.key} style={{ padding:'8px 12px' }}>
-                      {v ? <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:4,
-                        background:v==='VALORADO'?'#dbeafe':'#f3f4f6', color:v==='VALORADO'?'#1e40af':'#6b7280' }}>{v}</span> : '—'}
-                    </td>
-                    if (col.key?.startsWith('fecha_')) return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:C.muted, whiteSpace:'nowrap' }}>{v?String(v).substring(0,10):'—'}</td>
-                    return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
-                  })}
-                  <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
-                      onClick={()=>{ setEditItem({...row,_api:API_PROVEEDOR}); setShowModal(true) }}>✏️</button>
-                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
-                      onClick={()=>del(row.id)}>🗑</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {pages>1 && (
-          <div style={{ padding:'12px 16px', borderTop:'1px solid #dadde1',
-            display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <span style={{ fontSize:12, color:C.muted }}>Página {page} de {pages} · {filtered.length} registros</span>
-            <div style={{ display:'flex', gap:6 }}>
-              <button className="btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} disabled={page===1} onClick={()=>setPage(p=>p-1)}>← Anterior</button>
-              {Array.from({length:Math.min(pages,7)},(_,i)=>i+1).map(p=>(
-                <button key={p} style={{ padding:'4px 10px', fontSize:12, border:'none', cursor:'pointer',
-                  borderRadius:6, background:p===page?C.primary:'#f3f4f6',
-                  color:p===page?'#fff':'#374151', fontWeight:p===page?700:400 }}
-                  onClick={()=>setPage(p)}>{p}</button>
-              ))}
-              <button className="btn-ghost" style={{ fontSize:12, padding:'4px 10px' }} disabled={page===pages} onClick={()=>setPage(p=>p+1)}>Siguiente →</button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {showModal && (
-        <GenericModal
-          title={editItem?.id ? 'Editar Spare Proveedor' : 'Nuevo Spare Proveedor'}
-          fields={MODAL_FIELDS}
-          item={editItem ? editItem : { _api: API_PROVEEDOR }}
-          onClose={()=>setShowModal(false)}
-          onSave={()=>{ load(); setShowModal(false) }}
-          onSapLookup={sapLookup}
-          withCentroAlmacen={true}
-        />
-      )}
-      {confirmClear && createPortal(
-        <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>,
+      {viewUpgradeItem && createPortal(
+        <ViewUpgradeModal item={viewUpgradeItem}
+          onClose={()=>setViewUpgradeItem(null)}
+          onEdit={()=>{ setEditItem({...viewUpgradeItem,_api:API_UPGRADES}); setShowModal(true); setViewUpgradeItem(null) }} />,
         document.body
       )}
     </div>
   )
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// PÁGINA PRINCIPAL
+// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
+// PÁGINA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════════
 // PÁGINA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════════

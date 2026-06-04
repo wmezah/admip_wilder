@@ -234,14 +234,13 @@ class SeguimientoAveriadas(models.Model):
 # ─── Seguimiento Spare Upgrade / Mantenimiento ────────────────────────────────
 class SeguimientoUpgrades(models.Model):
     region              = models.CharField(max_length=100, blank=True, null=True)
+    zona                = models.CharField(max_length=100, blank=True, null=True)
     proveedor           = models.CharField(max_length=200, blank=True, null=True)
     part_number         = models.CharField(max_length=200, blank=True, null=True)
     sap                 = models.CharField(max_length=50,  blank=True, null=True)
     descripcion         = models.CharField(max_length=500, blank=True, null=True)
-    cantidad            = models.CharField(max_length=100, blank=True, null=True)
     numero_serie        = models.CharField(max_length=200, blank=True, null=True)
     fecha_asignacion    = models.DateField(blank=True, null=True)
-    guia_remision       = models.CharField(max_length=200, blank=True, null=True)
     numero_pedido       = models.CharField(max_length=100, blank=True, null=True)
     lote                = models.CharField(max_length=100, blank=True, null=True)
     oym_encargado       = models.CharField(max_length=200, blank=True, null=True)
