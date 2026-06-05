@@ -191,12 +191,6 @@ class Seguimiento(models.Model):
 
 # ─── Seguimiento Piezas Averiadas ─────────────────────────────────────────────
 class SeguimientoAveriadas(models.Model):
-    STATUS_CHOICES = [
-        ('Pendiente',   'Pendiente'),
-        ('En Proceso',  'En Proceso'),
-        ('Completado',  'Completado'),
-        ('Cancelado',   'Cancelado'),
-    ]
  
     region                    = models.CharField(max_length=100, blank=True, null=True)
     red                       = models.CharField(max_length=100, blank=True, null=True)

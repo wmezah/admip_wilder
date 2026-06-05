@@ -477,15 +477,38 @@ class SeguimientoViewSet(viewsets.ModelViewSet):
     ordering_fields = ['fecha_asignacion', 'red', 'status_folio', 'created_at']
     pagination_class = FlexPagePagination
 
+    def _sync_spare_estatus(self, seguimiento):
+        """Cuando el status_folio es Concluido, actualiza el spare a Utilizado."""
+        if (seguimiento.status_folio or '').strip().lower() != 'concluido':
+            return
+        sap   = seguimiento.sap
+        serie = seguimiento.cantidad_serie
+        if not sap or not serie:
+            return
+        spare = Spare.objects.filter(sap=sap, serial_number=serie).first()
+        if spare and spare.estatus != 'Utilizado':
+            spare.estatus = 'Utilizado'
+            spare.save(update_fields=['estatus'])
+
+    def perform_update(self, serializer):
+        seguimiento = serializer.save()
+        self._sync_spare_estatus(seguimiento)
+
     def perform_create(self, serializer):
         sap            = serializer.validated_data.get('sap')
         cantidad_serie = serializer.validated_data.get('cantidad_serie')
         if sap and cantidad_serie:
             existing = Seguimiento.objects.filter(sap=sap, cantidad_serie=cantidad_serie).first()
             if existing:
-                # Actualizar registro existente con los nuevos datos
+                # Campos exclusivos de Seguimiento que NO deben sobreescribirse
+                PROTECTED = {
+                    'site', 'codigo_site', 'elemento_pep', 'folio',
+                    'status_folio', 'red', 'encargado_oym', 'incidencia_oym',
+                    'fecha_conclusion', 'observaciones', 'numero_pedido',
+                }
                 for attr, value in serializer.validated_data.items():
-                    setattr(existing, attr, value)
+                    if attr not in PROTECTED:
+                        setattr(existing, attr, value)
                 existing.save()
                 return
         serializer.save()
@@ -641,41 +664,62 @@ class SeguimientoAveridasViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
-        df.columns = [str(col).strip().upper() for col in df.columns]
+        df.columns = [str(col).strip() for col in df.columns]
         col_map = {
             'REGION':                          'region',
+            'REGIÓN':                          'region',
+            'Región':                          'region',
             'ZONA':                            'region',
+            'Zona':                            'region',
             'RED':                             'red',
+            'Red':                             'red',
             'PROVEEDOR':                       'proveedor',
+            'Proveedor':                       'proveedor',
             'EQUIPO':                          'equipo',
+            'Equipo':                          'equipo',
             'MODELO':                          'modelo',
+            'Modelo':                          'modelo',
             'PART NUMBER AVERIADO':            'part_number_averiado',
             'P/N AVERIADO':                    'part_number_averiado',
+            'P/N Averiado':                    'part_number_averiado',
             'DESCRIPTION':                     'description',
             'DESCRIPCIÓN':                     'description',
+            'Descripción':                     'description',
             'SERIE AVERIADA':                  'serie_averiada',
             'SERIE AVER.':                     'serie_averiada',
+            'Serie Aver.':                     'serie_averiada',
             'SAP':                             'sap',
             'ENCARGADO OYM':                   'encargado_oym',
+            'Encargado OyM':                   'encargado_oym',
             'ING. ALMACÉN':                    'ingresado_almacen',
+            'Ing. Almacén':                    'ingresado_almacen',
             'INGRESO ALMACÉN':                 'ingresado_almacen',
             'INGRESADO AL ALMACEN CD VES':     'ingresado_almacen',
             'ACTA INGRESO':                    'acta_ingreso',
+            'Acta Ingreso':                    'acta_ingreso',
             'ACTA DE INGRESO':                 'acta_ingreso',
             'STATUS':                          'status',
+            'Status':                          'status',
             'INCIDENCIA':                      'incidencia_oym',
+            'Incidencia':                      'incidencia_oym',
             'INCIDENCIA OYM':                  'incidencia_oym',
             'F. CAMBIO':                       'fecha_cambio_retiro',
+            'F. Cambio':                       'fecha_cambio_retiro',
             'FECHA DE CAMBIO/RETIRO':          'fecha_cambio_retiro',
             'F. CORREO OYM':                   'fecha_correo_oym',
+            'F. Correo OyM':                   'fecha_correo_oym',
             'FECHA CORREO OYM':                'fecha_correo_oym',
             'F. CORREO PROV':                  'fecha_correo_proveedor',
+            'F. Correo Prov':                  'fecha_correo_proveedor',
             'FECHA CORREO/RECOJO PROVEEDOR':   'fecha_correo_proveedor',
             'RMA':                             'rma',
             'TICKET':                          'ticket',
+            'Ticket':                          'ticket',
             'COSTO US$':                       'costo_usd',
             'SERIE PROVEEDOR':                 'serie_proveedor',
+            'Serie Proveedor':                 'serie_proveedor',
             'MODALIDAD ENTREGA':               'modalidad_entrega',
+            'Modalidad Entrega':               'modalidad_entrega',
         }
 
         deleted, _ = SeguimientoAveriadas.objects.all().delete()
@@ -757,29 +801,37 @@ class SeguimientoUpgradesViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({'error': str(e)}, status=400)
 
-        df.columns = [str(col).strip().upper() for col in df.columns]
+        df.columns = [str(col).strip() for col in df.columns]
         col_map = {
+            'Región':               'region',
             'REGION':               'region',
-            'ZONA':                 'region',
+            'Zona':                 'zona',
+            'ZONA':                 'zona',
+            'Proveedor':            'proveedor',
             'PROVEEDOR':            'proveedor',
-            'PART NUMBER':          'part_number',
+            'Modelo de Equipo':     'part_number',
             'MODELO DE EQUIPO':     'part_number',
+            'PART NUMBER':          'part_number',
             'SAP':                  'sap',
+            'Descripción':          'descripcion',
             'DESCRIPCION':          'descripcion',
             'DESCRIPCIÓN':          'descripcion',
-            'CANTIDAD':             'cantidad',
+            'N° Serie':             'numero_serie',
             'NUMERO DE SERIE':      'numero_serie',
             'N° SERIE':             'numero_serie',
+            'LOTE':                 'lote',
+            'Fecha Asignación':     'fecha_asignacion',
             'FECHA ASIGNACION':     'fecha_asignacion',
             'FECHA ASIGNACIÓN':     'fecha_asignacion',
+            'N° Pedido':            'numero_pedido',
             'N° PEDIDO':            'numero_pedido',
             'N° DE PEDIDO':         'numero_pedido',
-            'GUIA DE REMISION':     'guia_remision',
-            'GUÍA REMISIÓN':        'guia_remision',
-            'LOTE':                 'lote',
+            'OYM Encargado':        'oym_encargado',
             'OYM ENCARGADO':        'oym_encargado',
+            'Motivo':               'motivo_asignacion',
             'MOTIVO DE ASIGNACION': 'motivo_asignacion',
             'MOTIVO':               'motivo_asignacion',
+            'Seguimiento':          'seguimiento',
             'SEGUIMIENTO':          'seguimiento',
         }
 
@@ -790,8 +842,11 @@ class SeguimientoUpgradesViewSet(viewsets.ModelViewSet):
         for _, row in df.iterrows():
             try:
                 kwargs = {}
-                for excel_col, field in col_map.items():
-                    val = row.get(excel_col)
+                for excel_col in df.columns:
+                    field = col_map.get(excel_col)
+                    if not field:
+                        continue
+                    val = row[excel_col]
                     is_na = False
                     try: is_na = pd.isna(val)
                     except: pass
@@ -806,11 +861,6 @@ class SeguimientoUpgradesViewSet(viewsets.ModelViewSet):
                     skipped += 1
                     continue
 
-                lookup = {k: kwargs.get(k) for k in ('sap', 'numero_serie', 'fecha_asignacion')}
-                if any(v for v in lookup.values()):
-                    if SeguimientoUpgrades.objects.filter(**{k: v for k, v in lookup.items() if v}).exists():
-                        skipped += 1
-                        continue
                 SeguimientoUpgrades.objects.create(**kwargs)
                 created += 1
             except Exception as e:

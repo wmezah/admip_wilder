@@ -1673,9 +1673,9 @@ function TabControlInventario() {
               ? `${filteredItems.length.toLocaleString()} / ${items.length.toLocaleString()} registros`
               : `${items.length.toLocaleString()} registros`}
           </span>
-          {hasColFilters && (
+          {(hasColFilters || search) && (
             <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#1877f2', borderColor:'#cce0ff' }}
-              onClick={clearColFilters}>
+              onClick={()=>{ clearColFilters(); setSearch('') }}>
               <X size={12}/> Limpiar filtros
             </button>
           )}
@@ -2401,7 +2401,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
         alert(msg)
         return
       }
-      // Si estatus es Asignado → crear fila en Seguimiento automáticamente
+      // Si estatus es Asignado → crear fila en Seguimiento solo si no existe
       if (payload.estatus === 'Asignado') {
         try {
           const segPayload = {
@@ -2415,7 +2415,6 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
             numero_pedido: '', folio: '', usuario_folio: '',
             status_folio: '', oym_encargado: '', comentarios: '',
           }
-          // Solo enviar fecha si tiene formato YYYY-MM-DD válido
           const fa = payload.fecha_asignacion
           if (fa && /^\d{4}-\d{2}-\d{2}$/.test(fa)) {
             segPayload.fecha_asignacion = fa

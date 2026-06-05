@@ -12,24 +12,60 @@ const C = {
   bg:'#f0f2f5', white:'#fff', text:'#1c1e21',
 }
 
+const RMA_IMPORT_COLS = [
+  { key:'region',                 label:'Región' },
+  { key:'red',                    label:'Red' },
+  { key:'proveedor',              label:'Proveedor' },
+  { key:'equipo',                 label:'Equipo' },
+  { key:'modelo',                 label:'Modelo' },
+  { key:'part_number_averiado',   label:'P/N Averiado' },
+  { key:'description',            label:'Descripción' },
+  { key:'serie_averiada',         label:'Serie Aver.' },
+  { key:'sap',                    label:'SAP' },
+  { key:'encargado_oym',          label:'Encargado OyM' },
+  { key:'ingresado_almacen',      label:'Ing. Almacén' },
+  { key:'acta_ingreso',           label:'Acta Ingreso' },
+  { key:'status',                 label:'Status' },
+  { key:'incidencia_oym',         label:'Incidencia' },
+  { key:'fecha_cambio_retiro',    label:'F. Cambio' },
+  { key:'fecha_correo_oym',       label:'F. Correo OyM' },
+  { key:'fecha_correo_proveedor', label:'F. Correo Prov' },
+  { key:'rma',                    label:'RMA' },
+  { key:'ticket',                 label:'Ticket' },
+  { key:'serie_proveedor',        label:'Serie Proveedor' },
+  { key:'modalidad_entrega',      label:'Modalidad Entrega' },
+]
+
 function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
-  const [uploading, setUploading] = useState(false)
-  const [result,    setResult]    = useState(null)
-  const [error,     setError]     = useState('')
+  const [rows,   setRows]   = useState([])
+  const [error,  setError]  = useState('')
+  const [saving, setSaving] = useState(false)
+  const [result, setResult] = useState(null)
   const fileRef = useRef()
 
-  const uploadXLSX = async (file) => {
-    setUploading(true); setResult(null); setError('')
-    const fd = new FormData(); fd.append('file', file)
+  const cleanVal = (val) => {
+    if (val === null || val === undefined || val === '') return ''
+    const s = String(val).trim()
+    return s.replace(/^(\d+)\.0+$/, '$1')
+  }
+
+  const parseXLSX = (buffer) => {
     try {
-      const r = await fetch(`${api}/import_xlsx/`, {
-        method:'POST', headers:{ Authorization:`Bearer ${getToken()}` }, body:fd
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || 'Error')
-      setResult(d); onDone()
-    } catch(e) { setError(e.message) }
-    finally { setUploading(false) }
+      const wb = XLSX.read(buffer, { type: 'array', cellDates: true, raw: true })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const data = XLSX.utils.sheet_to_json(ws, { defval: '', raw: true })
+      if (data.length === 0) { setError('El archivo no tiene datos'); return }
+      const parsed = data.map(row => {
+        const obj = {}
+        RMA_IMPORT_COLS.forEach(col => {
+          const val = row[col.label] ?? row[col.key] ?? ''
+          const raw = cleanVal(val)
+          if (raw && raw !== 'undefined') obj[col.key] = raw
+        })
+        return obj
+      }).filter(r => Object.keys(r).length > 0)
+      setRows(parsed); setError('')
+    } catch(e) { setError('Error al leer el archivo: ' + e.message) }
   }
 
   const downloadPlantilla = () => {
@@ -39,65 +75,137 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
     XLSX.writeFile(wb, `plantilla_${plantillaName}.xlsx`)
   }
 
-  if (result) return (
-    <div style={{ background:'#fff', borderRadius:14, border:'1px solid #e5e7eb',
-      padding:20, marginBottom:16, textAlign:'center' }}>
-      <p style={{ fontSize:28, margin:'0 0 6px' }}>{result.errors>0 ? '⚠️' : '✅'}</p>
-      <p style={{ fontWeight:700, fontSize:14, color:'#15803d', margin:'0 0 10px' }}>Importación completada</p>
-      <div style={{ display:'flex', gap:16, justifyContent:'center', marginBottom:14 }}>
-        {[['Eliminados', result.deleted,'#dc2626'],['Importados',result.imported,'#15803d'],
-          ...(result.skipped>0?[['Omitidos',result.skipped,'#b45309']]:[]),
-          ...(result.errors>0?[['Errores',result.errors,'#dc2626']]:[])
-        ].map(([l,v,col])=>(
-          <div key={l} style={{ textAlign:'center' }}>
-            <p style={{ fontSize:22, fontWeight:700, color:col, margin:0 }}>{v||0}</p>
-            <p style={{ fontSize:11, color:'#6b7280', margin:0 }}>{l}</p>
-          </div>
-        ))}
-      </div>
-      <button className="btn-primary" style={{ fontSize:12 }} onClick={()=>setResult(null)}>Importar otro</button>
-    </div>
-  )
+  const handleSave = async () => {
+    if (rows.length === 0) return
+    setSaving(true)
+    try {
+      const wsData = [
+        RMA_IMPORT_COLS.map(c => c.label),
+        ...rows.map(r => RMA_IMPORT_COLS.map(c => r[c.key] ?? ''))
+      ]
+      const ws = XLSX.utils.aoa_to_sheet(wsData)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'RMA')
+      const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const fd = new FormData()
+      fd.append('file', blob, 'import.xlsx')
+      const r = await fetch(`${api}/import_xlsx/`, {
+        method: 'POST', body: fd,
+        headers: { Authorization: `Bearer ${getToken()}` }
+      })
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || JSON.stringify(d))
+      setResult(d); onDone(false)
+    } catch(e) { setError(e.message) }
+    finally { setSaving(false) }
+  }
 
-  return (
-    <div style={{ background:'#fff', borderRadius:14, border:'1px solid #e5e7eb',
-      padding:20, marginBottom:16 }}>
-      <div style={{ background:'#e7f3ff', borderRadius:8, padding:'10px 14px',
-        marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-        <div>
-          <p style={{ margin:0, fontSize:12, fontWeight:600, color:'#1877f2' }}>📋 Plantilla Excel</p>
-          <p style={{ margin:'2px 0 0', fontSize:11, color:'#6b7280' }}>
-            Descarga la plantilla con las columnas correctas antes de importar.
-          </p>
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:1000,
+      display:'flex', alignItems:'flex-start', justifyContent:'center', overflowY:'auto', padding:'40px 16px' }}>
+      <div style={{ background:'#fff', borderRadius:14, width:'100%', maxWidth:680,
+        boxShadow:'0 20px 60px rgba(0,0,0,0.15)', overflow:'hidden' }}>
+        <div style={{ padding:'14px 20px', background:'linear-gradient(135deg,#1877f2,#6babf5)',
+          display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <p style={{ margin:0, fontSize:14, fontWeight:700, color:'#fff' }}>Importar RMA — Excel</p>
+          <button onClick={onDone} style={{ background:'rgba(255,255,255,0.2)', border:'none',
+            borderRadius:8, padding:5, cursor:'pointer', color:'#fff' }}>✕</button>
         </div>
-        <button onClick={downloadPlantilla}
-          style={{ fontSize:11, padding:'6px 12px', border:'1px solid #1877f2',
-            borderRadius:7, background:'#fff', color:'#1877f2', cursor:'pointer', fontWeight:600,
-            display:'flex', alignItems:'center', gap:5 }}>
-          <Download size={12}/> Descargar plantilla
-        </button>
+        <div style={{ padding:20 }}>
+          {result ? (
+            <div style={{ textAlign:'center', padding:'20px 0' }}>
+              <p style={{ fontSize:32, margin:'0 0 8px' }}>{result.errors>0 ? '⚠️' : '✅'}</p>
+              <p style={{ fontWeight:700, fontSize:15, color:'#15803d', margin:0 }}>Importación completada</p>
+              <div style={{ display:'flex', gap:16, justifyContent:'center', marginTop:10 }}>
+                {[['Eliminados',result.deleted,'#dc2626'],['Importados',result.imported,'#15803d'],
+                  ...(result.skipped>0?[['Omitidos',result.skipped,'#b45309']]:[]),
+                  ...(result.errors>0?[['Errores',result.errors,'#dc2626']]:[])
+                ].map(([l,v,col])=>(
+                  <div key={l} style={{ textAlign:'center' }}>
+                    <p style={{ fontSize:22, fontWeight:700, color:col, margin:0 }}>{v||0}</p>
+                    <p style={{ fontSize:11, color:'#6b7280', margin:0 }}>{l}</p>
+                  </div>
+                ))}
+              </div>
+              <button className="btn-primary" style={{ marginTop:16 }} onClick={onDone}>Cerrar</button>
+            </div>
+          ) : (
+            <>
+              <div style={{ background:'#e7f3ff', borderRadius:8, padding:'10px 14px',
+                marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                  <p style={{ margin:0, fontSize:12, fontWeight:600, color:'#1877f2' }}>📋 Plantilla Excel</p>
+                  <p style={{ margin:'2px 0 0', fontSize:11, color:'#6b7280' }}>
+                    Compatible con el Excel exportado desde RMA o la plantilla descargable.
+                  </p>
+                </div>
+                <button onClick={downloadPlantilla}
+                  style={{ fontSize:11, padding:'6px 12px', border:'1px solid #1877f2',
+                    borderRadius:7, background:'#fff', color:'#1877f2', cursor:'pointer', fontWeight:600 }}>
+                  Descargar plantilla
+                </button>
+              </div>
+              <div onClick={()=>fileRef.current.click()}
+                style={{ border:'2px dashed #d8b4fe', borderRadius:10, padding:'24px',
+                  textAlign:'center', cursor:'pointer', marginBottom:16, background:'#faf5ff' }}
+                onMouseEnter={e=>e.currentTarget.style.borderColor='#1877f2'}
+                onMouseLeave={e=>e.currentTarget.style.borderColor='#d8b4fe'}>
+                <p style={{ margin:0, fontSize:13, fontWeight:600, color:'#1877f2' }}>Seleccionar archivo Excel (.xlsx)</p>
+                <p style={{ margin:'4px 0 0', fontSize:11, color:'#9ca3af' }}>Haz clic para buscar</p>
+                <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:'none' }}
+                  onChange={e=>{ const f=e.target.files[0]; if(f){ const r=new FileReader(); r.onload=ev=>parseXLSX(ev.target.result); r.readAsArrayBuffer(f) }}} />
+              </div>
+              {error && (
+                <p style={{ fontSize:12, color:'#dc2626', background:'#fef2f2',
+                  padding:'8px 12px', borderRadius:6, border:'1px solid #fecaca', marginBottom:12 }}>{error}</p>
+              )}
+              {rows.length > 0 && (
+                <div style={{ marginBottom:16 }}>
+                  <p style={{ fontSize:12, fontWeight:600, color:'#374151', marginBottom:8 }}>
+                    Vista previa — {rows.length} filas
+                  </p>
+                  <div style={{ overflowX:'auto', borderRadius:8, border:'1px solid #e5e7eb' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                      <thead>
+                        <tr style={{ background:'#f9fafb' }}>
+                          {RMA_IMPORT_COLS.slice(0,6).map(c=>(
+                            <th key={c.key} style={{ padding:'6px 10px', textAlign:'left',
+                              fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:.5 }}>
+                              {c.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.slice(0,5).map((r,i)=>(
+                          <tr key={i} style={{ borderTop:'1px solid #f3f4f6' }}>
+                            {RMA_IMPORT_COLS.slice(0,6).map(c=>(
+                              <td key={c.key} style={{ padding:'6px 10px', color:'#374151' }}>
+                                {r[c.key]||<span style={{ color:'#d1d5db' }}>—</span>}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                        {rows.length>5 && <tr><td colSpan={6} style={{ padding:'6px 10px', color:'#9ca3af', textAlign:'center' }}>+ {rows.length-5} filas más…</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+                <button className="btn-ghost" onClick={onDone}>Cancelar</button>
+                <button className="btn-primary" onClick={handleSave}
+                  disabled={saving||rows.length===0} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  {saving ? 'Importando…' : rows.length>0 ? `Importar (${rows.length})` : 'Importar'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-      <div onClick={()=>fileRef.current.click()}
-        style={{ border:'2px dashed #d8b4fe', borderRadius:10, padding:'20px',
-          textAlign:'center', cursor:'pointer', transition:'border-color .2s' }}
-        onMouseEnter={e=>e.currentTarget.style.borderColor='#1877f2'}
-        onMouseLeave={e=>e.currentTarget.style.borderColor='#d8b4fe'}>
-        <Upload size={22} color="#6babf5" style={{ margin:'0 auto 6px', display:'block' }}/>
-        <p style={{ margin:0, fontSize:13, fontWeight:600, color:'#1877f2' }}>
-          {uploading ? 'Importando...' : 'Seleccionar archivo Excel (.xlsx)'}
-        </p>
-        <p style={{ margin:'3px 0 0', fontSize:11, color:'#9ca3af' }}>Haz clic para buscar</p>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:'none' }}
-          onChange={e => e.target.files[0] && uploadXLSX(e.target.files[0])} />
-      </div>
-      {error && (
-        <p style={{ fontSize:12, color:'#dc2626', background:'#fef2f2',
-          padding:'8px 12px', borderRadius:6, border:'1px solid #fecaca', margin:'10px 0 0' }}>{error}</p>
-      )}
-      <p style={{ fontSize:11, color:'#9ca3af', margin:'8px 0 0', textAlign:'center' }}>
-        ⚠️ El import <strong>reemplaza todos</strong> los registros existentes.
-      </p>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -237,6 +345,29 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
+  // Regla: cuando cambia ingresado_almacen, sugerir status correspondiente
+  const ALMACEN_STATUS_MAP = {
+    'P008/G000': ['Informar a PROVEEDOR'],
+    'P008/D000': ['Informar a PROVEEDOR', 'Solicitar BAJA'],
+    'P008/G001': ['Pendiente PROVEEDOR'],
+    'Pendiente': ['Pendiente de cambio', 'En traslado', 'Pendiente OYM'],
+    'P008/U000': ['Proceso COMPLETADO'],
+  }
+
+  const handleAlmacenChange = (v) => {
+    const statusOpts = ALMACEN_STATUS_MAP[v]
+    if (statusOpts && statusOpts.length === 1) {
+      setForm(f => ({ ...f, ingresado_almacen: v, status: statusOpts[0] }))
+    } else {
+      setForm(f => ({ ...f, ingresado_almacen: v }))
+    }
+  }
+
+  const getStatusOpts = () => {
+    const mapped = ALMACEN_STATUS_MAP[form.ingresado_almacen]
+    return mapped || STATUS_OPTS
+  }
+
   const handleSapChange = (v) => {
     set('sap', v)
     if (!onSapLookup) return
@@ -266,7 +397,7 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
     setSaving(true)
     try {
       const token  = getToken()
-      const method = item?.id ? 'PUT' : 'POST'
+      const method = item?.id ? 'PATCH' : 'POST'
       const url    = item?.id ? `${item._api}/${item.id}/` : `${item._api}/`
       const payload = {}
       Object.keys(form).forEach(k => {
@@ -278,7 +409,9 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
         headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
         body: JSON.stringify(payload)
       })
-      const data = await r.json()
+      const text = await r.text()
+      console.log('Backend response:', r.status, text)
+      const data = text ? JSON.parse(text) : {}
       if (!r.ok) throw new Error(JSON.stringify(data))
       onSave()
     } catch(e) { alert(e.message) }
@@ -303,9 +436,11 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
               <label style={{ display:'block', fontSize:11, fontWeight:600, color:'#374151',
                 marginBottom:4, textTransform:'uppercase', letterSpacing:'.3px' }}>{f.label}</label>
               {f.options ? (
-                <select value={form[f.key]} onChange={e => set(f.key, e.target.value)} className="input">
+                <select value={form[f.key]}
+                  onChange={e => f.key === 'ingresado_almacen' ? handleAlmacenChange(e.target.value) : set(f.key, e.target.value)}
+                  className="input">
                   <option value=''>—</option>
-                  {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                  {(f.key === 'status' ? getStatusOpts() : f.options).map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
               ) : f.key === 'sap' && onSapLookup ? (
                 <div style={{ position:'relative' }}>
@@ -355,12 +490,12 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
 const ZONA_OPTS    = ['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR']
 const RED_OPTS     = ['ACCESO','IPRAN','CORE','METRO','PRONATEL']
 const PROV_OPTS    = ['HUAWEI','ZTE','NOKIA','CISCO','INFINERA']
-const ALMACEN_OPTS = ['Pendiente','Pendiente (requiere acta de ingreso)','Pendiente (no RMA)','P008/G000','P008/G001','P008/D000','P008/U000','P008/P000']
-const STATUS_OPTS  = ['Proceso COMPLETADO','Pendiente de cambio','Pieza ubicada/En traslado a CD VES','Enviar correo a OYM','Se envió correo a OYM para devolución','Enviar correo a PROVEEDOR','Se envió correo a PROVEEDOR para recojo','PROVEEDOR recogió averiado','PROVEEDOR entregó pieza operativa','Solicitar BAJA SISTEMA']
+const ALMACEN_OPTS = ['Pendiente','P008/G000','P008/G001','P008/D000','P008/U000']
+const STATUS_OPTS  = ['Informar a PROVEEDOR','Solicitar BAJA','Pendiente PROVEEDOR','Pendiente de cambio','En traslado','Pendiente OYM','Proceso COMPLETADO']
 const ACTA_OPTS    = ['GENERADA','NO GENERADA','NO REQUIERE']
 
 const COLS_AVERIADAS = [
-  { key:'region',                 label:'Zona',            default:true,  dropdown: ZONA_OPTS    },
+  { key:'region',                 label:'Región',          default:true,  dropdown: ZONA_OPTS    },
   { key:'red',                    label:'Red',             default:true,  dropdown: RED_OPTS     },
   { key:'proveedor',              label:'Proveedor',       default:true,  dropdown: PROV_OPTS    },
   { key:'equipo',                 label:'Equipo',          default:true  },
@@ -539,7 +674,14 @@ export default function RMAPage() {
       const mQ = !q||[r.red,r.proveedor,r.equipo,r.sap,r.serie_averiada,r.rma,r.ticket,r.status]
         .some(v=>String(v||'').toLowerCase().includes(q))
       const EXACT=['region','red','proveedor','status','ingresado_almacen','acta_ingreso','status_folio','lote','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
-      return mQ && (!fStatus||r.status===fStatus) && mC
+      const EN_PROCESO_STATUSES = ['Pieza ubicada/En traslado a CD VES','PROVEEDOR recogió averiado']
+      const REQUIEREN_STATUSES  = ['Se envió correo a OYM para devolución','Enviar correo a PROVEEDOR',
+        'Solicitar BAJA SISTEMA','Se envió correo a OYM para devolución, Pendiente de cambio']
+      const matchStatus = !fStatus
+        || (fStatus === '_enProceso' ? EN_PROCESO_STATUSES.includes(r.status) : false)
+        || (fStatus === '_requieren' ? REQUIEREN_STATUSES.includes(r.status) : false)
+        || (fStatus !== '_enProceso' && fStatus !== '_requieren' && r.status === fStatus)
+      return mQ && matchStatus && mC
     })
   },[data,dQ,fStatus,colF])
 
@@ -673,6 +815,10 @@ export default function RMAPage() {
 
   return (
     <div style={{ paddingBottom:20 }}>
+      <div style={{ marginBottom:16 }}>
+        <h1 style={{ margin:0, fontSize:22, fontWeight:500, color:'var(--color-text-primary)' }}>RMA</h1>
+        <p style={{ margin:'4px 0 0', fontSize:14, color:'var(--color-text-secondary)' }}>Seguimiento de averiadas</p>
+      </div>
       {/* ── Dashboard Pro ── */}
       <div style={{ background:'#eef1f6', borderRadius:14, padding:'16px', marginBottom:12 }}>
         
@@ -719,7 +865,7 @@ export default function RMAPage() {
           </div>
 
           {/* En Proceso */}
-          <div onClick={()=>{ setFS(''); setPage(1) }}
+          <div onClick={()=>{ setFS(fStatus==='_enProceso'?'':'_enProceso'); setPage(1) }}
             style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:14, padding:'11px 13px', cursor:'pointer',
               boxShadow:'0 2px 8px rgba(0,0,0,0.06)', transition:'box-shadow .15s' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:7 }}>
@@ -736,8 +882,9 @@ export default function RMAPage() {
           </div>
 
           {/* Requieren acción */}
-          <div style={{ background:'#fff', border:'1.5px solid #fecaca', borderRadius:14, padding:'11px 13px',
-            boxShadow:'0 2px 8px rgba(0,0,0,0.06)', cursor:'default' }}>
+          <div onClick={()=>{ setFS(fStatus==='_requieren'?'':'_requieren'); setPage(1) }}
+            style={{ background:'#fff', border:'1.5px solid #fecaca', borderRadius:14, padding:'11px 13px',
+            boxShadow:'0 2px 8px rgba(0,0,0,0.06)', cursor:'pointer', transition:'box-shadow .15s' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:7 }}>
               <div style={{ width:40, height:40, borderRadius:10, background:'#fef2f2', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
@@ -858,12 +1005,12 @@ export default function RMAPage() {
       </div>
 
       {showUpload && (
-        <ImportPanel api={API_AVERIADAS} onDone={load}
+        <ImportPanel api={API_AVERIADAS} onDone={(close=true)=>{ load(); if(close) setShowUpload(false) }}
           plantillaName="seguimiento_averiadas"
-          plantillaCols={['ZONA','RED','PROVEEDOR','EQUIPO','MODELO','PART NUMBER AVERIADO',
-            'DESCRIPTION','SERIE AVERIADA','SAP','ENCARGADO OYM','ING. ALMACÉN',
-            'ACTA INGRESO','STATUS','INCIDENCIA','F. CAMBIO',
-            'F. CORREO OYM','F. CORREO PROV','RMA','TICKET','SERIE PROVEEDOR','MODALIDAD ENTREGA']} />
+          plantillaCols={['Región','Red','Proveedor','Equipo','Modelo','P/N Averiado',
+            'Descripción','Serie Aver.','SAP','Encargado OyM','Ing. Almacén',
+            'Acta Ingreso','Status','Incidencia','F. Cambio',
+            'F. Correo OyM','F. Correo Prov','RMA','Ticket','Serie Proveedor','Modalidad Entrega']} />
       )}
 
 
@@ -958,7 +1105,7 @@ export default function RMAPage() {
       {viewItem && createPortal(
         <ViewRMAModal item={viewItem}
           onClose={()=>setViewItem(null)}
-          onEdit={()=>{ setEditItem({...viewItem}); setShowModal(true); setViewItem(null) }} />,
+          onEdit={()=>{ setEditItem({...viewItem, _api:API_AVERIADAS}); setShowModal(true); setViewItem(null) }} />,
         document.body
       )}
     </div>

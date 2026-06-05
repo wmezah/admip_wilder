@@ -49,24 +49,75 @@ function RedBadge({ red }) {
 }
 
 // ─── Panel de importación reutilizable ────────────────────────────────────────
+const SEG_ASIGNADO_COLS = [
+  { key:'red',               label:'Red' },
+  { key:'proveedor',         label:'Proveedor' },
+  { key:'sap',               label:'SAP' },
+  { key:'descripcion',       label:'Descripcion' },
+  { key:'cantidad_serie',    label:'N Serie' },
+  { key:'lote',              label:'Lote' },
+  { key:'motivo_asignacion', label:'Motivo Asignacion' },
+  { key:'fecha_asignacion',  label:'Fecha Asignacion' },
+  { key:'site',              label:'Site' },
+  { key:'codigo_site',       label:'Codigo Site' },
+  { key:'elemento_pep',      label:'Elemento PEP' },
+  { key:'numero_pedido',     label:'Numero Pedido' },
+  { key:'folio',             label:'Folio' },
+  { key:'usuario_folio',     label:'Usuario Folio' },
+  { key:'status_folio',      label:'Status Folio' },
+  { key:'oym_encargado',     label:'OyM Encargado' },
+  { key:'comentarios',       label:'Comentario' },
+]
+
+const SEG_UPGRADES_COLS = [
+  { key:'region',            label:'Región' },
+  { key:'zona',              label:'Zona' },
+  { key:'proveedor',         label:'Proveedor' },
+  { key:'part_number',       label:'Modelo de Equipo' },
+  { key:'sap',               label:'SAP' },
+  { key:'descripcion',       label:'Descripción' },
+  { key:'numero_serie',      label:'N° Serie' },
+  { key:'lote',              label:'LOTE' },
+  { key:'fecha_asignacion',  label:'Fecha Asignación' },
+  { key:'numero_pedido',     label:'N° Pedido' },
+  { key:'oym_encargado',     label:'OYM Encargado' },
+  { key:'motivo_asignacion', label:'Motivo' },
+  { key:'seguimiento',       label:'Seguimiento' },
+]
+
 function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
-  const [uploading, setUploading] = useState(false)
-  const [result,    setResult]    = useState(null)
-  const [error,     setError]     = useState('')
+  const isUpgrades = plantillaName === 'seguimiento_upgrades'
+  const IMPORT_COLS = isUpgrades ? SEG_UPGRADES_COLS : SEG_ASIGNADO_COLS
+
+  const [rows,   setRows]   = useState([])
+  const [error,  setError]  = useState('')
+  const [saving, setSaving] = useState(false)
+  const [result, setResult] = useState(null)
   const fileRef = useRef()
 
-  const uploadXLSX = async (file) => {
-    setUploading(true); setResult(null); setError('')
-    const fd = new FormData(); fd.append('file', file)
+  const cleanVal = (val) => {
+    if (val === null || val === undefined || val === '') return ''
+    const s = String(val).trim()
+    return s.replace(/^(\d+)\.0+$/, '$1')
+  }
+
+  const parseXLSX = (buffer) => {
     try {
-      const r = await fetch(`${api}/import_xlsx/`, {
-        method:'POST', headers:{ Authorization:`Bearer ${getToken()}` }, body:fd
-      })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error || 'Error')
-      setResult(d); onDone()
-    } catch(e) { setError(e.message) }
-    finally { setUploading(false) }
+      const wb = XLSX.read(buffer, { type: 'array', cellDates: true, raw: true })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const data = XLSX.utils.sheet_to_json(ws, { defval: '', raw: true })
+      if (data.length === 0) { setError('El archivo no tiene datos'); return }
+      const parsed = data.map(row => {
+        const obj = {}
+        IMPORT_COLS.forEach(col => {
+          const val = row[col.label] ?? row[col.key] ?? ''
+          const raw = cleanVal(val)
+          if (raw && raw !== 'undefined') obj[col.key] = raw
+        })
+        return obj
+      }).filter(r => Object.keys(r).length > 0)
+      setRows(parsed); setError('')
+    } catch(e) { setError('Error al leer el archivo: ' + e.message) }
   }
 
   const downloadPlantilla = () => {
@@ -76,293 +127,137 @@ function ImportPanel({ api, onDone, plantillaCols, plantillaName }) {
     XLSX.writeFile(wb, `plantilla_${plantillaName}.xlsx`)
   }
 
-  if (result) return (
-    <div style={{ background:'#fff', borderRadius:14, border:'1px solid #e5e7eb',
-      padding:20, marginBottom:16,  }}>
-      <p style={{ fontSize:28, margin:'0 0 6px' }}>{result.errors>0 ? '⚠️' : '✅'}</p>
-      <p style={{ fontWeight:700, fontSize:14, color:'#15803d', margin:'0 0 10px' }}>Importación completada</p>
-      <div style={{ display:'flex', gap:16, justifyContent:'center', marginBottom:14 }}>
-        {[['Eliminados',result.deleted,'#dc2626'],['Creados',result.imported,'#15803d'],
-          ...(result.updated>0?[['Actualizados',result.updated,'#1877f2']]:[]),
-          ...(result.skipped>0?[['Omitidos',result.skipped,'#b45309']]:[]),
-          ...(result.errors>0?[['Errores',result.errors,'#dc2626']]:[])
-        ].map(([l,v,col])=>(
-          <div key={l} style={{  }}>
-            <p style={{ fontSize:22, fontWeight:700, color:col, margin:0 }}>{v||0}</p>
-            <p style={{ fontSize:11, color:'#6b7280', margin:0 }}>{l}</p>
-          </div>
-        ))}
-      </div>
-      {result.error_details && result.error_details.length > 0 && (
-        <div style={{ margin:'10px auto 0', maxWidth:500, textAlign:'left',
-          background:'#fef2f2', border:'1px solid #fecaca', borderRadius:8, padding:'10px 14px' }}>
-          <p style={{ fontSize:11, fontWeight:700, color:'#dc2626', margin:'0 0 4px' }}>
-            Detalle de errores:
-          </p>
-          {result.error_details.slice(0,5).map((e,i) => (
-            <p key={i} style={{ fontSize:11, color:'#991b1b', margin:'2px 0', fontFamily:'monospace' }}>• {e}</p>
-          ))}
-        </div>
-      )}
-      <button className="btn-primary" style={{ fontSize:12, marginTop:10 }} onClick={()=>setResult(null)}>Importar otro</button>
-    </div>
-  )
-
-  return (
-    <div style={{ background:'#fff', borderRadius:14, border:'1px solid #e5e7eb',
-      padding:20, marginBottom:16 }}>
-      <div style={{ background:'#e7f3ff', borderRadius:8, padding:'10px 14px',
-        marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-        <div>
-          <p style={{ margin:0, fontSize:12, fontWeight:600, color:'#1877f2' }}>📋 Plantilla Excel</p>
-          <p style={{ margin:'2px 0 0', fontSize:11, color:'#6b7280' }}>
-            Descarga la plantilla con las columnas correctas antes de importar.
-          </p>
-        </div>
-        <button onClick={downloadPlantilla}
-          style={{ fontSize:11, padding:'6px 12px', border:'1px solid #1877f2',
-            borderRadius:7, background:'#fff', color:'#1877f2', cursor:'pointer', fontWeight:600,
-            display:'flex', alignItems:'center', gap:5 }}>
-          <Download size={12}/> Descargar plantilla
-        </button>
-      </div>
-      <div onClick={()=>fileRef.current.click()}
-        style={{ border:'2px dashed #d8b4fe', borderRadius:10, padding:'20px',
-          cursor:'pointer', transition:'border-color .2s' }}
-        onMouseEnter={e=>e.currentTarget.style.borderColor='#1877f2'}
-        onMouseLeave={e=>e.currentTarget.style.borderColor='#d8b4fe'}>
-        <Upload size={22} color="#6babf5" style={{ margin:'0 auto 6px', display:'block' }}/>
-        <p style={{ margin:0, fontSize:13, fontWeight:600, color:'#1877f2' }}>
-          {uploading ? 'Importando...' : 'Seleccionar archivo Excel (.xlsx)'}
-        </p>
-        <p style={{ margin:'3px 0 0', fontSize:11, color:'#9ca3af' }}>Haz clic para buscar</p>
-        <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:'none' }}
-          onChange={e => e.target.files[0] && uploadXLSX(e.target.files[0])} />
-      </div>
-      {error && (
-        <p style={{ fontSize:12, color:'#dc2626', background:'#fef2f2',
-          padding:'8px 12px', borderRadius:6, border:'1px solid #fecaca', margin:'10px 0 0' }}>{error}</p>
-      )}
-      <p style={{ fontSize:11, color:'#9ca3af', margin:'8px 0 0',  }}>
-        ⚠️ El import <strong>reemplaza todos</strong> los registros existentes.
-      </p>
-    </div>
-  )
-}
-
-// ─── Modal genérico ───────────────────────────────────────────────────────────
-function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withCentroAlmacen }) {
-  const [form, setForm] = useState(() => {
-    const init = {}
-    fields.forEach(f => { init[f.key] = item?.[f.key] || '' })
-    return init
-  })
-  const [saving, setSaving] = useState(false)
-  const [sapLoading, setSapLoading] = useState(false)
-  const sapTimer = useRef(null)
-  const [centros, setCentros] = useState([])
-  const [almacenes, setAlmacenes] = useState([])
-
-  useEffect(() => {
-    if (!withCentroAlmacen) return
-    fetch('/api/spare/centros/centros/', { headers: { Authorization: `Bearer ${getToken()}` } })
-      .then(r => r.json()).then(d => setCentros(Array.isArray(d) ? d : [])).catch(() => {})
-  }, [withCentroAlmacen])
-
-  useEffect(() => {
-    if (!withCentroAlmacen || !form.centro) { setAlmacenes([]); return }
-    fetch(`/api/spare/centros/by-centro/?centro=${encodeURIComponent(form.centro)}`, {
-      headers: { Authorization: `Bearer ${getToken()}` }
-    }).then(r => r.json()).then(d => {
-      if (!Array.isArray(d)) { setAlmacenes([]); return }
-      // Normalizar: soporta tanto strings como objetos {almacen, denom_almacen}
-      const normalized = d.map(item =>
-        typeof item === 'string'
-          ? { almacen: item, denom_almacen: null }
-          : item
-      )
-      setAlmacenes(normalized)
-    }).catch(() => {})
-  }, [withCentroAlmacen, form.centro])
-
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  const handleSapChange = (v) => {
-    set('sap', v)
-    if (!onSapLookup) return
-    clearTimeout(sapTimer.current)
-    if (v.trim().length < 3) return
-    sapTimer.current = setTimeout(async () => {
-      setSapLoading(true)
-      try {
-        const result = await onSapLookup(v.trim())
-        if (result) {
-          setForm(f => ({
-            ...f,
-            proveedor:            result.proveedor             || f.proveedor,
-            part_number:          result.part_number           || f.part_number,
-            descripcion:          result.descripcion           || f.descripcion,
-            description:          result.descripcion           || f.description,
-            equipo:               result.modelo_equipo         || f.equipo,
-            modelo:               result.modelo_equipo         || f.modelo,
-            part_number_averiado: result.part_number           || f.part_number_averiado,
-          }))
-        }
-      } finally { setSapLoading(false) }
-    }, 500)
-  }
-
-  const save = async () => {
+  const handleSave = async () => {
+    if (rows.length === 0) return
     setSaving(true)
     try {
-      const token  = getToken()
-      const method = item?.id ? 'PUT' : 'POST'
-      const url    = item?.id ? `${item._api}/${item.id}/` : `${item._api}/`
-
-      const payload = {}
-      Object.keys(form).forEach(k => {
-        const v = form[k]
-        payload[k] = (v === '' || v === undefined) ? null : v
+      const wsData = [
+        IMPORT_COLS.map(c => c.label),
+        ...rows.map(r => IMPORT_COLS.map(c => r[c.key] ?? ''))
+      ]
+      const ws = XLSX.utils.aoa_to_sheet(wsData)
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Data')
+      const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+      const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const fd = new FormData()
+      fd.append('file', blob, 'import.xlsx')
+      const r = await fetch(`${api}/import_xlsx/`, {
+        method: 'POST', body: fd,
+        headers: { Authorization: `Bearer ${getToken()}` }
       })
-
-      const r = await fetch(url, {
-        method,
-        headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-        body: JSON.stringify(payload)
-      })
-      const data = await r.json()
-      if (!r.ok) throw new Error(JSON.stringify(data))
-
-      // Si status_folio es Concluido → actualizar spare a Utilizado
-      if (payload.status_folio === 'Concluido' && payload.sap && payload.cantidad_serie) {
-        try {
-          // Buscar el spare por SAP + serial_number
-          const searchRes = await fetch(
-            `/api/spare/items/?sap=${encodeURIComponent(payload.sap)}&serial_number=${encodeURIComponent(payload.cantidad_serie)}`,
-            { headers: { Authorization:`Bearer ${token}` } }
-          )
-          const searchData = await searchRes.json()
-          const spares = Array.isArray(searchData) ? searchData : (searchData.results || [])
-          const spare = spares.find(s =>
-            s.sap === payload.sap &&
-            (s.serial_number === payload.cantidad_serie || s.serial_number?.trim() === payload.cantidad_serie?.trim())
-          )
-          if (spare) {
-            await fetch(`/api/spare/items/${spare.id}/`, {
-              method: 'PATCH',
-              headers: { 'Content-Type':'application/json', Authorization:`Bearer ${token}` },
-              body: JSON.stringify({ estatus: 'Utilizado' })
-            })
-          }
-        } catch(e) { console.error('Error actualizando spare a Utilizado:', e) }
-      }
-
-      onSave()
-    } catch(e) { alert(e.message) }
+      const d = await r.json()
+      if (!r.ok) throw new Error(d.error || JSON.stringify(d))
+      setResult(d); onDone(false)
+    } catch(e) { setError(e.message) }
     finally { setSaving(false) }
   }
 
-  return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)',
-      zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:720,
-        maxHeight:'90vh', overflow:'auto', boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
-        <div style={{ padding:'16px 24px', borderBottom:'1px solid #e5e7eb',
-          display:'flex', justifyContent:'space-between', alignItems:'center',
-          position:'sticky', top:0, background:'#fff', zIndex:1 }}>
-          <h3 style={{ margin:0, fontWeight:800, fontSize:16 }}>{title}</h3>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#6b7280', fontSize:20 }}>×</button>
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:1000,
+      display:'flex', alignItems:'flex-start', justifyContent:'center', overflowY:'auto', padding:'40px 16px' }}>
+      <div style={{ background:'#fff', borderRadius:14, width:'100%', maxWidth:680,
+        boxShadow:'0 20px 60px rgba(0,0,0,0.15)', overflow:'hidden' }}>
+        <div style={{ padding:'14px 20px', background:'linear-gradient(135deg,#1877f2,#6babf5)',
+          display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <p style={{ margin:0, fontSize:14, fontWeight:700, color:'#fff' }}>Importar — Excel</p>
+          <button onClick={()=>onDone(true)} style={{ background:'rgba(255,255,255,0.2)', border:'none',
+            borderRadius:8, padding:5, cursor:'pointer', color:'#fff' }}>✕</button>
         </div>
-        <div style={{ padding:'20px 24px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 20px' }}>
-          {fields.map(f => (
-            <div key={f.key} style={{ marginBottom:14, gridColumn: f.span ? 'span 2' : undefined }}>
-              <label style={{ display:'block', fontSize:11, fontWeight:600, color:'#374151',
-                marginBottom:4, textTransform:'uppercase', letterSpacing:'.3px' }}>{f.label}</label>
-              {f.options ? (
-                <select value={form[f.key]} onChange={e => set(f.key, e.target.value)} className="input">
-                  <option value=''>—</option>
-                  {f.options.map(o => <option key={o} value={o}>{o}</option>)}
-                </select>
-              ) : f.key === 'sap' && onSapLookup ? (
-                <div style={{ position:'relative' }}>
-                  <input type="text" value={form[f.key]}
-                    onChange={e => handleSapChange(e.target.value)} className="input"
-                    placeholder="Ingresa SAP para autocompletar..." />
-                  {sapLoading && (
-                    <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
-                      fontSize:11, color:'#1877f2', pointerEvents:'none' }}>🔍 Buscando...</span>
-                  )}
-                </div>
-              ) : f.key === 'centro' && withCentroAlmacen ? (
-                <select value={form.centro} onChange={e => { set('centro', e.target.value); set('almacen', '') }} className="input">
-                  <option value=''>— Seleccionar Centro —</option>
-                  {centros.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              ) : f.key === 'almacen' && withCentroAlmacen ? (
-                <select value={form.almacen} onChange={e => set('almacen', e.target.value)} className="input"
-                  disabled={!form.centro}>
-                  <option value=''>— Seleccionar Almacén —</option>
-                  {almacenes.map(a => (
-                    <option key={a.almacen} value={a.almacen}>
-                      {a.almacen}{a.denom_almacen ? ` — ${a.denom_almacen}` : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input type={f.type || 'text'} value={form[f.key]}
-                  onChange={e => set(f.key, e.target.value)} className="input" />
-              )}
+        <div style={{ padding:20 }}>
+          {result ? (
+            <div style={{ textAlign:'center', padding:'20px 0' }}>
+              <p style={{ fontSize:32, margin:'0 0 8px' }}>{result.errors>0 ? '⚠️' : '✅'}</p>
+              <p style={{ fontWeight:700, fontSize:15, color:'#15803d', margin:0 }}>Importación completada</p>
+              <div style={{ display:'flex', gap:16, justifyContent:'center', marginTop:10 }}>
+                {[['Eliminados',result.deleted,'#dc2626'],['Creados',result.imported,'#15803d'],
+                  ...(result.skipped>0?[['Omitidos',result.skipped,'#b45309']]:[]),
+                  ...(result.errors>0?[['Errores',result.errors,'#dc2626']]:[])
+                ].map(([l,v,col])=>(
+                  <div key={l} style={{ textAlign:'center' }}>
+                    <p style={{ fontSize:22, fontWeight:700, color:col, margin:0 }}>{v||0}</p>
+                    <p style={{ fontSize:11, color:'#6b7280', margin:0 }}>{l}</p>
+                  </div>
+                ))}
+              </div>
+              <button className="btn-primary" style={{ marginTop:16 }} onClick={()=>onDone(true)}>Cerrar</button>
             </div>
-          ))}
-        </div>
-        <div style={{ padding:'0 24px 20px', display:'flex', justifyContent:'flex-end', gap:10 }}>
-          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Guardando...' : 'Guardar'}
-          </button>
+          ) : (
+            <>
+              <div style={{ background:'#e7f3ff', borderRadius:8, padding:'10px 14px',
+                marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                  <p style={{ margin:0, fontSize:12, fontWeight:600, color:'#1877f2' }}>📋 Plantilla Excel</p>
+                  <p style={{ margin:'2px 0 0', fontSize:11, color:'#6b7280' }}>
+                    Compatible con el Excel exportado o la plantilla descargable.
+                  </p>
+                </div>
+                <button onClick={downloadPlantilla}
+                  style={{ fontSize:11, padding:'6px 12px', border:'1px solid #1877f2',
+                    borderRadius:7, background:'#fff', color:'#1877f2', cursor:'pointer', fontWeight:600 }}>
+                  Descargar plantilla
+                </button>
+              </div>
+              <div onClick={()=>fileRef.current.click()}
+                style={{ border:'2px dashed #d8b4fe', borderRadius:10, padding:'24px',
+                  textAlign:'center', cursor:'pointer', marginBottom:16, background:'#faf5ff' }}
+                onMouseEnter={e=>e.currentTarget.style.borderColor='#1877f2'}
+                onMouseLeave={e=>e.currentTarget.style.borderColor='#d8b4fe'}>
+                <p style={{ margin:0, fontSize:13, fontWeight:600, color:'#1877f2' }}>Seleccionar archivo Excel (.xlsx)</p>
+                <p style={{ margin:'4px 0 0', fontSize:11, color:'#9ca3af' }}>Haz clic para buscar</p>
+                <input ref={fileRef} type="file" accept=".xlsx,.xls" style={{ display:'none' }}
+                  onChange={e=>{ const f=e.target.files[0]; if(f){ const r=new FileReader(); r.onload=ev=>parseXLSX(ev.target.result); r.readAsArrayBuffer(f) }}} />
+              </div>
+              {error && (
+                <p style={{ fontSize:12, color:'#dc2626', background:'#fef2f2',
+                  padding:'8px 12px', borderRadius:6, border:'1px solid #fecaca', marginBottom:12 }}>{error}</p>
+              )}
+              {rows.length > 0 && (
+                <div style={{ marginBottom:16 }}>
+                  <p style={{ fontSize:12, fontWeight:600, color:'#374151', marginBottom:8 }}>
+                    Vista previa — {rows.length} filas
+                  </p>
+                  <div style={{ overflowX:'auto', borderRadius:8, border:'1px solid #e5e7eb' }}>
+                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
+                      <thead>
+                        <tr style={{ background:'#f9fafb' }}>
+                          {IMPORT_COLS.slice(0,6).map(c=>(
+                            <th key={c.key} style={{ padding:'6px 10px', textAlign:'left',
+                              fontWeight:600, color:'#6b7280', textTransform:'uppercase', letterSpacing:.5 }}>
+                              {c.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.slice(0,5).map((r,i)=>(
+                          <tr key={i} style={{ borderTop:'1px solid #f3f4f6' }}>
+                            {IMPORT_COLS.slice(0,6).map(c=>(
+                              <td key={c.key} style={{ padding:'6px 10px', color:'#374151' }}>
+                                {r[c.key]||<span style={{ color:'#d1d5db' }}>—</span>}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                        {rows.length>5 && <tr><td colSpan={6} style={{ padding:'6px 10px', color:'#9ca3af', textAlign:'center' }}>+ {rows.length-5} filas más…</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+                <button className="btn-ghost" onClick={()=>onDone(true)}>Cancelar</button>
+                <button className="btn-primary" onClick={handleSave}
+                  disabled={saving||rows.length===0} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  {saving ? 'Importando…' : rows.length>0 ? `Importar (${rows.length})` : 'Importar'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
-    </div>
-  )
-}
-
-// ─── Confirm Limpiar ──────────────────────────────────────────────────────────
-function ConfirmClearModal({ count, onClose, onConfirm }) {
-  const [loading, setLoading] = useState(false)
-  return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)',
-      zIndex:1100, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background:'#fff', borderRadius:16, padding:32, maxWidth:420,
-        width:'100%', boxShadow:'0 24px 60px rgba(0,0,0,.2)' }}>
-        <div style={{ width:56, height:56, borderRadius:'50%', background:'#fef2f2',
-          display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
-          <span style={{ fontSize:28 }}>⚠️</span>
-        </div>
-        <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:800, color:'#111827' }}>¿Limpiar todos los registros?</h3>
-        <p style={{ margin:'0 0 6px', color:'#6b7280', fontSize:14 }}>
-          Esta acción eliminará <strong style={{ color:'#dc2626' }}>{count} registros</strong> de forma permanente.
-        </p>
-        <p style={{ margin:'0 0 24px', color:'#9ca3af', fontSize:12 }}>
-          Esta acción <strong>no se puede deshacer</strong>.
-        </p>
-        <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
-          <button onClick={onClose} style={{ padding:'10px 24px', borderRadius:8,
-            border:'1px solid #dadde1', background:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', color:'#374151' }}>
-            Cancelar
-          </button>
-          <button onClick={async () => { setLoading(true); await onConfirm(); setLoading(false) }}
-            disabled={loading}
-            style={{ padding:'10px 24px', borderRadius:8, border:'none',
-              background: loading ? '#fca5a5' : '#ef4444',
-              fontSize:14, fontWeight:700, color:'#fff', cursor: loading ? 'default' : 'pointer',
-              display:'flex', alignItems:'center', gap:6 }}>
-            {loading ? 'Eliminando...' : '🗑 Sí, limpiar todo'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -521,6 +416,126 @@ const COLS_ASIGNADO = [
   { key:'oym_encargado',    label:'OyM Encargado',      default:true  },
   { key:'comentarios',      label:'Comentario',         default:true  },
 ]
+
+// ── GenericModal ──────────────────────────────────────────────────────────────
+function GenericModal({ title, fields, item, onClose, onSave, onSapLookup }) {
+  const [form, setForm] = useState(() => {
+    const init = {}
+    fields.forEach(f => { init[f.key] = item?.[f.key] || '' })
+    return init
+  })
+  const [saving, setSaving] = useState(false)
+  const [sapLoading, setSapLoading] = useState(false)
+  const sapTimer = useRef(null)
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSapChange = (v) => {
+    set('sap', v)
+    if (!onSapLookup) return
+    clearTimeout(sapTimer.current)
+    if (v.trim().length < 3) return
+    sapTimer.current = setTimeout(async () => {
+      setSapLoading(true)
+      try {
+        const result = await onSapLookup(v.trim())
+        if (result) setForm(f => ({ ...f, proveedor: result.proveedor||f.proveedor, descripcion: result.descripcion||f.descripcion }))
+      } finally { setSapLoading(false) }
+    }, 500)
+  }
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const token  = getToken()
+      const method = item?.id ? 'PATCH' : 'POST'
+      const url    = item?.id ? `${item._api}/${item.id}/` : `${item._api}/`
+      const payload = {}
+      Object.keys(form).forEach(k => { const v = form[k]; payload[k] = (v===''||v===undefined)?null:v })
+      const r = await fetch(url, { method, headers:{ 'Content-Type':'application/json', Authorization:`Bearer ${token}` }, body:JSON.stringify(payload) })
+      const text = await r.text()
+      const data = text ? JSON.parse(text) : {}
+      if (!r.ok) throw new Error(JSON.stringify(data))
+      onSave()
+    } catch(e) { alert(e.message) }
+    finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.45)', zIndex:2000,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}
+      onClick={e => e.target===e.currentTarget && onClose()}>
+      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:720,
+        maxHeight:'90vh', overflow:'auto', boxShadow:'0 20px 60px rgba(0,0,0,.2)' }}>
+        <div style={{ padding:'16px 24px', borderBottom:'1px solid #e5e7eb',
+          display:'flex', justifyContent:'space-between', alignItems:'center',
+          position:'sticky', top:0, background:'#fff', zIndex:1 }}>
+          <h3 style={{ margin:0, fontWeight:800, fontSize:16 }}>{title}</h3>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#6b7280', fontSize:20 }}>×</button>
+        </div>
+        <div style={{ padding:'20px 24px', display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 20px' }}>
+          {fields.map(f => (
+            <div key={f.key} style={{ marginBottom:14, gridColumn: f.span ? 'span 2' : undefined }}>
+              <label style={{ display:'block', fontSize:11, fontWeight:600, color:'#374151',
+                marginBottom:4, textTransform:'uppercase', letterSpacing:'.3px' }}>{f.label}</label>
+              {f.options ? (
+                <select value={form[f.key]} onChange={e => set(f.key, e.target.value)} className="input">
+                  <option value=''>—</option>
+                  {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              ) : f.key==='sap' && onSapLookup ? (
+                <div style={{ position:'relative' }}>
+                  <input type="text" value={form[f.key]} onChange={e=>handleSapChange(e.target.value)} className="input" placeholder="SAP para autocompletar..."/>
+                  {sapLoading && <span style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', fontSize:11, color:'#1877f2' }}>🔍</span>}
+                </div>
+              ) : (
+                <input type={f.type||'text'} value={form[f.key]} onChange={e=>set(f.key, e.target.value)} className="input"/>
+              )}
+            </div>
+          ))}
+        </div>
+        <div style={{ padding:'0 24px 20px', display:'flex', justifyContent:'flex-end', gap:10 }}>
+          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>{saving?'Guardando...':'Guardar'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── ConfirmClearModal ─────────────────────────────────────────────────────────
+function ConfirmClearModal({ count, onClose, onConfirm }) {
+  const [loading, setLoading] = useState(false)
+  return createPortal(
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.5)', zIndex:3000,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+      <div style={{ background:'#fff', borderRadius:16, padding:'32px 28px', maxWidth:400,
+        width:'100%', boxShadow:'0 20px 60px rgba(0,0,0,.25)', textAlign:'center' }}>
+        <div style={{ width:56, height:56, borderRadius:'50%', background:'#fef2f2',
+          display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px' }}>
+          <span style={{ fontSize:28 }}>⚠️</span>
+        </div>
+        <h3 style={{ margin:'0 0 8px', fontSize:18, fontWeight:800, color:'#111827' }}>¿Limpiar todos los registros?</h3>
+        <p style={{ margin:'0 0 6px', color:'#6b7280', fontSize:14 }}>
+          Esta acción eliminará <strong style={{ color:'#dc2626' }}>{count} registros</strong> de forma permanente.
+        </p>
+        <p style={{ margin:'0 0 24px', color:'#9ca3af', fontSize:12 }}>Esta acción <strong>no se puede deshacer</strong>.</p>
+        <div style={{ display:'flex', gap:10, justifyContent:'center' }}>
+          <button onClick={onClose} style={{ padding:'10px 24px', borderRadius:8,
+            border:'1px solid #dadde1', background:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', color:'#374151' }}>
+            Cancelar
+          </button>
+          <button onClick={async()=>{ setLoading(true); await onConfirm(); setLoading(false) }} disabled={loading}
+            style={{ padding:'10px 24px', borderRadius:8, border:'none',
+              background:loading?'#fca5a5':'#ef4444', fontSize:14, fontWeight:700, color:'#fff', cursor:loading?'default':'pointer' }}>
+            {loading?'Eliminando...':'🗑 Sí, limpiar todo'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
 
 function TabAsignado() {
   const [data,   setData]   = useState([])
@@ -1065,7 +1080,7 @@ function TabAsignado() {
 
 
       {showUpload && (
-        <ImportPanel api={API_ASIGNADO} onDone={()=>{ load() }}
+        <ImportPanel api={API_ASIGNADO} onDone={(close=true)=>{ load(); if(close) setShowUpload(false) }}
           plantillaName="seguimiento_asignado"
           plantillaCols={['Red','Proveedor','SAP','Descripcion','N Serie','Lote',
             'Motivo Asignacion','Fecha Asignacion','Site','Codigo Site','Elemento PEP',
@@ -1081,20 +1096,18 @@ function TabAsignado() {
               <tr style={{ background:'#f3f4f6' }}>
                 {activeCols.map(col=>{
                   const isFecha = col.key === 'fecha_asignacion'
-                  const sortIcon = isFecha ? (sortFecha==='asc' ? ' ↑' : sortFecha==='desc' ? ' ↓' : ' ↕') : ''
                   return (
                   <th key={col.key}
-                    onClick={isFecha ? ()=>{ setSortFecha(s=> s===''?'desc': s==='desc'?'asc':''); setPage(1) } : undefined}
                     style={{ padding:'7px 12px 4px', textAlign:'left', fontSize:10,
                       fontWeight:700,
-                      color: (isFecha && sortFecha) ? '#1877f2' : colF[col.key] ? '#1877f2' : '#6b7280',
+                      color: colF[col.key] ? '#1877f2' : '#6b7280',
                       textTransform:'uppercase', letterSpacing:'.4px', whiteSpace:'nowrap',
                       borderBottom:'1px solid #e5e7eb',
-                      borderTop: (isFecha && sortFecha) ? '2px solid #1877f2' : colF[col.key] ? '2px solid #1877f2' : '2px solid transparent',
-                      background: (isFecha && sortFecha) ? '#e7f3ff' : colF[col.key] ? '#cce0ff' : '#f3f4f6',
-                      cursor: isFecha ? 'pointer' : 'default',
+                      borderTop: colF[col.key] ? '2px solid #1877f2' : '2px solid transparent',
+                      background: colF[col.key] ? '#cce0ff' : '#f3f4f6',
+                      cursor: 'default',
                       position:'relative', userSelect:'none', overflow:'visible' }}>
-                    {col.label}{sortIcon}
+                    {col.label}
                     <span onMouseDown={e=>{e.preventDefault();const s=e.clientX;const w=colWidths[col.key]||130;const mv=ev=>setColWidths(p=>({...p,[col.key]:Math.max(50,w+ev.clientX-s)}));const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up)}} style={{position:'absolute',right:0,top:0,bottom:0,width:6,cursor:'col-resize',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{width:2,height:'60%',background:'#dadde1',borderRadius:1,display:'block'}}/></span>
                   </th>
                   )
@@ -1163,7 +1176,7 @@ function TabAsignado() {
           onClose={()=>setViewItem(null)}
           onEdit={()=>{ setEditItem({...viewItem,_api:API_ASIGNADO}); setShowModal(true); setViewItem(null) }} />
       )}
-      {showModal && (
+      {showModal && createPortal(
         <GenericModal
           title={editItem?.id ? 'Editar Seguimiento' : 'Nuevo Seguimiento'}
           fields={MODAL_FIELDS}
@@ -1171,7 +1184,8 @@ function TabAsignado() {
           onClose={()=>setShowModal(false)}
           onSave={()=>{ load(); setShowModal(false) }}
           onSapLookup={sapLookup}
-        />
+        />,
+        document.body
       )}
       {confirmClear && createPortal(
         <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll} />,
@@ -1287,11 +1301,15 @@ function TabUpgrades() {
   const [showModal,  setShowModal]  = useState(false)
   const [editItem,   setEditItem]   = useState(null)
   const [viewUpgradeItem, setViewUpgradeItem] = useState(null)
+  const [filtroFecha, setFiltroFecha] = useState('')
+  const [fechaDesde,  setFechaDesde]  = useState('')
+  const [fechaHasta,  setFechaHasta]  = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_UPGRADES.filter(c=>c.default).map(c=>c.key))
   const [colWidths, setColWidths] = useState({})
   const [fEstado, setFEstado] = useState('')
   const [colF,   setColF]   = useState({})
+  const [kpiFilter, setKpiFilter] = useState(null) // { type: 'proveedor'|'region'|'sinSeg', val }
   const [page, setPage] = useState(1)
   const debRef = useRef(null)
   const PER_PAGE = 50
@@ -1309,15 +1327,30 @@ function TabUpgrades() {
 
   useEffect(()=>{ load() },[load])
 
+  const getRangoUpgrades = (tipo) => {
+    const hoy = new Date(); hoy.setHours(0,0,0,0)
+    if (tipo==='hoy') return { d: hoy.toISOString().substring(0,10), h: hoy.toISOString().substring(0,10) }
+    if (tipo==='semana') { const l=new Date(hoy); l.setDate(hoy.getDate()-hoy.getDay()+1); return { d:l.toISOString().substring(0,10), h:hoy.toISOString().substring(0,10) } }
+    if (tipo==='mes') return { d:`${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`, h:hoy.toISOString().substring(0,10) }
+    return { d: fechaDesde, h: fechaHasta }
+  }
+
   const filtered = useMemo(()=>{
     const q = dQ.toLowerCase()
+    const { d: fd, h: fh } = filtroFecha ? getRangoUpgrades(filtroFecha) : { d: fechaDesde, h: fechaHasta }
     return data.filter(r=>{
       const mQ = !q||[r.proveedor,r.sap,r.part_number,r.numero_serie,r.folio,r.descripcion,r.region]
         .some(v=>String(v||'').toLowerCase().includes(q))
       const EXACT=['region','proveedor','lote']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
-      return mQ && mC
+      const fa = r.fecha_asignacion ? String(r.fecha_asignacion).substring(0,10) : ''
+      const mF = (!fd && !fh) || (fa >= (fd||'') && fa <= (fh||'9999'))
+      const mK = !kpiFilter
+        || (kpiFilter.type==='proveedor' && r.proveedor===kpiFilter.val)
+        || (kpiFilter.type==='region'    && r.region===kpiFilter.val)
+        || (kpiFilter.type==='sinSeg'    && !r.seguimiento)
+      return mQ && mC && mF && mK
     })
-  },[data,dQ,colF])
+  },[data,dQ,colF,filtroFecha,fechaDesde,fechaHasta,kpiFilter])
 
   const pages = Math.ceil(filtered.length/PER_PAGE)
   const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
@@ -1336,7 +1369,34 @@ function TabUpgrades() {
           boxShadow: active ? '0 0 0 2px #cce0ff' : 'none' }
         return (
           <td key={col.key} style={{ padding:'3px 6px' }}>
-            {col.dropdown ? (
+            {col.key === 'fecha_asignacion' ? (
+              <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                <select value={filtroFecha}
+                  onChange={e=>{ setFiltroFecha(e.target.value); setFechaDesde(''); setFechaHasta(''); setPage(1) }}
+                  style={{ ...base, border:`1px solid ${filtroFecha?'#6babf5':'#d1d5db'}`,
+                    background: filtroFecha?'#e7f3ff':'#fff',
+                    boxShadow: filtroFecha?'0 0 0 2px #cce0ff':'none' }}>
+                  <option value=''>Todos</option>
+                  <option value='hoy'>Hoy</option>
+                  <option value='semana'>Esta semana</option>
+                  <option value='mes'>Este mes</option>
+                  <option value='personalizado'>Personalizado</option>
+                </select>
+                {filtroFecha === 'personalizado' && (
+                  <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                    <input type="date" value={fechaDesde}
+                      onChange={e=>{ setFechaDesde(e.target.value); setPage(1) }}
+                      style={{ ...base, fontSize:10, padding:'3px 5px' }}/>
+                    <span style={{ fontSize:9, color:'#9ca3af' }}>→</span>
+                    <input type="date" value={fechaHasta}
+                      onChange={e=>{ setFechaHasta(e.target.value); setPage(1) }}
+                      style={{ ...base, fontSize:10, padding:'3px 5px',
+                        border:`1px solid ${fechaHasta?'#6babf5':'#d1d5db'}`,
+                        background: fechaHasta?'#e7f3ff':'#fff' }}/>
+                  </div>
+                )}
+              </div>
+            ) : col.dropdown ? (
               <select value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }} style={base}>
                 <option value=''>Todos</option>
                 {col.dropdown.map(o => <option key={o} value={o}>{o}</option>)}
@@ -1357,7 +1417,7 @@ function TabUpgrades() {
       </td>
     </tr>
   )
-  const hasFilter = !!(query||Object.values(colF).some(Boolean))
+  const hasFilter = !!(query||filtroFecha||fechaDesde||fechaHasta||kpiFilter||Object.values(colF).some(Boolean))
   const exportXLSX = () => {
     const src = hasFilter ? filtered : data
     const cols = COLS_UPGRADES.map(c=>c.key)
@@ -1413,28 +1473,49 @@ function TabUpgrades() {
     <div style={{ paddingBottom:20 }}>
       {/* KPIs */}
       <div style={{ background:'#eef1f6', borderRadius:14, padding:'16px', marginBottom:12 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:10 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:10 }}>
           {[
             { l:'Total', v:filtered.length, color:'#0891b2', bg:'#e0f7fa',
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0891b2" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
             ...proveedores.map((prov,i)=>({ l:prov, v:filtered.filter(r=>r.proveedor===prov).length,
               color:['#CF0A2C','#1877f2','#16a34a','#9c6fe4'][i]||'#6b7280', bg:'#f9fafb',
+              kpi:{ type:'proveedor', val:prov },
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={['#CF0A2C','#1877f2','#16a34a','#9c6fe4'][i]||'#6b7280'} strokeWidth="2.5" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-            }))
+            })),
+            { l:'Sin seguimiento', v: filtered.filter(r=>!r.seguimiento).length,
+              color:'#dc2626', bg:'#fef2f2', alert:true, kpi:{ type:'sinSeg', val:null },
+              icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> },
           ].map(k=>(
-            <div key={k.l} style={{ background:'#fff', borderRadius:12, padding:'11px 13px',
-              display:'flex', alignItems:'center', gap:10,
-              boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <div key={k.l}
+              onClick={()=>{ if(k.kpi){ setKpiFilter(kpiFilter?.type===k.kpi.type&&kpiFilter?.val===k.kpi.val?null:k.kpi); setPage(1) } }}
+              style={{ background: k.alert ? '#fef2f2' : '#fff', borderRadius:12, padding:'11px 13px',
+              display:'flex', alignItems:'center', gap:10, cursor: k.kpi?'pointer':'default',
+              border: k.alert ? '1px solid #fecaca' : kpiFilter&&k.kpi&&kpiFilter.type===k.kpi.type&&kpiFilter.val===k.kpi.val?'2px solid #1877f2':'none',
+              boxShadow:'0 2px 8px rgba(0,0,0,0.06)', transition:'box-shadow .15s' }}>
               <div style={{ width:40, height:40, borderRadius:10, background:k.bg,
                 display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 {k.icon}
               </div>
               <div>
                 <div style={{ fontSize:26, fontWeight:800, color:k.color, lineHeight:1, letterSpacing:'-0.5px' }}>{k.v}</div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{k.l}</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>{k.l}</div>
               </div>
             </div>
           ))}
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10 }}>
+          <div style={{ background:'#fff', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <p style={{ fontSize:11, fontWeight:700, color:'#6b7280', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'.4px' }}>Por región</p>
+            {(()=>{ const byReg={}; filtered.forEach(r=>{ if(r.region) byReg[r.region]=(byReg[r.region]||0)+1 }); const sorted=Object.entries(byReg).sort((a,b)=>b[1]-a[1]).slice(0,5); const max=sorted[0]?.[1]||1; return sorted.map(([reg,cnt])=>( <div key={reg} onClick={()=>{ setKpiFilter(kpiFilter?.type==='region'&&kpiFilter?.val===reg?null:{type:'region',val:reg}); setPage(1) }} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:5, cursor:'pointer', background: kpiFilter?.type==='region'&&kpiFilter?.val===reg?'#e7f3ff':'transparent', borderRadius:6, padding:'2px 4px' }}><span style={{ fontSize:11, color:'#374151', width:90, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{reg}</span><div style={{ flex:1, background:'#f3f4f6', borderRadius:3, height:7 }}><div style={{ width:`${(cnt/max)*100}%`, height:'100%', background:'#1877f2', borderRadius:3 }}/></div><span style={{ fontSize:11, color:'#6b7280', minWidth:20, textAlign:'right' }}>{cnt}</span></div> )) })()}
+          </div>
+          <div style={{ background:'#fff', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <p style={{ fontSize:11, fontWeight:700, color:'#6b7280', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'.4px' }}>Por lote</p>
+            {(()=>{ const valorado=filtered.filter(r=>(r.lote||'').toUpperCase()==='VALORADO').length; const novalor=filtered.filter(r=>(r.lote||'').toUpperCase()==='NOVALORADO').length; const total=filtered.length||1; return [{ l:'VALORADO', v:valorado, color:'#16a34a' },{ l:'NOVALORADO', v:novalor, color:'#dc2626' }].map(({l,v,color})=>( <div key={l} style={{ marginBottom:10 }}><div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}><span style={{ fontSize:11, color:'#374151' }}>{l}</span><span style={{ fontSize:11, color:'#6b7280' }}>{v} — {Math.round(v/total*100)}%</span></div><div style={{ background:'#f3f4f6', borderRadius:3, height:8 }}><div style={{ width:`${Math.round(v/total*100)}%`, height:'100%', background:color, borderRadius:3 }}/></div></div> )) })()}
+          </div>
+          <div style={{ background:'#fff', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
+            <p style={{ fontSize:11, fontWeight:700, color:'#6b7280', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'.4px' }}>Avance de seguimiento</p>
+            {(()=>{ const conSeg=filtered.filter(r=>r.seguimiento).length; const total=filtered.length||1; const pct=Math.round(conSeg/total*100); return ( <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, paddingTop:4 }}><div style={{ fontSize:32, fontWeight:800, color: pct>=70?'#16a34a':pct>=40?'#d97706':'#dc2626' }}>{pct}%</div><div style={{ width:'100%', background:'#f3f4f6', borderRadius:4, height:8 }}><div style={{ width:`${pct}%`, height:'100%', background: pct>=70?'#16a34a':pct>=40?'#d97706':'#dc2626', borderRadius:4 }}/></div><div style={{ fontSize:11, color:'#6b7280' }}>{conSeg} con seguimiento · {total-conSeg} pendientes</div></div> ) })()}
+          </div>
         </div>
       </div>
 
@@ -1449,7 +1530,7 @@ function TabUpgrades() {
         <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{filtered.length} registros</span>
         {hasFilter && (
           <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#1877f2', borderColor:'#cce0ff' }}
-            onClick={()=>{ setColF({}); setQuery(''); setDQ(''); setFEstado(''); setPage(1) }}>
+            onClick={()=>{ setColF({}); setQuery(''); setDQ(''); setFEstado(''); setKpiFilter(null); setPage(1) }}>
             ✕ Limpiar filtros
           </button>
         )}
@@ -1475,11 +1556,10 @@ function TabUpgrades() {
       </div>
 
       {showUpload && (
-        <ImportPanel api={API_UPGRADES} onDone={load}
+        <ImportPanel api={API_UPGRADES} onDone={(close=true)=>{ load(); if(close) setShowUpload(false) }}
           plantillaName="seguimiento_upgrades"
-          plantillaCols={['ZONA','PROVEEDOR','MODELO DE EQUIPO','SAP','DESCRIPCION',
-            'CANTIDAD','NUMERO DE SERIE','LOTE','FECHA ASIGNACION','N° PEDIDO',
-            'GUIA DE REMISION','OYM ENCARGADO','MOTIVO DE ASIGNACION','SEGUIMIENTO']} />
+          plantillaCols={['Región','Zona','Proveedor','Modelo de Equipo','SAP','Descripción',
+            'N° Serie','LOTE','Fecha Asignación','N° Pedido','OYM Encargado','Motivo','Seguimiento']} />
       )}
 
 
@@ -1557,7 +1637,7 @@ function TabUpgrades() {
         )}
       </div>
 
-      {showModal && (
+      {showModal && createPortal(
         <GenericModal
           title={editItem?.id ? 'Editar Upgrade/Mtto' : 'Nuevo Upgrade/Mtto'}
           fields={MODAL_FIELDS}
@@ -1565,7 +1645,8 @@ function TabUpgrades() {
           onClose={()=>setShowModal(false)}
           onSave={()=>{ load(); setShowModal(false) }}
           onSapLookup={sapLookup}
-        />
+        />,
+        document.body
       )}
       {confirmClear && createPortal(
         <ConfirmClearModal count={data.length} onClose={()=>setConfirmClear(false)} onConfirm={clearAll}/>,
