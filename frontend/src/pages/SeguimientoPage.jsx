@@ -1347,7 +1347,9 @@ function TabUpgrades() {
       const mK = !kpiFilter
         || (kpiFilter.type==='proveedor' && r.proveedor===kpiFilter.val)
         || (kpiFilter.type==='region'    && r.region===kpiFilter.val)
+        || (kpiFilter.type==='lote'      && (r.lote||'').toUpperCase()===kpiFilter.val)
         || (kpiFilter.type==='sinSeg'    && !r.seguimiento)
+        || (kpiFilter.type==='conSeg'    && !!r.seguimiento)
       return mQ && mC && mF && mK
     })
   },[data,dQ,colF,filtroFecha,fechaDesde,fechaHasta,kpiFilter])
@@ -1510,11 +1512,32 @@ function TabUpgrades() {
           </div>
           <div style={{ background:'#fff', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
             <p style={{ fontSize:11, fontWeight:700, color:'#6b7280', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'.4px' }}>Por lote</p>
-            {(()=>{ const valorado=filtered.filter(r=>(r.lote||'').toUpperCase()==='VALORADO').length; const novalor=filtered.filter(r=>(r.lote||'').toUpperCase()==='NOVALORADO').length; const total=filtered.length||1; return [{ l:'VALORADO', v:valorado, color:'#16a34a' },{ l:'NOVALORADO', v:novalor, color:'#dc2626' }].map(({l,v,color})=>( <div key={l} style={{ marginBottom:10 }}><div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}><span style={{ fontSize:11, color:'#374151' }}>{l}</span><span style={{ fontSize:11, color:'#6b7280' }}>{v} — {Math.round(v/total*100)}%</span></div><div style={{ background:'#f3f4f6', borderRadius:3, height:8 }}><div style={{ width:`${Math.round(v/total*100)}%`, height:'100%', background:color, borderRadius:3 }}/></div></div> )) })()}
+            {(()=>{ const valorado=filtered.filter(r=>(r.lote||'').toUpperCase()==='VALORADO').length; const novalor=filtered.filter(r=>(r.lote||'').toUpperCase()==='NOVALORADO').length; const total=filtered.length||1; return [{ l:'VALORADO', v:valorado, color:'#16a34a' },{ l:'NOVALORADO', v:novalor, color:'#dc2626' }].map(({l,v,color})=>( <div key={l} onClick={()=>{ setKpiFilter(kpiFilter?.type==='lote'&&kpiFilter?.val===l?null:{type:'lote',val:l}); setPage(1) }} style={{ marginBottom:10, cursor:'pointer', background: kpiFilter?.type==='lote'&&kpiFilter?.val===l?'#f0fdf4':'transparent', borderRadius:6, padding:'2px 4px' }}><div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}><span style={{ fontSize:11, color:'#374151' }}>{l}</span><span style={{ fontSize:11, color:'#6b7280' }}>{v} — {Math.round(v/total*100)}%</span></div><div style={{ background:'#f3f4f6', borderRadius:3, height:8 }}><div style={{ width:`${Math.round(v/total*100)}%`, height:'100%', background:color, borderRadius:3 }}/></div></div> )) })()}
           </div>
           <div style={{ background:'#fff', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
             <p style={{ fontSize:11, fontWeight:700, color:'#6b7280', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'.4px' }}>Avance de seguimiento</p>
-            {(()=>{ const conSeg=filtered.filter(r=>r.seguimiento).length; const total=filtered.length||1; const pct=Math.round(conSeg/total*100); return ( <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, paddingTop:4 }}><div style={{ fontSize:32, fontWeight:800, color: pct>=70?'#16a34a':pct>=40?'#d97706':'#dc2626' }}>{pct}%</div><div style={{ width:'100%', background:'#f3f4f6', borderRadius:4, height:8 }}><div style={{ width:`${pct}%`, height:'100%', background: pct>=70?'#16a34a':pct>=40?'#d97706':'#dc2626', borderRadius:4 }}/></div><div style={{ fontSize:11, color:'#6b7280' }}>{conSeg} con seguimiento · {total-conSeg} pendientes</div></div> ) })()}
+            {(()=>{
+              const conSeg = filtered.filter(r=>r.seguimiento).length
+              const total  = filtered.length || 1
+              const pct    = Math.round(conSeg/total*100)
+              const color  = pct>=70?'#16a34a':pct>=40?'#d97706':'#dc2626'
+              const onConSeg = () => { setKpiFilter(kpiFilter?.type==='conSeg'?null:{type:'conSeg',val:null}); setPage(1) }
+              const onPend   = () => { setKpiFilter({type:'sinSeg',val:null}); setPage(1) }
+              return (
+                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, paddingTop:4 }}>
+                  <div style={{ fontSize:32, fontWeight:800, color }}>{pct}%</div>
+                  <div style={{ width:'100%', background:'#f3f4f6', borderRadius:4, height:8, cursor:'pointer' }}
+                    onClick={onPend}>
+                    <div style={{ width:`${pct}%`, height:'100%', background:color, borderRadius:4 }}/>
+                  </div>
+                  <div style={{ fontSize:11, color:'#6b7280', marginTop:2 }}>
+                    <span onClick={onConSeg} style={{ cursor:'pointer', color:'#16a34a', textDecoration:'underline' }}>{conSeg} con seguimiento</span>
+                    {' · '}
+                    <span onClick={onPend} style={{ cursor:'pointer', color:'#dc2626', textDecoration:'underline' }}>{total-conSeg} pendientes</span>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         </div>
       </div>

@@ -885,10 +885,18 @@ function PartNumbersTab() {
   ), [items, colF, dashF])
 
   // Datos filtrados por AMBOS estados — dashboard y columnas — para KPIs y gráficos reactivos
-  const dashFiltered = useMemo(() => allItems.filter(r =>
-    Object.entries(dashF).every(([k,v]) => !v || String(r[k]||'').toLowerCase().includes(v.toLowerCase())) &&
-    COLS.every(col => !colF[col.key] || String(r[col.key]||'').toLowerCase().includes(colF[col.key].toLowerCase()))
-  ), [allItems, dashF, colF])
+  const dashFiltered = useMemo(() => allItems.filter(r => {
+    const matchDashF = Object.entries(dashF).every(([k,v]) => {
+      if (k === 'precio') {
+        if (v === 'con') return r.precio && parseFloat(r.precio) > 0
+        if (v === 'sin') return !r.precio || parseFloat(r.precio) <= 0
+        return true
+      }
+      return !v || String(r[k]||'').toLowerCase().includes(v.toLowerCase())
+    })
+    const matchColF = COLS.every(col => !colF[col.key] || String(r[col.key]||'').toLowerCase().includes(colF[col.key].toLowerCase()))
+    return matchDashF && matchColF
+  }), [allItems, dashF, colF])
 
   const dash = useMemo(() => {
     const src = dashFiltered   // TODO usa el subconjunto filtrado
@@ -938,13 +946,17 @@ function PartNumbersTab() {
           {[
             { label:'Total registros', val:dash.total,                    color:'#1877f2', bg:'#e7f3ff',
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1877f2" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg> },
-            { label:'Con precio',      val:dash.conPrecio,                color:'#16a34a', bg:'#f0fdf4',
+            { label:'Con precio',      val:dash.conPrecio,                color:'#16a34a', bg:'#f0fdf4', filtro:'con',
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg> },
-            { label:'Sin precio',      val:dash.total - dash.conPrecio,   color:'#dc2626', bg:'#fef2f2',
+            { label:'Sin precio',      val:dash.total - dash.conPrecio,   color:'#dc2626', bg:'#fef2f2', filtro:'sin',
               icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> },
           ].map(k => (
-            <div key={k.label} style={{ background:'#fff', border:`1px solid ${(Object.values(dashF).some(Boolean)||Object.values(colF).some(Boolean)) ? k.color+'55' : '#dde3ee'}`, borderRadius:14,
-              padding:'11px 13px', display:'flex', alignItems:'center', gap:10, boxShadow:'0 2px 8px rgba(0,0,0,0.06)', transition:'border-color .2s' }}>
+            <div key={k.label}
+              onClick={() => k.filtro && setDashF(p => ({ ...p, precio: p.precio===k.filtro ? undefined : k.filtro }))}
+              style={{ background:'#fff', border:`1px solid ${dashF.precio===k.filtro ? k.color : (Object.values(dashF).some(Boolean)||Object.values(colF).some(Boolean)) ? k.color+'55' : '#dde3ee'}`, borderRadius:14,
+              padding:'11px 13px', display:'flex', alignItems:'center', gap:10,
+              cursor: k.filtro ? 'pointer' : 'default',
+              boxShadow: dashF.precio===k.filtro ? `0 0 0 2px ${k.color}55` : '0 2px 8px rgba(0,0,0,0.06)', transition:'border-color .2s' }}>
               <div style={{ width:40, height:40, borderRadius:10, background:k.bg,
                 display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                 {k.icon}
