@@ -202,7 +202,7 @@ const SPARE_IMPORT_COLS = [
   { key:'motivo_asignacion',label:'Motivo Asignacion' },
   { key:'orden_compra',     label:'Orden Compra' },
   { key:'procedencia',      label:'Procedencia' },
-  { key:'pedido_traslado',  label:'Pedido de Traslado' },
+  { key:'numero_pedido',  label:'Numero Pedido' },
   { key:'comentario',       label:'Comentario' },
   { key:'precio',           label:'Precio' },
 ]
@@ -474,7 +474,7 @@ function useSAPSearch(sapCatalog) {
   useEffect(() => {
     if (!sapCatalog.length) return
     const idx = sapCatalog
-      .map(r => ({ key: (r.sap || '').toLowerCase() + ' ' + (r.textoBreve || r.texto_breve || '').toLowerCase(), row: r }))
+      .map(r => ({ key: [r.sap, r.textoBreve||r.texto_breve, r.serial_number, r.part_number, r.modelo].filter(Boolean).join(' ').toLowerCase(), row: r }))
       .sort((a, b) => a.key < b.key ? -1 : a.key > b.key ? 1 : 0)
     indexRef.current = idx
   }, [sapCatalog])
@@ -784,7 +784,7 @@ const ALL_COLS = [
   { key:'sap',              label:'SAP',               default:true  },
   { key:'modelo',           label:'Modelo',             default:true  },
   { key:'part_number',      label:'Part Number',        default:true  },
-  { key:'proveedor',        label:'Proveedor',          default:true  },
+  { key:'proveedor',        label:'Proveedor',          default:true,  dropdown:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },
   { key:'serial_number',    label:'Serial',             default:true  },
   { key:'tipo',             label:'Tipo',               default:true  },
   { key:'centro',           label:'Centro',             default:true  },
@@ -1018,7 +1018,7 @@ const CONTROL_COLS = [
   { key:'motivo_asignacion',label:'Motivo Asignacion',   default:false },
   { key:'orden_compra',     label:'Orden Compra',        default:false },
   { key:'procedencia',      label:'Procedencia',         default:true  },
-  { key:'pedido_traslado',  label:'Pedido de Traslado',  default:false },
+  { key:'numero_pedido',  label:'Numero Pedido',  default:false },
   { key:'comentario',       label:'Comentario',          default:false },
   { key:'precio',           label:'Precio',              default:false },
 ]
@@ -1061,16 +1061,29 @@ function TabControlInventario() {
   const [expandedCard, setExpandedCard] = useState(null) // null | 'mes'|'zona'|'prov'|'sap'|'oc'|'precio'
 
   const [colFilters, setColFilters] = useState({})
+  const [filtroFechaIngreso,    setFiltroFechaIngreso]    = useState('')
+  const [fechaIngresoDesde,     setFechaIngresoDesde]     = useState('')
+  const [fechaIngresoHasta,     setFechaIngresoHasta]     = useState('')
+  const [filtroFechaAsignacion, setFiltroFechaAsignacion] = useState('')
+  const [fechaAsignacionDesde,  setFechaAsignacionDesde]  = useState('')
+  const [fechaAsignacionHasta,  setFechaAsignacionHasta]  = useState('')
   const setColFilter = (key, val) => {
     setColFilters(prev => ({ ...prev, [key]: val }))
   }
   const hasColFilters = Object.values(colFilters).some(v => v && v !== '')
-  const clearColFilters = () => setColFilters({})
+  const clearColFilters = () => {
+    setColFilters({})
+    setFiltroFechaIngreso(''); setFechaIngresoDesde(''); setFechaIngresoHasta('')
+    setFiltroFechaAsignacion(''); setFechaAsignacionDesde(''); setFechaAsignacionHasta('')
+  }
 
   // Opciones únicas para dropdowns (columnas categóricas)
-  const DROPDOWN_COLS = ['centro','almacen','zona','proveedor','tipo','estatus','procedencia','motivo_asignacion','valor_lote']
+  const DROPDOWN_COLS = ['centro','almacen','zona','tipo','estatus','procedencia','motivo_asignacion','valor_lote']
+  const FIXED_OPTS = {
+    proveedor: ['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL']
+  }
   const dropdownOpts = useMemo(() => {
-    const opts = {}
+    const opts = { ...FIXED_OPTS }
     DROPDOWN_COLS.forEach(key => {
       opts[key] = [...new Set(items.map(r => r[key]).filter(Boolean))].sort()
     })
@@ -1079,13 +1092,24 @@ function TabControlInventario() {
 
   // Filtrado client-side aplicado sobre los items recibidos del servidor
   const filteredItems = useMemo(() => {
-    if (!hasColFilters) return items
+    const getRango = (tipo, desde, hasta) => {
+      const hoy = new Date(); hoy.setHours(0,0,0,0)
+      const fmt = d => d.toISOString().substring(0,10)
+      if (tipo==='hoy') return { d: fmt(hoy), h: fmt(hoy) }
+      if (tipo==='semana') { const l=new Date(hoy); l.setDate(hoy.getDate()-hoy.getDay()+1); return { d:fmt(l), h:fmt(hoy) } }
+      if (tipo==='mes') return { d:`${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`, h:fmt(hoy) }
+      return { d: desde, h: hasta }
+    }
+
+    const hasDateFilter = filtroFechaIngreso || fechaIngresoDesde || fechaIngresoHasta ||
+                          filtroFechaAsignacion || fechaAsignacionDesde || fechaAsignacionHasta
+
+    if (!hasColFilters && !hasDateFilter) return items
+
     return items.filter(row => {
-      return Object.entries(colFilters).every(([key, val]) => {
+      // Filtros de columna normales
+      const passColFilters = Object.entries(colFilters).every(([key, val]) => {
         if (!val || val === '') return true
-        if (key === 'fecha_ingreso') {
-          return String(row.fecha_ingreso || '').startsWith(val)
-        }
         if (key === '_antiguedad') {
           if (!row.fecha_ingreso) return false
           const dias = Math.floor((new Date() - new Date(row.fecha_ingreso)) / 86400000)
@@ -1095,7 +1119,6 @@ function TabControlInventario() {
           return true
         }
         if (key === '_sinOperativo') {
-          // Mostrar solo filas cuyo SAP no tiene ningún spare operativo en items
           const sapsConOp = new Set(
             items.filter(r => (r.estatus||'').toLowerCase().includes('operativo')).map(r => r.sap).filter(Boolean)
           )
@@ -1106,8 +1129,24 @@ function TabControlInventario() {
         if (DROPDOWN_COLS.includes(key)) return cell === val.toLowerCase()
         return cell.includes(val.toLowerCase())
       })
+
+      // Filtro fecha ingreso
+      const { d: fd1, h: fh1 } = getRango(filtroFechaIngreso, fechaIngresoDesde, fechaIngresoHasta)
+      const passFechaIngreso = (!fd1 && !fh1) || (() => {
+        const fa = String(row.fecha_ingreso || '').substring(0,10)
+        return fa >= (fd1||'') && fa <= (fh1||'9999')
+      })()
+
+      // Filtro fecha asignacion
+      const { d: fd2, h: fh2 } = getRango(filtroFechaAsignacion, fechaAsignacionDesde, fechaAsignacionHasta)
+      const passFechaAsignacion = (!fd2 && !fh2) || (() => {
+        const fa = String(row.fecha_asignacion || '').substring(0,10)
+        return fa >= (fd2||'') && fa <= (fh2||'9999')
+      })()
+
+      return passColFilters && passFechaIngreso && passFechaAsignacion
     })
-  }, [items, colFilters, hasColFilters])
+  }, [items, colFilters, hasColFilters, filtroFechaIngreso, fechaIngresoDesde, fechaIngresoHasta, filtroFechaAsignacion, fechaAsignacionDesde, fechaAsignacionHasta])
 
   // ── Stats del dashboard calculados desde filteredItems (client-side) ────────
   const dashStats = useMemo(() => {
@@ -1244,8 +1283,9 @@ function TabControlInventario() {
     load()
   }
 
+  const hasFilter = hasColFilters || !!search || !!filtroFechaIngreso || !!filtroFechaAsignacion || !!fechaIngresoDesde || !!fechaAsignacionDesde
+
   const exportXLSX = () => {
-    const hasFilter = hasColFilters || !!search
     const src = hasFilter ? filteredItems : items
     const header = CONTROL_COLS.map(c => c.label)
     const rows = src.map(r => CONTROL_COLS.map(c => {
@@ -1315,7 +1355,7 @@ function TabControlInventario() {
         </div>
 
         <div style={{ fontSize:10, fontWeight:700, color:'#6b7280', letterSpacing:'.06em', textTransform:'uppercase', marginBottom:10 }}>
-          Distribución y tendencias {(hasColFilters || search) && <span style={{ background:'#1877f2', color:'#fff', borderRadius:8, padding:'1px 8px', marginLeft:6, fontSize:9 }}>filtrado</span>}
+          Distribución y tendencias {(hasColFilters || search || filtroFechaIngreso || filtroFechaAsignacion) && <span style={{ background:'#1877f2', color:'#fff', borderRadius:8, padding:'1px 8px', marginLeft:6, fontSize:9 }}>filtrado</span>}
         </div>
 
 
@@ -1664,16 +1704,16 @@ function TabControlInventario() {
           <Search size={14} style={{ position:'absolute', left:10, top:'50%',
             transform:'translateY(-50%)', color:'#9ca3af' }} />
           <input className="input" style={{ paddingLeft:32 }}
-            placeholder="Buscar SAP, serie, descripción..."
+            placeholder="Buscar SAP, serie, modelo, part number..."
             value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} />
         </div>
         <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
           <span style={{ fontSize:12, color:'#6b7280' }}>
-            {hasColFilters || search
+            {hasFilter
               ? `${filteredItems.length.toLocaleString()} / ${items.length.toLocaleString()} registros`
               : `${items.length.toLocaleString()} registros`}
           </span>
-          {(hasColFilters || search) && (
+          {hasFilter && (
             <button className="btn-ghost" style={{ fontSize:12, display:'flex', alignItems:'center', gap:4, color:'#1877f2', borderColor:'#cce0ff' }}
               onClick={()=>{ clearColFilters(); setSearch('') }}>
               <X size={12}/> Limpiar filtros
@@ -1788,7 +1828,9 @@ function TabControlInventario() {
               <tr style={{ background:'#fafafa', borderBottom:'2px solid #e5e7eb' }}>
                 {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c => {
                   const isDropdown = ['centro','almacen','zona','proveedor','tipo','estatus','procedencia','motivo_asignacion','valor_lote'].includes(c.key)
-                  const isText = ['sap','part_number','descripcion','serial_number','modelo','orden_compra','pedido_traslado','comentario','precio','fecha_ingreso','fecha_asignacion'].includes(c.key)
+                  const isFechaIngreso    = c.key === 'fecha_ingreso'
+                  const isFechaAsignacion = c.key === 'fecha_asignacion'
+                  const isText = ['sap','part_number','descripcion','serial_number','modelo','orden_compra','numero_pedido','comentario','precio'].includes(c.key)
                   const filterVal = colFilters[c.key] || ''
                   const isActive = filterVal !== ''
                   const base = {
@@ -1811,7 +1853,45 @@ function TabControlInventario() {
                       minWidth: isDropdown ? 110 : 90,
                       maxWidth: c.key === 'descripcion' ? 200 : undefined,
                     }}>
-                      {isDropdown ? (
+                      {isFechaIngreso ? (
+                        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                          <select value={filtroFechaIngreso}
+                            onChange={e=>{ setFiltroFechaIngreso(e.target.value); setFechaIngresoDesde(''); setFechaIngresoHasta(''); setPage(1) }}
+                            style={{ ...inputSt, border:`1px solid ${filtroFechaIngreso?'#6babf5':'#d1d5db'}`, background:filtroFechaIngreso?'#e7f3ff':'#fff' }}>
+                            <option value=''>Todos</option>
+                            <option value='hoy'>Hoy</option>
+                            <option value='semana'>Esta semana</option>
+                            <option value='mes'>Este mes</option>
+                            <option value='personalizado'>Personalizado</option>
+                          </select>
+                          {filtroFechaIngreso === 'personalizado' && (
+                            <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                              <input type="date" value={fechaIngresoDesde} onChange={e=>{ setFechaIngresoDesde(e.target.value); setPage(1) }} style={{ ...base, fontSize:10, padding:'3px 5px', border:'1px solid #d1d5db', background:'#fff' }}/>
+                              <span style={{ fontSize:9, color:'#9ca3af' }}>→</span>
+                              <input type="date" value={fechaIngresoHasta} onChange={e=>{ setFechaIngresoHasta(e.target.value); setPage(1) }} style={{ ...base, fontSize:10, padding:'3px 5px', border:`1px solid ${fechaIngresoHasta?'#6babf5':'#d1d5db'}`, background:fechaIngresoHasta?'#e7f3ff':'#fff' }}/>
+                            </div>
+                          )}
+                        </div>
+                      ) : isFechaAsignacion ? (
+                        <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                          <select value={filtroFechaAsignacion}
+                            onChange={e=>{ setFiltroFechaAsignacion(e.target.value); setFechaAsignacionDesde(''); setFechaAsignacionHasta(''); setPage(1) }}
+                            style={{ ...inputSt, border:`1px solid ${filtroFechaAsignacion?'#6babf5':'#d1d5db'}`, background:filtroFechaAsignacion?'#e7f3ff':'#fff' }}>
+                            <option value=''>Todos</option>
+                            <option value='hoy'>Hoy</option>
+                            <option value='semana'>Esta semana</option>
+                            <option value='mes'>Este mes</option>
+                            <option value='personalizado'>Personalizado</option>
+                          </select>
+                          {filtroFechaAsignacion === 'personalizado' && (
+                            <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                              <input type="date" value={fechaAsignacionDesde} onChange={e=>{ setFechaAsignacionDesde(e.target.value); setPage(1) }} style={{ ...base, fontSize:10, padding:'3px 5px', border:'1px solid #d1d5db', background:'#fff' }}/>
+                              <span style={{ fontSize:9, color:'#9ca3af' }}>→</span>
+                              <input type="date" value={fechaAsignacionHasta} onChange={e=>{ setFechaAsignacionHasta(e.target.value); setPage(1) }} style={{ ...base, fontSize:10, padding:'3px 5px', border:`1px solid ${fechaAsignacionHasta?'#6babf5':'#d1d5db'}`, background:fechaAsignacionHasta?'#e7f3ff':'#fff' }}/>
+                            </div>
+                          )}
+                        </div>
+                      ) : isDropdown ? (
                         <select style={selSt} value={filterVal}
                           onChange={e => setColFilter(c.key, e.target.value)}>
                           <option value=''>Todos</option>
@@ -2204,7 +2284,7 @@ function ViewSpareModal({ item, onClose, onEdit }) {
         ['Precio',          item.precio != null && item.precio !== '' ? `$ ${Number(item.precio).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}` : null],
         ['Orden Compra',    item.orden_compra],
         ['Procedencia',     item.procedencia],
-        ['Pedido Traslado', item.pedido_traslado],
+        ['Numero Pedido', item.numero_pedido],
         ['Comentario',      item.comentario],
       ]
     },
@@ -2313,7 +2393,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
     motivo_asignacion:useRef(null),
     orden_compra:     useRef(null),
     procedencia:      useRef(null),
-    pedido_traslado:  useRef(null),
+    numero_pedido:  useRef(null),
     comentario:       useRef(null),
     precio:           useRef(null),
     descripcion:      useRef(null),
@@ -2375,7 +2455,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
         motivo_asignacion:refs.motivo_asignacion.current?.value|| '',
         orden_compra:     refs.orden_compra.current?.value     || '',
         procedencia:      refs.procedencia.current?.value      || '',
-        pedido_traslado:  refs.pedido_traslado.current?.value  || '',
+        numero_pedido:  refs.numero_pedido.current?.value  || '',
         comentario:       refs.comentario.current?.value       || '',
         precio:           refs.precio.current?.value ? parseFloat(refs.precio.current.value.replace(/[^0-9.]/g,'')) || null : null,
         descripcion:      refs.descripcion.current?.value      || autoData.descripcion || '',
@@ -2533,7 +2613,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
             <div>{lbl('F. Ingreso')}<input ref={refs.fecha_ingreso} type="date" className="input" defaultValue={item.fecha_ingreso||''}/></div>
             <div>{lbl('F. Asignación')}<input ref={refs.fecha_asignacion} type="date" className="input" defaultValue={item.fecha_asignacion||''}/></div>
             <div>{lbl('Procedencia')}<input ref={refs.procedencia} className="input" defaultValue={item.procedencia||''}/></div>
-            <div>{lbl('Pedido Traslado')}<input ref={refs.pedido_traslado} className="input" defaultValue={item.pedido_traslado||''}/></div>
+            <div>{lbl('Numero Pedido')}<input ref={refs.numero_pedido} className="input" defaultValue={item.numero_pedido||''}/></div>
             <div>{lbl('Comentario')}<input ref={refs.comentario} className="input" defaultValue={item.comentario||''}/></div>
             <div>{lbl('Precio')}
               <input ref={refs.precio} className="input" placeholder="$ 0.00"

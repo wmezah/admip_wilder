@@ -167,16 +167,50 @@ class SpareViewSet(viewsets.ModelViewSet):
             fecha_asignacion  = spare.fecha_asignacion,
             lote              = spare.valor_lote or '',
             motivo_asignacion = spare.motivo_asignacion or '',
-            numero_pedido     = spare.pedido_traslado or '',
+            numero_pedido     = spare.numero_pedido or '',
         )
+
+    def _sync_asignado(self, spare):
+        """Cuando el spare pasa a Asignado, crea o actualiza el Seguimiento correspondiente."""
+        if (spare.estatus or '').strip().lower() != 'asignado':
+            return
+        sap    = spare.sap or ''
+        serie  = spare.serial_number or ''
+        if not sap and not serie:
+            return
+        existing = Seguimiento.objects.filter(sap=sap, cantidad_serie=serie).first()
+        if existing:
+            # Solo actualiza campos del spare si están vacíos en el seguimiento
+            changed = False
+            if not existing.proveedor and spare.proveedor:
+                existing.proveedor = spare.proveedor; changed = True
+            if not existing.numero_pedido and spare.numero_pedido:
+                existing.numero_pedido = spare.numero_pedido; changed = True
+            if not existing.fecha_asignacion and spare.fecha_asignacion:
+                existing.fecha_asignacion = spare.fecha_asignacion; changed = True
+            if changed:
+                existing.save()
+        else:
+            Seguimiento.objects.create(
+                sap               = sap,
+                cantidad_serie    = serie,
+                proveedor         = spare.proveedor or '',
+                descripcion       = spare.descripcion or '',
+                lote              = spare.valor_lote or '',
+                numero_pedido     = spare.numero_pedido or '',
+                fecha_asignacion  = spare.fecha_asignacion,
+                motivo_asignacion = spare.motivo_asignacion or '',
+            )
 
     def perform_create(self, serializer):
         spare = serializer.save()
         self._sync_reserva(spare)
+        self._sync_asignado(spare)
 
     def perform_update(self, serializer):
         spare = serializer.save()
         self._sync_reserva(spare)
+        self._sync_asignado(spare)
 
     @action(detail=False, methods=['delete'], url_path='clear_all')
     def clear_all(self, request):
@@ -330,11 +364,17 @@ class PartNumberViewSet(viewsets.ModelViewSet):
         sap = request.query_params.get('sap', '').strip()
         if not sap:
             return Response(None)
+        data = {}
         try:
             obj = PartNumber.objects.get(sap=sap)
-            return Response(PartNumberSerializer(obj).data)
+            data = PartNumberSerializer(obj).data
         except PartNumber.DoesNotExist:
-            return Response(None)
+            pass
+        # Agregar numero_pedido del Spare más reciente con ese SAP
+        spare = Spare.objects.filter(sap=sap).exclude(numero_pedido='').exclude(numero_pedido__isnull=True).order_by('-id').first()
+        if spare:
+            data['numero_pedido'] = spare.numero_pedido
+        return Response(data or None)
 
 
     @action(detail=False, methods=['post'], url_path='bulk-import',
@@ -666,59 +706,26 @@ class SeguimientoAveridasViewSet(viewsets.ModelViewSet):
 
         df.columns = [str(col).strip() for col in df.columns]
         col_map = {
-            'REGION':                          'region',
-            'REGIÓN':                          'region',
-            'Región':                          'region',
-            'ZONA':                            'region',
-            'Zona':                            'region',
-            'RED':                             'red',
+            'Region':                          'region',
             'Red':                             'red',
-            'PROVEEDOR':                       'proveedor',
             'Proveedor':                       'proveedor',
-            'EQUIPO':                          'equipo',
             'Equipo':                          'equipo',
-            'MODELO':                          'modelo',
             'Modelo':                          'modelo',
-            'PART NUMBER AVERIADO':            'part_number_averiado',
-            'P/N AVERIADO':                    'part_number_averiado',
             'P/N Averiado':                    'part_number_averiado',
-            'DESCRIPTION':                     'description',
-            'DESCRIPCIÓN':                     'description',
-            'Descripción':                     'description',
-            'SERIE AVERIADA':                  'serie_averiada',
-            'SERIE AVER.':                     'serie_averiada',
+            'Descripcion':                     'description',
             'Serie Aver.':                     'serie_averiada',
             'SAP':                             'sap',
-            'ENCARGADO OYM':                   'encargado_oym',
             'Encargado OyM':                   'encargado_oym',
-            'ING. ALMACÉN':                    'ingresado_almacen',
-            'Ing. Almacén':                    'ingresado_almacen',
-            'INGRESO ALMACÉN':                 'ingresado_almacen',
-            'INGRESADO AL ALMACEN CD VES':     'ingresado_almacen',
-            'ACTA INGRESO':                    'acta_ingreso',
+            'Ing. Almacen':                    'ingresado_almacen',
             'Acta Ingreso':                    'acta_ingreso',
-            'ACTA DE INGRESO':                 'acta_ingreso',
-            'STATUS':                          'status',
             'Status':                          'status',
-            'INCIDENCIA':                      'incidencia_oym',
             'Incidencia':                      'incidencia_oym',
-            'INCIDENCIA OYM':                  'incidencia_oym',
-            'F. CAMBIO':                       'fecha_cambio_retiro',
             'F. Cambio':                       'fecha_cambio_retiro',
-            'FECHA DE CAMBIO/RETIRO':          'fecha_cambio_retiro',
-            'F. CORREO OYM':                   'fecha_correo_oym',
             'F. Correo OyM':                   'fecha_correo_oym',
-            'FECHA CORREO OYM':                'fecha_correo_oym',
-            'F. CORREO PROV':                  'fecha_correo_proveedor',
             'F. Correo Prov':                  'fecha_correo_proveedor',
-            'FECHA CORREO/RECOJO PROVEEDOR':   'fecha_correo_proveedor',
             'RMA':                             'rma',
-            'TICKET':                          'ticket',
             'Ticket':                          'ticket',
-            'COSTO US$':                       'costo_usd',
-            'SERIE PROVEEDOR':                 'serie_proveedor',
             'Serie Proveedor':                 'serie_proveedor',
-            'MODALIDAD ENTREGA':               'modalidad_entrega',
             'Modalidad Entrega':               'modalidad_entrega',
         }
 
@@ -1220,7 +1227,7 @@ class ImportSpareXLSXView(APIView):
                     motivo_asignacion =safe_str(g('Motivo Asignacion','motivo_asignacion')),
                     orden_compra      =safe_str(g('Orden Compra','orden_compra')),
                     procedencia       =safe_str(g('Procedencia','procedencia')),
-                    pedido_traslado   =safe_str(g('Pedido de Traslado','pedido_traslado')),
+                    numero_pedido   =safe_str(g('Numero Pedido','numero_pedido')),
                     comentario        =safe_str(g('Comentario','comentario')),
                     precio            =safe_dec(g('Precio','precio')),
                 )

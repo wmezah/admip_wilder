@@ -399,7 +399,7 @@ function ViewSeguimientoModal({ item, onClose, onEdit }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 const COLS_ASIGNADO = [
   { key:'red',              label:'Red',               default:true,  dropdown:['ACCESO','IPRAN','CORE','METRO','PRONATEL'] },
-  { key:'proveedor',        label:'Proveedor',          default:true,  dropdown:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON'] },
+  { key:'proveedor',        label:'Proveedor',          default:true,  dropdown:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },
   { key:'sap',              label:'SAP',                default:true  },
   { key:'descripcion',      label:'Descripcion',        default:true  },
   { key:'cantidad_serie',   label:'N Serie',            default:true  },
@@ -439,7 +439,7 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup }) {
       setSapLoading(true)
       try {
         const result = await onSapLookup(v.trim())
-        if (result) setForm(f => ({ ...f, proveedor: result.proveedor||f.proveedor, descripcion: result.descripcion||f.descripcion }))
+        if (result) setForm(f => ({ ...f, proveedor: result.proveedor||f.proveedor, descripcion: result.descripcion||f.descripcion, ...(result.numero_pedido ? { numero_pedido: result.numero_pedido } : {}) }))
       } finally { setSapLoading(false) }
     }, 500)
   }
@@ -811,8 +811,7 @@ function TabAsignado() {
 
   const MODAL_FIELDS = [
     { key:'red',              label:'Red',              options:['IPRAN','ACCESO','METRO','CORE','PRONATEL'] },
-    { key:'proveedor',        label:'Proveedor' },
-    { key:'sap',              label:'SAP' },
+    { key:'proveedor',        label:'Proveedor',        options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },    { key:'sap',              label:'SAP' },
     { key:'descripcion',      label:'Descripción',      span:true },
     { key:'cantidad_serie',   label:'Cantidad/Serie' },
     { key:'lote',             label:'Lote',             options:['VALORADO','NOVALORADO'] },
@@ -1266,7 +1265,7 @@ function ViewUpgradeModal({ item, onClose, onEdit }) {
 const COLS_UPGRADES = [
   { key:'region',           label:'Región',           default:true,  dropdown:['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR'] },
   { key:'zona',             label:'Zona',             default:true  },
-  { key:'proveedor',        label:'Proveedor',        default:true,  dropdown:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON'] },
+  { key:'proveedor',        label:'Proveedor',        default:true,  dropdown:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },
   { key:'part_number',      label:'Modelo de Equipo', default:true  },
   { key:'sap',              label:'SAP',              default:true  },
   { key:'descripcion',      label:'Descripción',      default:true  },
@@ -1455,7 +1454,7 @@ function TabUpgrades() {
   const MODAL_FIELDS = [
     { key:'region',           label:'Región',          options:['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR'] },
     { key:'zona',             label:'Zona' },
-    { key:'proveedor',        label:'Proveedor',        options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON'] },
+    { key:'proveedor',        label:'Proveedor',        options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },
     { key:'part_number',      label:'Modelo de Equipo' },
     { key:'sap',              label:'SAP' },
     { key:'descripcion',      label:'Descripción',    span:true },

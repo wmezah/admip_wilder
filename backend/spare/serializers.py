@@ -29,7 +29,7 @@ class SpareListSerializer(serializers.ModelSerializer):
             'id', 'sap', 'part_number', 'tipo', 'modelo', 'proveedor', 'descripcion',
             'serial_number', 'orden_compra', 'centro', 'almacen', 'zona',
             'fecha_ingreso', 'fecha_asignacion', 'valor_lote', 'motivo_asignacion',
-            'procedencia', 'pedido_traslado', 'comentario', 'precio', 'estatus',
+            'procedencia', 'numero_pedido', 'comentario', 'precio', 'estatus',
         ]
 
 

@@ -13,17 +13,17 @@ const C = {
 }
 
 const RMA_IMPORT_COLS = [
-  { key:'region',                 label:'Región' },
+  { key:'region',                 label:'Region' },
   { key:'red',                    label:'Red' },
   { key:'proveedor',              label:'Proveedor' },
   { key:'equipo',                 label:'Equipo' },
   { key:'modelo',                 label:'Modelo' },
   { key:'part_number_averiado',   label:'P/N Averiado' },
-  { key:'description',            label:'Descripción' },
+  { key:'description',            label:'Descripcion' },
   { key:'serie_averiada',         label:'Serie Aver.' },
   { key:'sap',                    label:'SAP' },
   { key:'encargado_oym',          label:'Encargado OyM' },
-  { key:'ingresado_almacen',      label:'Ing. Almacén' },
+  { key:'ingresado_almacen',      label:'Ing. Almacen' },
   { key:'acta_ingreso',           label:'Acta Ingreso' },
   { key:'status',                 label:'Status' },
   { key:'incidencia_oym',         label:'Incidencia' },
@@ -489,23 +489,23 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
 // ═══════════════════════════════════════════════════════════════════════════════
 const ZONA_OPTS    = ['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR']
 const RED_OPTS     = ['ACCESO','IPRAN','CORE','METRO','PRONATEL']
-const PROV_OPTS    = ['HUAWEI','ZTE','NOKIA','CISCO','INFINERA']
+const PROV_OPTS    = ['HUAWEI','ZTE','NOKIA','CISCO','INFINERA','BMP/SYMMETRICOM','ERICSSON','ALCATEL']
 const ALMACEN_OPTS = ['Pendiente','P008/G000','P008/G001','P008/D000','P008/U000']
 const STATUS_OPTS  = ['Informar a PROVEEDOR','Solicitar BAJA','Pendiente PROVEEDOR','Pendiente de cambio','En traslado','Pendiente OYM','Proceso COMPLETADO']
 const ACTA_OPTS    = ['GENERADA','NO GENERADA','NO REQUIERE']
 
 const COLS_AVERIADAS = [
-  { key:'region',                 label:'Región',          default:true,  dropdown: ZONA_OPTS    },
+  { key:'region',                 label:'Region',          default:true,  dropdown: ZONA_OPTS    },
   { key:'red',                    label:'Red',             default:true,  dropdown: RED_OPTS     },
   { key:'proveedor',              label:'Proveedor',       default:true,  dropdown: PROV_OPTS    },
   { key:'equipo',                 label:'Equipo',          default:true  },
   { key:'modelo',                 label:'Modelo',          default:true  },
   { key:'part_number_averiado',   label:'P/N Averiado',    default:true  },
-  { key:'description',            label:'Descripción',     default:true  },
+  { key:'description',            label:'Descripcion',     default:true  },
   { key:'serie_averiada',         label:'Serie Aver.',     default:true  },
   { key:'sap',                    label:'SAP',             default:true  },
   { key:'encargado_oym',          label:'Encargado OyM',   default:true  },
-  { key:'ingresado_almacen',      label:'Ing. Almacén',    default:false, dropdown: ALMACEN_OPTS },
+  { key:'ingresado_almacen',      label:'Ing. Almacen',    default:false, dropdown: ALMACEN_OPTS },
   { key:'acta_ingreso',           label:'Acta Ingreso',    default:false, dropdown: ACTA_OPTS    },
   { key:'status',                 label:'Status',          default:true,  dropdown: STATUS_OPTS  },
   { key:'incidencia_oym',         label:'Incidencia',      default:false },
@@ -644,6 +644,15 @@ export default function RMAPage() {
   }, [])
 
   const [colF,   setColF]   = useState({})
+  const [filtroFechaCambio,    setFiltroFechaCambio]    = useState('')
+  const [fechaCambioDesde,     setFechaCambioDesde]     = useState('')
+  const [fechaCambioHasta,     setFechaCambioHasta]     = useState('')
+  const [filtroFechaOym,       setFiltroFechaOym]       = useState('')
+  const [fechaOymDesde,        setFechaOymDesde]        = useState('')
+  const [fechaOymHasta,        setFechaOymHasta]        = useState('')
+  const [filtroFechaProv,      setFiltroFechaProv]      = useState('')
+  const [fechaProvDesde,       setFechaProvDesde]       = useState('')
+  const [fechaProvHasta,       setFechaProvHasta]       = useState('')
   const [showUpload, setShowUpload] = useState(false)
   const [showModal,  setShowModal]  = useState(false)
   const [editItem,   setEditItem]   = useState(null)
@@ -681,15 +690,55 @@ export default function RMAPage() {
         || (fStatus === '_enProceso' ? EN_PROCESO_STATUSES.includes(r.status) : false)
         || (fStatus === '_requieren' ? REQUIEREN_STATUSES.includes(r.status) : false)
         || (fStatus !== '_enProceso' && fStatus !== '_requieren' && r.status === fStatus)
-      return mQ && matchStatus && mC
-    })
-  },[data,dQ,fStatus,colF])
 
-  const hasFilter = !!(fStatus||query||Object.values(colF).some(Boolean))
+      const getRangoDate = (tipo, desde, hasta) => {
+        const hoy = new Date(); hoy.setHours(0,0,0,0)
+        const fmt = d => d.toISOString().substring(0,10)
+        if (tipo==='hoy') return { d:fmt(hoy), h:fmt(hoy) }
+        if (tipo==='semana') { const l=new Date(hoy); l.setDate(hoy.getDate()-hoy.getDay()+1); return { d:fmt(l), h:fmt(hoy) } }
+        if (tipo==='mes') return { d:`${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}-01`, h:fmt(hoy) }
+        return { d: desde, h: hasta }
+      }
+      const matchFechaCambio = (() => { const {d,h} = getRangoDate(filtroFechaCambio,fechaCambioDesde,fechaCambioHasta); if (!d&&!h) return true; const fa=String(r.fecha_cambio_retiro||'').substring(0,10); return fa>=(d||'')&&fa<=(h||'9999') })()
+      const matchFechaOym    = (() => { const {d,h} = getRangoDate(filtroFechaOym,fechaOymDesde,fechaOymHasta); if (!d&&!h) return true; const fa=String(r.fecha_correo_oym||'').substring(0,10); return fa>=(d||'')&&fa<=(h||'9999') })()
+      const matchFechaProv   = (() => { const {d,h} = getRangoDate(filtroFechaProv,fechaProvDesde,fechaProvHasta); if (!d&&!h) return true; const fa=String(r.fecha_correo_proveedor||'').substring(0,10); return fa>=(d||'')&&fa<=(h||'9999') })()
+
+      return mQ && matchStatus && mC && matchFechaCambio && matchFechaOym && matchFechaProv
+    })
+  },[data,dQ,fStatus,colF,filtroFechaCambio,fechaCambioDesde,fechaCambioHasta,filtroFechaOym,fechaOymDesde,fechaOymHasta,filtroFechaProv,fechaProvDesde,fechaProvHasta])
+
+  const hasFilter = !!(fStatus||query||Object.values(colF).some(Boolean)||filtroFechaCambio||filtroFechaOym||filtroFechaProv)
 
   const pages = Math.ceil(filtered.length/PER_PAGE)
   const shown  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE)
   const activeCols = COLS_AVERIADAS.filter(c=>visibleCols.includes(c.key))
+
+  const dateFilterUI = (key, filtro, setFiltro, desde, setDesde, hasta, setHasta) => {
+    const active = !!filtro || !!desde || !!hasta
+    const base = { width:'100%', borderRadius:5, fontSize:11, padding:'4px 7px', outline:'none',
+      boxSizing:'border-box', fontFamily:'inherit', transition:'border-color .15s',
+      border:`1px solid ${active?'#6babf5':'#d1d5db'}`,
+      background: active ? '#e7f3ff' : '#fff',
+      boxShadow: active ? '0 0 0 2px #cce0ff' : 'none' }
+    return (
+      <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+        <select value={filtro} onChange={e=>{ setFiltro(e.target.value); setDesde(''); setHasta(''); setPage(1) }} style={base}>
+          <option value=''>Todos</option>
+          <option value='hoy'>Hoy</option>
+          <option value='semana'>Esta semana</option>
+          <option value='mes'>Este mes</option>
+          <option value='personalizado'>Personalizado</option>
+        </select>
+        {filtro === 'personalizado' && (
+          <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+            <input type="date" value={desde} onChange={e=>{ setDesde(e.target.value); setPage(1) }} style={{ ...base, fontSize:10, padding:'3px 5px' }}/>
+            <span style={{ fontSize:9, color:'#9ca3af' }}>→</span>
+            <input type="date" value={hasta} onChange={e=>{ setHasta(e.target.value); setPage(1) }} style={{ ...base, fontSize:10, padding:'3px 5px', border:`1px solid ${hasta?'#6babf5':'#d1d5db'}`, background:hasta?'#e7f3ff':'#fff' }}/>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   const filterRow = (
     <tr style={{ background:'#fafafa', borderBottom:'2px solid #e5e7eb' }}>
@@ -703,7 +752,10 @@ export default function RMAPage() {
           boxShadow: active ? '0 0 0 2px #cce0ff' : 'none' }
         return (
           <td key={col.key} style={{ padding:'3px 6px' }}>
-            {col.dropdown ? (
+            {col.key === 'fecha_cambio_retiro' ? dateFilterUI(col.key, filtroFechaCambio, setFiltroFechaCambio, fechaCambioDesde, setFechaCambioDesde, fechaCambioHasta, setFechaCambioHasta)
+            : col.key === 'fecha_correo_oym'   ? dateFilterUI(col.key, filtroFechaOym,    setFiltroFechaOym,    fechaOymDesde,    setFechaOymDesde,    fechaOymHasta,    setFechaOymHasta)
+            : col.key === 'fecha_correo_proveedor' ? dateFilterUI(col.key, filtroFechaProv, setFiltroFechaProv, fechaProvDesde, setFechaProvDesde, fechaProvHasta, setFechaProvHasta)
+            : col.dropdown ? (
               <select value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }} style={base}>
                 <option value=''>Todos</option>
                 {col.dropdown.map(o => <option key={o} value={o}>{o}</option>)}
@@ -716,8 +768,8 @@ export default function RMAPage() {
         )
       })}
       <td style={{ padding:'3px 6px' }}>
-        {Object.values(colF).some(Boolean) && (
-          <button onClick={()=>setColF({})}
+        {(Object.values(colF).some(Boolean)||filtroFechaCambio||filtroFechaOym||filtroFechaProv) && (
+          <button onClick={()=>{ setColF({}); setFiltroFechaCambio(''); setFiltroFechaOym(''); setFiltroFechaProv('') }}
             style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:4,
               padding:'3px 8px', fontSize:10, color:'#dc2626', cursor:'pointer' }}>✕</button>
         )}
@@ -757,7 +809,7 @@ export default function RMAPage() {
   }
 
   const MODAL_FIELDS = [
-    { key:'region',                 label:'Zona',           options:ZONA_OPTS },
+    { key:'region',                 label:'Region',         options:ZONA_OPTS },
     { key:'red',                    label:'Red',            options:RED_OPTS },
     { key:'proveedor',              label:'Proveedor',      options:PROV_OPTS },
     { key:'equipo',                 label:'Equipo' },
@@ -954,7 +1006,7 @@ export default function RMAPage() {
                 return (
                   <div key={prov} onClick={()=>{ setColF(p=>({...p, proveedor: colF.proveedor===prov?'':prov })); setPage(1) }}
                     style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
-                    <span style={{ fontSize:10, fontWeight:700, color:col, minWidth:60 }}>{prov}</span>
+                    <span style={{ fontSize:10, fontWeight:700, color:col, width:110, flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prov}</span>
                     <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:8 }}>
                       <div style={{ width:`${(cnt/dash.maxProv)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
                     </div>
@@ -1007,8 +1059,8 @@ export default function RMAPage() {
       {showUpload && (
         <ImportPanel api={API_AVERIADAS} onDone={(close=true)=>{ load(); if(close) setShowUpload(false) }}
           plantillaName="seguimiento_averiadas"
-          plantillaCols={['Región','Red','Proveedor','Equipo','Modelo','P/N Averiado',
-            'Descripción','Serie Aver.','SAP','Encargado OyM','Ing. Almacén',
+          plantillaCols={['Region','Red','Proveedor','Equipo','Modelo','P/N Averiado',
+            'Descripcion','Serie Aver.','SAP','Encargado OyM','Ing. Almacen',
             'Acta Ingreso','Status','Incidencia','F. Cambio',
             'F. Correo OyM','F. Correo Prov','RMA','Ticket','Serie Proveedor','Modalidad Entrega']} />
       )}

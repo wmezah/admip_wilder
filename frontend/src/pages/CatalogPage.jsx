@@ -312,6 +312,12 @@ function CatalogNewModal({ title, fields, onSave, onClose }) {
                     setForm(v => ({...v, precio: isNaN(num) ? '' : String(num), _precioRaw: ''}))
                   }}
                 />
+              ) : f.options ? (
+                <select className="input" value={form[f.key] || ''}
+                  onChange={e => setForm(v => ({...v, [f.key]: e.target.value}))}>
+                  <option value=''>—</option>
+                  {f.options.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
               ) : (
                 <input className="input" placeholder={f.placeholder || f.label}
                   value={form[f.key] || ''}
@@ -869,7 +875,7 @@ function PartNumbersTab() {
   }
 
   const COLS = [
-    { key:'proveedor',     label:'Proveedor' },
+    { key:'proveedor',     label:'Proveedor',       options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },
     { key:'modelo_equipo', label:'Modelo de Equipo' },
     { key:'tipo',          label:'Tipo' },
     { key:'sap',           label:'SAP' },
@@ -1088,7 +1094,7 @@ function PartNumbersTab() {
         <CatalogNewModal
           title="Nuevo — Código SAP IP"
           fields={[
-            { key:'proveedor',     label:'Proveedor',       required:true  },
+            { key:'proveedor',     label:'Proveedor',       required:true,  options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },
             { key:'modelo_equipo', label:'Modelo de Equipo',required:false },
             { key:'tipo',          label:'Tipo',            required:false },
             { key:'sap',           label:'SAP',             required:false },
@@ -1151,7 +1157,7 @@ function PartNumbersTab() {
                       {col.key==='proveedor' ? (
                         <select value={val} onChange={e=>{ setColF(p=>({...p,proveedor:e.target.value})); setPage(1) }} style={base}>
                           <option value=''>Todos</option>
-                          {['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','ALCATEL'].map(o=><option key={o} value={o}>{o}</option>)}
+                          {['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'].map(o=><option key={o} value={o}>{o}</option>)}
                         </select>
                       ) : col.key==='tipo' ? (
                         <select value={val} onChange={e=>{ setColF(p=>({...p,tipo:e.target.value})); setPage(1) }} style={base}>
@@ -1256,7 +1262,7 @@ function PartNumbersTab() {
         <BulkImportModal
           title="Código SAP IP"
           columns={[
-            {key:'proveedor',     label:'Proveedor',        required:true},
+            {key:'proveedor',     label:'Proveedor',        required:true, options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL']},
             {key:'modelo_equipo', label:'Modelo de Equipo', required:false},
             {key:'tipo',          label:'Tipo',             required:false},
             {key:'sap',           label:'SAP',              required:false},
@@ -1501,7 +1507,7 @@ function EditPartNumberModal({ item, onClose, onSaved }) {
             {[
               { key:'sap',           label:'SAP' },
               { key:'part_number',   label:'Part Number' },
-              { key:'proveedor',     label:'Proveedor' },
+              { key:'proveedor',     label:'Proveedor',       options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },
               { key:'modelo_equipo', label:'Modelo de Equipo' },
               { key:'tipo',          label:'Tipo' },
             ].map(f => (
