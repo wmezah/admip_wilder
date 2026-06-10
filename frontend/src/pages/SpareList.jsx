@@ -1041,7 +1041,11 @@ function TabControlInventario() {
   const [importMsg, setImportMsg] = useState(null)
   const fileRef = useRef()
   const token = localStorage.getItem('access_token')
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [userRole, setUserRole] = useState('viewer')
+  const isAdmin    = userRole === 'admin'
+  const isOperator = userRole === 'operator'
+  const canDelete  = userRole === 'admin' || userRole === 'operator'
+  const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
   const [confirmClear, setConfirmClear] = useState(false)
 
   useEffect(() => {
@@ -1052,7 +1056,7 @@ function TabControlInventario() {
         const username = localStorage.getItem('username')
         const users = Array.isArray(data) ? data : (data.results || [])
         const me = users.find(u => u.username === username)
-        if (me?.role === 'admin') setIsAdmin(true)
+        if (me?.role) setUserRole(me.role)
       })
       .catch(() => {})
   }, [token])
@@ -1719,11 +1723,11 @@ function TabControlInventario() {
               <X size={12}/> Limpiar filtros
             </button>
           )}
-          {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
             onClick={()=>setShowImportModal(true)}>
             <Upload size={14}/> Importar XLSX
           </button>}
-          {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
             onClick={exportXLSX}>
             <Download size={14}/>
             {(hasColFilters || search)
@@ -1745,10 +1749,10 @@ function TabControlInventario() {
           </button>
           )}
           <ColumnSelector visibleCols={visibleCols} onChange={setVisibleCols} allCols={CONTROL_COLS} />
-          <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          {canEdit && <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
             onClick={()=>setShowNew(true)}>
             <Plus size={14}/> Nuevo
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -1978,11 +1982,11 @@ function TabControlInventario() {
                           color:'#1877f2', padding:4, borderRadius:6 }}>
                         <Edit2 size={13}/>
                       </button>
-                      <button onClick={()=>handleDelete(row.id)}
+                      {canDelete && <button onClick={()=>handleDelete(row.id)}
                         style={{ background:'none', border:'none', cursor:'pointer',
                           color:'#dc2626', padding:4, borderRadius:6 }}>
                         <Trash2 size={13}/>
-                      </button>
+                      </button>}
                     </div>
                   </td>
                 </tr>

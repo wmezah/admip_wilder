@@ -350,7 +350,7 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
     'P008/G000': ['Informar a PROVEEDOR'],
     'P008/D000': ['Informar a PROVEEDOR', 'Solicitar BAJA'],
     'P008/G001': ['Pendiente PROVEEDOR'],
-    'Pendiente': ['Pendiente de cambio', 'En traslado', 'Pendiente OYM'],
+    'Pendiente': ['Pendiente de cambio', 'En traslado', 'Pendiente OYM', 'Extraviado OYM'],
     'P008/U000': ['Proceso COMPLETADO'],
   }
 
@@ -384,7 +384,6 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
             part_number:          result.part_number           || f.part_number,
             descripcion:          result.descripcion           || f.descripcion,
             description:          result.descripcion           || f.description,
-            equipo:               result.modelo_equipo         || f.equipo,
             modelo:               result.modelo_equipo         || f.modelo,
             part_number_averiado: result.part_number           || f.part_number_averiado,
           }))
@@ -393,7 +392,20 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
     }, 500)
   }
 
+  const [errors, setErrors] = useState({})
+
+  const validate = () => {
+    const e = {}
+    if (!item?.id) {
+      const hasAnyValue = Object.values(form).some(v => v !== '' && v !== null && v !== undefined)
+      if (!hasAnyValue) e._general = 'Completa al menos un campo antes de guardar.'
+    }
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
   const save = async () => {
+    if (!validate()) return
     setSaving(true)
     try {
       const token  = getToken()
@@ -410,7 +422,6 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
         body: JSON.stringify(payload)
       })
       const text = await r.text()
-      console.log('Backend response:', r.status, text)
       const data = text ? JSON.parse(text) : {}
       if (!r.ok) throw new Error(JSON.stringify(data))
       onSave()
@@ -474,11 +485,17 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
             </div>
           ))}
         </div>
-        <div style={{ padding:'0 24px 20px', display:'flex', justifyContent:'flex-end', gap:10 }}>
-          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={save} disabled={saving}>
-            {saving ? 'Guardando...' : 'Guardar'}
-          </button>
+        <div style={{ padding:'0 24px 20px' }}>
+          {errors._general && (
+            <p style={{ fontSize:12, color:'#dc2626', background:'#fef2f2', border:'1px solid #fecaca',
+              borderRadius:6, padding:'8px 12px', marginBottom:10 }}>{errors._general}</p>
+          )}
+          <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+            <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+            <button className="btn-primary" onClick={save} disabled={saving}>
+              {saving ? 'Guardando...' : 'Guardar'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -488,10 +505,10 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup, withC
 // PESTAÑA 2 — Seguimiento Piezas Averiadas
 // ═══════════════════════════════════════════════════════════════════════════════
 const ZONA_OPTS    = ['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR']
-const RED_OPTS     = ['ACCESO','IPRAN','CORE','METRO','PRONATEL']
+const RED_OPTS     = ['ACCESO','IPRAN','CORE','METRO','PRONATEL', 'SINCRONISMO' ]
 const PROV_OPTS    = ['HUAWEI','ZTE','NOKIA','CISCO','INFINERA','BMP/SYMMETRICOM','ERICSSON','ALCATEL']
 const ALMACEN_OPTS = ['Pendiente','P008/G000','P008/G001','P008/D000','P008/U000']
-const STATUS_OPTS  = ['Informar a PROVEEDOR','Solicitar BAJA','Pendiente PROVEEDOR','Pendiente de cambio','En traslado','Pendiente OYM','Proceso COMPLETADO']
+const STATUS_OPTS  = ['Informar a PROVEEDOR','Solicitar BAJA','Pendiente PROVEEDOR','Pendiente de cambio','En traslado','Pendiente OYM','Extraviado OYM','Proceso COMPLETADO']
 const ACTA_OPTS    = ['GENERADA','NO GENERADA','NO REQUIERE']
 
 const COLS_AVERIADAS = [
@@ -553,7 +570,7 @@ function RedBadge({ red }) {
 }
 
 // ── ViewRMAModal ──────────────────────────────────────────────────────────────
-function ViewRMAModal({ item, onClose, onEdit }) {
+function ViewRMAModal({ item, onClose, onEdit, canEdit }) {
   const SECTIONS = [
     { title:'Identificación', color:'#dc2626', fields:[
       ['SAP', item.sap], ['Equipo', item.equipo], ['Modelo', item.modelo],
@@ -593,8 +610,8 @@ function ViewRMAModal({ item, onClose, onEdit }) {
             </p>
           </div>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            <button onClick={onEdit} style={{ fontSize:12, padding:'5px 12px', borderRadius:8,
-              background:'#fef2f2', color:'#dc2626', border:'1px solid #fecaca', cursor:'pointer', fontWeight:600 }}>✏️ Editar</button>
+            {canEdit && <button onClick={onEdit} style={{ fontSize:12, padding:'5px 12px', borderRadius:8,
+              background:'#fef2f2', color:'#dc2626', border:'1px solid #fecaca', cursor:'pointer', fontWeight:600 }}>✏️ Editar</button>}
             <button onClick={onClose} style={{ background:'#f3f4f6', border:'none', borderRadius:8,
               width:30, height:30, cursor:'pointer', fontSize:18, color:'#374151',
               display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
@@ -624,13 +641,41 @@ function ViewRMAModal({ item, onClose, onEdit }) {
   )
 }
 
+const MODAL_FIELDS = [
+  { key:'region',                 label:'Region',         options:ZONA_OPTS },
+  { key:'red',                    label:'Red',            options:RED_OPTS },
+  { key:'proveedor',              label:'Proveedor',      options:PROV_OPTS },
+  { key:'equipo',                 label:'Equipo' },
+  { key:'modelo',                 label:'Modelo' },
+  { key:'part_number_averiado',   label:'Part Number Averiado' },
+  { key:'description',            label:'Descripción',    span:true },
+  { key:'serie_averiada',         label:'Serie Averiada' },
+  { key:'sap',                    label:'SAP' },
+  { key:'encargado_oym',          label:'Encargado OyM' },
+  { key:'ingresado_almacen',      label:'Ingreso Almacén',options:ALMACEN_OPTS },
+  { key:'acta_ingreso',           label:'Acta Ingreso',   options:ACTA_OPTS },
+  { key:'status',                 label:'Status',         options:STATUS_OPTS },
+  { key:'incidencia_oym',         label:'Incidencia OyM' },
+  { key:'fecha_cambio_retiro',    label:'Fecha Cambio',   type:'date' },
+  { key:'fecha_correo_oym',       label:'Fecha Correo OyM', type:'date' },
+  { key:'fecha_correo_proveedor', label:'Fecha Correo Prov', type:'date' },
+  { key:'rma',                    label:'RMA' },
+  { key:'ticket',                 label:'Ticket' },
+  { key:'serie_proveedor',        label:'Serie Proveedor' },
+  { key:'modalidad_entrega',      label:'Modalidad Entrega' },
+]
+
 export default function RMAPage() {
   const [data,   setData]   = useState([])
   const [loading,setLoading]= useState(true)
   const [query,  setQuery]  = useState('')
   const [dQ,     setDQ]     = useState('')
   const [fStatus,setFS]     = useState('')
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [userRole, setUserRole] = useState('viewer')
+  const isAdmin    = userRole === 'admin'
+  const isOperator = userRole === 'operator'
+  const canDelete  = userRole === 'admin' || userRole === 'operator'
+  const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
@@ -639,7 +684,7 @@ export default function RMAPage() {
         const username = localStorage.getItem('username')
         const users = Array.isArray(data) ? data : (data.results || [])
         const me = users.find(u => u.username === username)
-        if (me?.role === 'admin') setIsAdmin(true)
+        if (me?.role) setUserRole(me.role)
       }).catch(() => {})
   }, [])
 
@@ -654,8 +699,7 @@ export default function RMAPage() {
   const [fechaProvDesde,       setFechaProvDesde]       = useState('')
   const [fechaProvHasta,       setFechaProvHasta]       = useState('')
   const [showUpload, setShowUpload] = useState(false)
-  const [showModal,  setShowModal]  = useState(false)
-  const [editItem,   setEditItem]   = useState(null)
+  const [modalItem,  setModalItem]  = useState(null)  // null=cerrado, {}=nuevo, {...item}=editar
   const [viewItem,   setViewItem]   = useState(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_AVERIADAS.filter(c=>c.default).map(c=>c.key))
@@ -683,13 +727,10 @@ export default function RMAPage() {
       const mQ = !q||[r.red,r.proveedor,r.equipo,r.sap,r.serie_averiada,r.rma,r.ticket,r.status]
         .some(v=>String(v||'').toLowerCase().includes(q))
       const EXACT=['region','red','proveedor','status','ingresado_almacen','acta_ingreso','status_folio','lote','estado']; const mC = Object.entries(colF).every(([k,v])=>!v||(EXACT.includes(k)?String(r[k]||'').toLowerCase()===v.toLowerCase():String(r[k]||'').toLowerCase().includes(v.toLowerCase())))
-      const EN_PROCESO_STATUSES = ['Pieza ubicada/En traslado a CD VES','PROVEEDOR recogió averiado']
-      const REQUIEREN_STATUSES  = ['Se envió correo a OYM para devolución','Enviar correo a PROVEEDOR',
-        'Solicitar BAJA SISTEMA','Se envió correo a OYM para devolución, Pendiente de cambio']
       const matchStatus = !fStatus
-        || (fStatus === '_enProceso' ? EN_PROCESO_STATUSES.includes(r.status) : false)
-        || (fStatus === '_requieren' ? REQUIEREN_STATUSES.includes(r.status) : false)
-        || (fStatus !== '_enProceso' && fStatus !== '_requieren' && r.status === fStatus)
+        || (fStatus === '_correoOYM' ? ['Pendiente OYM','Extraviado por OYM'].includes(r.status) : false)
+        || (fStatus === '_correoP'   ? ['Informar a PROVEEDOR','Pendiente PROVEEDOR'].includes(r.status) : false)
+        || (!['_correoOYM','_correoP'].includes(fStatus) && r.status === fStatus)
 
       const getRangoDate = (tipo, desde, hasta) => {
         const hoy = new Date(); hoy.setHours(0,0,0,0)
@@ -808,58 +849,49 @@ export default function RMAPage() {
     } catch { return null }
   }
 
-  const MODAL_FIELDS = [
-    { key:'region',                 label:'Region',         options:ZONA_OPTS },
-    { key:'red',                    label:'Red',            options:RED_OPTS },
-    { key:'proveedor',              label:'Proveedor',      options:PROV_OPTS },
-    { key:'equipo',                 label:'Equipo' },
-    { key:'modelo',                 label:'Modelo' },
-    { key:'part_number_averiado',   label:'Part Number Averiado' },
-    { key:'description',            label:'Descripción',    span:true },
-    { key:'serie_averiada',         label:'Serie Averiada' },
-    { key:'sap',                    label:'SAP' },
-    { key:'encargado_oym',          label:'Encargado OyM' },
-    { key:'ingresado_almacen',      label:'Ingreso Almacén',options:ALMACEN_OPTS },
-    { key:'acta_ingreso',           label:'Acta Ingreso',   options:ACTA_OPTS },
-    { key:'status',                 label:'Status',         options:STATUS_OPTS },
-    { key:'incidencia_oym',         label:'Incidencia OyM' },
-    { key:'fecha_cambio_retiro',    label:'Fecha Cambio',   type:'date' },
-    { key:'fecha_correo_oym',       label:'Fecha Correo OyM', type:'date' },
-    { key:'fecha_correo_proveedor', label:'Fecha Correo Prov', type:'date' },
-    { key:'rma',                    label:'RMA' },
-    { key:'ticket',                 label:'Ticket' },
-    { key:'serie_proveedor',        label:'Serie Proveedor' },
-    { key:'modalidad_entrega',       label:'Modalidad Entrega' },
-  ]
-
   const statCounts = STATUSES.reduce((acc,s)=>{ acc[s]=filtered.filter(r=>r.status===s).length; return acc },{})
 
   // ── Dashboard pro ──────────────────────────────────────────────────────────
   const dash = useMemo(()=>{
     const src = filtered
     const total = src.length
-    const completado = src.filter(r => r.status === 'Proceso COMPLETADO').length
-    const enProceso  = src.filter(r => ['Pieza ubicada/En traslado a CD VES','PROVEEDOR recogió averiado'].includes(r.status)).length
-    const requieren  = src.filter(r => ['Se envió correo a OYM para devolución',
-      'Enviar correo a PROVEEDOR','Solicitar BAJA SISTEMA',
-      'Se envió correo a OYM para devolución, Pendiente de cambio'].includes(r.status)).length
-    // Acciones detalle
-    const correoOYM  = src.filter(r => r.status === 'Se envió correo a OYM para devolución' || r.status === 'Se envió correo a OYM para devolución, Pendiente de cambio').length
-    const correoP    = src.filter(r => r.status === 'Enviar correo a PROVEEDOR').length
-    const baja       = src.filter(r => r.status === 'Solicitar BAJA SISTEMA').length
+
+    // Conteo dinámico por status real
+    const byStatus = {}
+    src.forEach(r => {
+      const s = r.status || 'Sin status'
+      byStatus[s] = (byStatus[s] || 0) + 1
+    })
+
+    // KPIs principales — buscan el status real en los datos
+    const completado = byStatus['Proceso COMPLETADO'] || 0
+    const enProceso  = byStatus['En traslado']        || 0
+    const requieren  = byStatus['Pendiente de cambio']|| 0
+
+    // Panel "¿Qué necesita atención?" — agrupa status relacionados dinámicamente
+    const correoOYM = (byStatus['Pendiente OYM'] || 0) + (byStatus['Extraviado por OYM'] || 0)
+    const correoP   = (byStatus['Informar a PROVEEDOR'] || 0) + (byStatus['Pendiente PROVEEDOR'] || 0)
+    const baja      = byStatus['Solicitar BAJA'] || 0
+
+    // Top status (todos, ordenados) para posible uso futuro
+    const topStatus = Object.entries(byStatus).sort((a,b) => b[1]-a[1])
+
     // Por RED
     const byRed = {}
     src.forEach(r => { if(r.red) byRed[r.red]=(byRed[r.red]||0)+1 })
     const topRed = Object.entries(byRed).sort((a,b)=>b[1]-a[1])
     const maxRed = topRed[0]?.[1]||1
+
     // Por Proveedor
     const byProv = {}
     src.forEach(r => { if(r.proveedor) byProv[r.proveedor]=(byProv[r.proveedor]||0)+1 })
     const topProv = Object.entries(byProv).sort((a,b)=>b[1]-a[1])
     const maxProv = topProv[0]?.[1]||1
+
     // Proveedores para badges en Total
     const provList = topProv.slice(0,3).map(([p,c])=>({ p, c }))
-    return { total, completado, enProceso, requieren, correoOYM, correoP, baja, topRed, maxRed, topProv, maxProv, provList }
+
+    return { total, completado, enProceso, requieren, correoOYM, correoP, baja, byStatus, topStatus, topRed, maxRed, topProv, maxProv, provList }
   },[filtered])
 
   const RED_COLORS = { 'IPRAN':'#1877f2','ACCESO':'#2563eb','METRO':'#0891b2','CORE':'#dc2626','PRONATEC':'#6b7280','PRONATEC_2':'#6b7280' }
@@ -909,7 +941,7 @@ export default function RMAPage() {
               </div>
               <div>
                 <div style={{ fontSize:26, fontWeight:800, color:'#15803d', lineHeight:1, letterSpacing:'-0.5px' }}>{dash.completado}</div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>Proceso Completado</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>Proceso COMPLETADO</div>
               </div>
             </div>
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, marginBottom:3 }}><span style={{ color:'#6b7280' }}>Tasa cierre</span><span style={{ color:'#15803d', fontWeight:700 }}>{dash.total?Math.round(dash.completado/dash.total*100):0}%</span></div>
@@ -917,7 +949,7 @@ export default function RMAPage() {
           </div>
 
           {/* En Proceso */}
-          <div onClick={()=>{ setFS(fStatus==='_enProceso'?'':'_enProceso'); setPage(1) }}
+          <div onClick={()=>{ setFS(fStatus==='En traslado'?'':'En traslado'); setPage(1) }}
             style={{ background:'#fff', border:'1px solid #dde3ee', borderRadius:14, padding:'11px 13px', cursor:'pointer',
               boxShadow:'0 2px 8px rgba(0,0,0,0.06)', transition:'box-shadow .15s' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:7 }}>
@@ -926,7 +958,7 @@ export default function RMAPage() {
               </div>
               <div>
                 <div style={{ fontSize:26, fontWeight:800, color:'#2563eb', lineHeight:1, letterSpacing:'-0.5px' }}>{dash.enProceso}</div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>En Proceso</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>En traslado</div>
               </div>
             </div>
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, marginBottom:3 }}><span style={{ color:'#6b7280' }}>Del total</span><span style={{ color:'#2563eb', fontWeight:700 }}>{dash.total?Math.round(dash.enProceso/dash.total*100):0}%</span></div>
@@ -934,7 +966,7 @@ export default function RMAPage() {
           </div>
 
           {/* Requieren acción */}
-          <div onClick={()=>{ setFS(fStatus==='_requieren'?'':'_requieren'); setPage(1) }}
+          <div onClick={()=>{ setFS(fStatus==='Pendiente de cambio'?'':'Pendiente de cambio'); setPage(1) }}
             style={{ background:'#fff', border:'1.5px solid #fecaca', borderRadius:14, padding:'11px 13px',
             boxShadow:'0 2px 8px rgba(0,0,0,0.06)', cursor:'pointer', transition:'box-shadow .15s' }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:7 }}>
@@ -943,7 +975,7 @@ export default function RMAPage() {
               </div>
               <div>
                 <div style={{ fontSize:26, fontWeight:800, color:'#dc2626', lineHeight:1, letterSpacing:'-0.5px' }}>{dash.requieren}</div>
-                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>Requieren acción</div>
+                <div style={{ fontSize:11, color:'#6b7280', marginTop:3, fontWeight:500 }}>Pendiente de cambio</div>
               </div>
             </div>
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, marginBottom:3 }}><span style={{ color:'#6b7280' }}>Del total</span><span style={{ color:'#dc2626', fontWeight:700 }}>{dash.total?Math.round(dash.requieren/dash.total*100):0}%</span></div>
@@ -954,25 +986,31 @@ export default function RMAPage() {
         {/* Fila 2: Acción requerida + Por RED + Por Proveedor */}
         
         <div style={{ display:'grid', gridTemplateColumns:'1.6fr 1fr 1fr', gap:8 }}>
-          {/* ¿Qué necesita atención? */}
+          {/* ¿Qué necesita atención? — dinámico desde datos reales */}
           <div style={{ background:'#fff', borderRadius:12, padding:'12px 14px', boxShadow:'0 2px 8px rgba(0,0,0,0.06)' }}>
             <p style={{ fontSize:12, fontWeight:700, color:'#374151', margin:'0 0 10px' }}>¿Qué necesita atención ahora?</p>
             {[
-              { label:'Correo pendiente a OYM', sub:'Devolución no confirmada', v:dash.correoOYM, bg:'#fef3c7', color:'#92400e', numColor:'#ca8a04', est:'Se envió correo a OYM para devolución' },
-              { label:'Enviar correo a Proveedor', sub:'Sin contacto registrado', v:dash.correoP, bg:'#fee2e2', color:'#991b1b', numColor:'#dc2626', est:'Enviar correo a PROVEEDOR' },
-              { label:'Solicitar Baja Sistema', sub:'Trámite pendiente', v:dash.baja, bg:'#f3e8ff', color:'#6b21a8', numColor:'#9333ea', est:'Solicitar BAJA SISTEMA' },
+              { statuses:['Pendiente OYM','Extraviado por OYM'], v:dash.correoOYM, bg:'#fef3c7', color:'#92400e', numColor:'#ca8a04', est:'_correoOYM' },
+              { statuses:['Informar a PROVEEDOR','Pendiente PROVEEDOR'],  v:dash.correoP,   bg:'#fee2e2', color:'#991b1b', numColor:'#dc2626', est:'_correoP'   },
+              { statuses:['Solicitar BAJA'],                              v:dash.baja,      bg:'#f3e8ff', color:'#6b21a8', numColor:'#9333ea', est:'Solicitar BAJA' },
             ].map(a=>(
-              <div key={a.label} onClick={()=>{ setFS(fStatus===a.est?'':a.est); setPage(1) }}
+              <div key={a.est} onClick={()=>{ setFS(fStatus===a.est?'':a.est); setPage(1) }}
                 style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
                   padding:'7px 10px', borderRadius:8, marginBottom:5, cursor:'pointer',
                   background: fStatus===a.est ? a.bg.replace('f','e') : a.bg,
                   boxShadow: fStatus===a.est ? `0 0 0 2px ${a.numColor}` : 'none',
                   transition:'all .15s' }}>
-                <div>
-                  <div style={{ fontSize:11, fontWeight:500, color:a.color }}>{a.label}</div>
-                  <div style={{ fontSize:9, color:a.color, opacity:.75, marginTop:1 }}>{a.sub}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  {a.statuses.map(s => (
+                    <div key={s} style={{ fontSize:11, fontWeight:500, color:a.color,
+                      whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                      {s}{dash.byStatus[s] !== undefined && a.statuses.length > 1
+                        ? <span style={{ fontSize:9, opacity:.7, marginLeft:4 }}>({dash.byStatus[s]||0})</span>
+                        : null}
+                    </div>
+                  ))}
                 </div>
-                <div style={{ fontSize:18, fontWeight:800, color:a.numColor, letterSpacing:'-0.5px' }}>{a.v}</div>
+                <div style={{ fontSize:18, fontWeight:800, color:a.numColor, letterSpacing:'-0.5px', marginLeft:8 }}>{a.v}</div>
               </div>
             ))}
           </div>
@@ -986,7 +1024,7 @@ export default function RMAPage() {
                 return (
                   <div key={red} onClick={()=>{ setColF(p=>({...p, red: colF.red===red?'':red })); setPage(1) }}
                     style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
-                    <span style={{ fontSize:10, fontWeight:700, color:col, minWidth:60 }}>{red}</span>
+                    <span style={{ fontSize:10, fontWeight:700, color:col, minWidth:90, display:'inline-block' }}>{red}</span>
                     <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:8 }}>
                       <div style={{ width:`${(cnt/dash.maxRed)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
                     </div>
@@ -1006,7 +1044,7 @@ export default function RMAPage() {
                 return (
                   <div key={prov} onClick={()=>{ setColF(p=>({...p, proveedor: colF.proveedor===prov?'':prov })); setPage(1) }}
                     style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
-                    <span style={{ fontSize:10, fontWeight:700, color:col, width:110, flexShrink:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{prov}</span>
+                    <span style={{ fontSize:10, fontWeight:700, color:col, minWidth:120, display:'inline-block' }}>{prov}</span>
                     <div style={{ flex:1, background:'#f0f2f5', borderRadius:3, height:8 }}>
                       <div style={{ width:`${(cnt/dash.maxProv)*100}%`, height:'100%', background:col, borderRadius:3, opacity:.85 }}/>
                     </div>
@@ -1034,9 +1072,9 @@ export default function RMAPage() {
             ✕ Limpiar filtros
           </button>
         )}
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>}
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={exportXLSX}><Download size={14}/>
           {hasFilter ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
         </button>}
@@ -1050,10 +1088,10 @@ export default function RMAPage() {
           <Trash2 size={14}/> Limpiar todo
         </button>}
         <ColumnSelector allCols={COLS_AVERIADAS} visibleCols={visibleCols} onChange={setVisibleCols} />
-        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={()=>{ setEditItem(null); setShowModal(true) }}>
+        {canEdit && <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setModalItem({ _api: API_AVERIADAS })}>
           <Plus size={14}/> Nuevo
-        </button>
+        </button>}
       </div>
 
       {showUpload && (
@@ -1112,10 +1150,10 @@ export default function RMAPage() {
                     return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
                   })}
                   <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
-                      onClick={()=>{ setEditItem({...row,_api:API_AVERIADAS}); setShowModal(true) }}>✏️</button>
-                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
-                      onClick={()=>del(row.id)}>🗑</button>
+                    {canEdit && <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
+                      onClick={()=>setModalItem({...row,_api:API_AVERIADAS})}>✏️</button>}
+                    {canDelete && <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
+                      onClick={()=>del(row.id)}>🗑</button>}
                   </td>
                 </tr>
               ))}
@@ -1140,13 +1178,14 @@ export default function RMAPage() {
         )}
       </div>
 
-      {showModal && (
+      {modalItem && (
         <GenericModal
-          title={editItem?.id ? 'Editar Pieza Averiada' : 'Nueva Pieza Averiada'}
+          key={modalItem?.id || 'new-averiada'}
+          title={modalItem?.id ? 'Editar Pieza Averiada' : 'Nueva Pieza Averiada'}
           fields={MODAL_FIELDS}
-          item={editItem ? editItem : { _api: API_AVERIADAS }}
-          onClose={()=>setShowModal(false)}
-          onSave={()=>{ load(); setShowModal(false) }}
+          item={modalItem}
+          onClose={()=>setModalItem(null)}
+          onSave={()=>{ load(); setModalItem(null) }}
           onSapLookup={sapLookup}
         />
       )}
@@ -1157,7 +1196,8 @@ export default function RMAPage() {
       {viewItem && createPortal(
         <ViewRMAModal item={viewItem}
           onClose={()=>setViewItem(null)}
-          onEdit={()=>{ setEditItem({...viewItem, _api:API_AVERIADAS}); setShowModal(true); setViewItem(null) }} />,
+          canEdit={canEdit}
+          onEdit={()=>{ setModalItem({...viewItem, _api:API_AVERIADAS}); setViewItem(null) }} />,
         document.body
       )}
     </div>

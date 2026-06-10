@@ -346,7 +346,11 @@ function CatalogNewModal({ title, fields, onSave, onClose }) {
 
 // ── SAP Tab ───────────────────────────────────────────────────────────────────
 function SAPTab() {
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [userRole, setUserRole] = useState('viewer')
+  const isAdmin    = userRole === 'admin'
+  const isOperator = userRole === 'operator'
+  const canDelete  = userRole === 'admin' || userRole === 'operator'
+  const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
@@ -355,7 +359,7 @@ function SAPTab() {
         const username = localStorage.getItem('username')
         const users = Array.isArray(data) ? data : (data.results || [])
         const me = users.find(u => u.username === username)
-        if (me?.role === 'admin') setIsAdmin(true)
+        if (me?.role) setUserRole(me.role)
       }).catch(() => {})
   }, [])
 
@@ -452,7 +456,7 @@ function SAPTab() {
             value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
         </div>
         <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>{count.toLocaleString()} registros</span>
-        {isAdmin && <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
+        {canDelete && <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
           <Upload size={14}/> {importing ? 'Importando…' : 'Importar Excel SAP'}
           <input type="file" accept=".xlsx,.xls" style={{ display:'none' }}
             onChange={e => { if (e.target.files[0]) handleImport(e.target.files[0]); e.target.value='' }} />
@@ -541,10 +545,10 @@ function SAPTab() {
                         style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
                         onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
                         onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
-                      <button onClick={() => handleDelete(row.id)}
+                      {canDelete && <button onClick={() => handleDelete(row.id)}
                         style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
                         onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
-                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>
+                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>}
                     </div>
                   </td>
                 </tr>
@@ -568,7 +572,11 @@ function SAPTab() {
 
 // ── Centros Tab ───────────────────────────────────────────────────────────────
 function CentrosTab() {
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [userRole, setUserRole] = useState('viewer')
+  const isAdmin    = userRole === 'admin'
+  const isOperator = userRole === 'operator'
+  const canDelete  = userRole === 'admin' || userRole === 'operator'
+  const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
@@ -577,7 +585,7 @@ function CentrosTab() {
         const username = localStorage.getItem('username')
         const users = Array.isArray(data) ? data : (data.results || [])
         const me = users.find(u => u.username === username)
-        if (me?.role === 'admin') setIsAdmin(true)
+        if (me?.role) setUserRole(me.role)
       }).catch(() => {})
   }, [])
 
@@ -638,7 +646,7 @@ function CentrosTab() {
         />
       )}
       <div style={{ display:'flex', justifyContent:'flex-end', gap:8, marginBottom:12 }}>
-        {isAdmin && <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {canDelete && <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={() => setShowBulk(true)}>
           <Upload size={14}/> Importar Excel
         </label>}
@@ -712,10 +720,10 @@ function CentrosTab() {
                       style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
                       onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
                       onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={14}/></button>
-                    <button onClick={() => handleDelete(row.id)}
+                    {canDelete && <button onClick={() => handleDelete(row.id)}
                       style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
                       onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
-                      onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={14}/></button>
+                      onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={14}/></button>}
                   </div>
                 </td>
               </tr>
@@ -759,7 +767,11 @@ const PROVEEDOR_STYLE = {
 
 function PartNumbersTab() {
   const [items, setItems]       = useState([])
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [userRole, setUserRole] = useState('viewer')
+  const isAdmin    = userRole === 'admin'
+  const isOperator = userRole === 'operator'
+  const canDelete  = userRole === 'admin' || userRole === 'operator'
+  const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
@@ -768,7 +780,7 @@ function PartNumbersTab() {
         const username = localStorage.getItem('username')
         const users = Array.isArray(data) ? data : (data.results || [])
         const me = users.find(u => u.username === username)
-        if (me?.role === 'admin') setIsAdmin(true)
+        if (me?.role) setUserRole(me.role)
       }).catch(() => {})
   }, [])
 
@@ -1067,12 +1079,12 @@ function PartNumbersTab() {
             ✕ Limpiar filtros
           </button>
         )}
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={exportXLSX}>
           <Download size={14}/>
           {hasFilter ? `Exportar filtro (${dashFiltered.length})` : `Exportar Excel (${allItems.length})`}
         </button>}
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>setShowBulk(true)}>
           <Upload size={14}/> Importar Excel
         </button>}
@@ -1222,10 +1234,10 @@ function PartNumbersTab() {
                         style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
                         onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
                         onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
-                      <button onClick={() => handleDelete(row.id)}
+                      {canDelete && <button onClick={() => handleDelete(row.id)}
                         style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
                         onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
-                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>
+                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>}
                     </div>
                   </td>
                 </tr>
@@ -1671,7 +1683,11 @@ const STOCK_COLS = [
 ]
 
 function StockSAPTab() {
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [userRole, setUserRole] = useState('viewer')
+  const isAdmin    = userRole === 'admin'
+  const isOperator = userRole === 'operator'
+  const canDelete  = userRole === 'admin' || userRole === 'operator'
+  const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
   const [confirmClear, setConfirmClear] = useState(false)
   useEffect(() => {
     const token = localStorage.getItem('access_token')
@@ -1681,7 +1697,7 @@ function StockSAPTab() {
         const username = localStorage.getItem('username')
         const users = Array.isArray(data) ? data : (data.results || [])
         const me = users.find(u => u.username === username)
-        if (me?.role === 'admin') setIsAdmin(true)
+        if (me?.role) setUserRole(me.role)
       }).catch(() => {})
   }, [])
 
@@ -1846,10 +1862,10 @@ function StockSAPTab() {
         <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>
           {hasFilters ? `${filtered.length.toLocaleString()} / ${allItems.length.toLocaleString()}` : allItems.length.toLocaleString()} registros
         </span>
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }} onClick={exportXLSX}>
+        {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }} onClick={exportXLSX}>
           <Download size={14}/> {hasFilters ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${allItems.length})`}
         </button>}
-        {isAdmin && <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}>
+        {canDelete && <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}>
           <Upload size={14}/> {importing ? 'Importando…' : 'Importar Excel SAP Logon'}
           <input type="file" accept=".xlsx,.xls" style={{ display:'none' }}
             onChange={e => { if (e.target.files[0]) handleImport(e.target.files[0]); e.target.value='' }} />

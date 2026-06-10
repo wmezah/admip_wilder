@@ -444,7 +444,23 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup }) {
     }, 500)
   }
 
+  const [errors, setErrors] = useState({})
+
+  const validate = () => {
+    const e = {}
+    // Al menos SAP o serie deben tener valor en nuevo registro
+    if (!item?.id) {
+      const hasAnyValue = Object.values(form).some(v => v !== '' && v !== null && v !== undefined)
+      if (!hasAnyValue) {
+        e._general = 'Completa al menos un campo antes de guardar.'
+      }
+    }
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
   const save = async () => {
+    if (!validate()) return
     setSaving(true)
     try {
       const token  = getToken()
@@ -494,9 +510,15 @@ function GenericModal({ title, fields, item, onClose, onSave, onSapLookup }) {
             </div>
           ))}
         </div>
-        <div style={{ padding:'0 24px 20px', display:'flex', justifyContent:'flex-end', gap:10 }}>
-          <button className="btn-ghost" onClick={onClose}>Cancelar</button>
-          <button className="btn-primary" onClick={save} disabled={saving}>{saving?'Guardando...':'Guardar'}</button>
+        <div style={{ padding:'0 24px 20px' }}>
+          {errors._general && (
+            <p style={{ fontSize:12, color:'#dc2626', background:'#fef2f2', border:'1px solid #fecaca',
+              borderRadius:6, padding:'8px 12px', marginBottom:10 }}>{errors._general}</p>
+          )}
+          <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+            <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+            <button className="btn-primary" onClick={save} disabled={saving}>{saving?'Guardando...':'Guardar'}</button>
+          </div>
         </div>
       </div>
     </div>
@@ -539,7 +561,11 @@ function ConfirmClearModal({ count, onClose, onConfirm }) {
 
 function TabAsignado() {
   const [data,   setData]   = useState([])
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [userRole, setUserRole] = useState('viewer')
+  const isAdmin    = userRole === 'admin'
+  const isOperator = userRole === 'operator'
+  const canDelete  = userRole === 'admin' || userRole === 'operator'
+  const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
@@ -548,7 +574,7 @@ function TabAsignado() {
         const username = localStorage.getItem('username')
         const users = Array.isArray(data) ? data : (data.results || [])
         const me = users.find(u => u.username === username)
-        if (me?.role === 'admin') setIsAdmin(true)
+        if (me?.role) setUserRole(me.role)
       }).catch(() => {})
   }, [])
 
@@ -567,7 +593,13 @@ function TabAsignado() {
   // Calcula desde/hasta según filtro rápido
   const getRango = (tipo) => {
     const hoy = new Date()
-    const iso = d => d.toISOString().substring(0,10)
+    // Usar fecha LOCAL para evitar desfase UTC vs zona horaria del usuario
+    const iso = d => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth()+1).padStart(2,'0')
+      const day = String(d.getDate()).padStart(2,'0')
+      return `${y}-${m}-${day}`
+    }
     if (tipo === 'hoy') return { d: iso(hoy), h: iso(hoy) }
     if (tipo === 'semana') {
       const lun = new Date(hoy); lun.setDate(hoy.getDate() - ((hoy.getDay()+6)%7))
@@ -582,8 +614,7 @@ function TabAsignado() {
     return { d: fechaDesde, h: fechaHasta }
   }
   const [showUpload, setShowUpload] = useState(false)
-  const [showModal,  setShowModal]  = useState(false)
-  const [editItem,   setEditItem]   = useState(null)
+  const [modalItem,  setModalItem]  = useState(null)  // null=cerrado, {}=nuevo, {...item}=editar
   const [viewItem,   setViewItem]   = useState(null)
   const [confirmClear, setConfirmClear] = useState(false)
   const [visibleCols, setVisibleCols] = useState(COLS_ASIGNADO.filter(c=>c.default).map(c=>c.key))
@@ -808,25 +839,6 @@ function TabAsignado() {
       return await r.json()
     } catch { return null }
   }
-
-  const MODAL_FIELDS = [
-    { key:'red',              label:'Red',              options:['IPRAN','ACCESO','METRO','CORE','PRONATEL'] },
-    { key:'proveedor',        label:'Proveedor',        options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },    { key:'sap',              label:'SAP' },
-    { key:'descripcion',      label:'Descripción',      span:true },
-    { key:'cantidad_serie',   label:'Cantidad/Serie' },
-    { key:'lote',             label:'Lote',             options:['VALORADO','NOVALORADO'] },
-    { key:'motivo_asignacion',label:'Motivo',           span:true },
-    { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
-    { key:'status_folio',     label:'Status',           options:['Concluido','No se Utilizó','Pendiente Crear','Aprobado'] },
-    { key:'site',             label:'Site' },
-    { key:'codigo_site',      label:'Código Site' },
-    { key:'elemento_pep',     label:'Elemento PEP' },
-    { key:'numero_pedido',    label:'Nº Pedido' },
-    { key:'folio',            label:'Folio' },
-    { key:'usuario_folio',    label:'Usuario Folio' },
-    { key:'oym_encargado',    label:'OyM Encargado' },
-    { key:'comentarios',      label:'Comentarios',      span:true },
-  ]
 
   return (
     <div style={{ paddingBottom:20 }}>
@@ -1056,9 +1068,9 @@ function TabAsignado() {
             ✕ Limpiar filtros
           </button>
         )}
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>}
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={exportXLSX}><Download size={14}/>
           {hasFilter ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
         </button>}
@@ -1071,10 +1083,10 @@ function TabAsignado() {
           <Trash2 size={14}/> Limpiar todo
         </button>}
         <ColumnSelector allCols={COLS_ASIGNADO} visibleCols={visibleCols} onChange={setVisibleCols} />
-        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={()=>{ setEditItem(null); setShowModal(true) }}>
+        {canEdit && <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setModalItem({ _api: API_ASIGNADO })}>
           <Plus size={14}/> Nuevo
-        </button>
+        </button>}
       </div>
 
 
@@ -1142,10 +1154,10 @@ function TabAsignado() {
                     return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
                   })}
                   <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
-                      onClick={()=>{ setEditItem({...row, _api:API_ASIGNADO}); setShowModal(true) }}>✏️</button>
-                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
-                      onClick={()=>del(row.id)}>🗑</button>
+                    {canEdit && <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
+                      onClick={()=>setModalItem({...row, _api:API_ASIGNADO})}>✏️</button>}
+                    {canDelete && <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
+                      onClick={()=>del(row.id)}>🗑</button>}
                   </td>
                 </tr>
               ))}
@@ -1173,15 +1185,16 @@ function TabAsignado() {
       {viewItem && (
         <ViewSeguimientoModal item={viewItem}
           onClose={()=>setViewItem(null)}
-          onEdit={()=>{ setEditItem({...viewItem,_api:API_ASIGNADO}); setShowModal(true); setViewItem(null) }} />
+          onEdit={()=>{ setModalItem({...viewItem,_api:API_ASIGNADO}); setViewItem(null) }} />
       )}
-      {showModal && createPortal(
+      {modalItem && createPortal(
         <GenericModal
-          title={editItem?.id ? 'Editar Seguimiento' : 'Nuevo Seguimiento'}
-          fields={MODAL_FIELDS}
-          item={editItem ? editItem : { _api: API_ASIGNADO }}
-          onClose={()=>setShowModal(false)}
-          onSave={()=>{ load(); setShowModal(false) }}
+          key={modalItem?.id || 'new-asignado'}
+          title={modalItem?.id ? 'Editar Seguimiento' : 'Nuevo Seguimiento'}
+          fields={MODAL_FIELDS_ASIGNADO}
+          item={modalItem}
+          onClose={()=>setModalItem(null)}
+          onSave={()=>{ load(); setModalItem(null) }}
           onSapLookup={sapLookup}
         />,
         document.body
@@ -1280,7 +1293,11 @@ const COLS_UPGRADES = [
 
 function TabUpgrades() {
   const [data,   setData]   = useState([])
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [userRole, setUserRole] = useState('viewer')
+  const isAdmin    = userRole === 'admin'
+  const isOperator = userRole === 'operator'
+  const canDelete  = userRole === 'admin' || userRole === 'operator'
+  const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
@@ -1289,7 +1306,7 @@ function TabUpgrades() {
         const username = localStorage.getItem('username')
         const users = Array.isArray(data) ? data : (data.results || [])
         const me = users.find(u => u.username === username)
-        if (me?.role === 'admin') setIsAdmin(true)
+        if (me?.role) setUserRole(me.role)
       }).catch(() => {})
   }, [])
 
@@ -1297,8 +1314,7 @@ function TabUpgrades() {
   const [query,  setQuery]  = useState('')
   const [dQ,     setDQ]     = useState('')
   const [showUpload, setShowUpload] = useState(false)
-  const [showModal,  setShowModal]  = useState(false)
-  const [editItem,   setEditItem]   = useState(null)
+  const [modalItem,  setModalItem]  = useState(null)  // null=cerrado, {}=nuevo, {...item}=editar
   const [viewUpgradeItem, setViewUpgradeItem] = useState(null)
   const [filtroFecha, setFiltroFecha] = useState('')
   const [fechaDesde,  setFechaDesde]  = useState('')
@@ -1451,22 +1467,6 @@ function TabUpgrades() {
     } catch { return null }
   }
 
-  const MODAL_FIELDS = [
-    { key:'region',           label:'Región',          options:['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR'] },
-    { key:'zona',             label:'Zona' },
-    { key:'proveedor',        label:'Proveedor',        options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },
-    { key:'part_number',      label:'Modelo de Equipo' },
-    { key:'sap',              label:'SAP' },
-    { key:'descripcion',      label:'Descripción',    span:true },
-    { key:'numero_serie',     label:'N° Serie' },
-    { key:'lote',             label:'LOTE',             options:['VALORADO','NOVALORADO'] },
-    { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
-    { key:'numero_pedido',    label:'N° Pedido' },
-    { key:'oym_encargado',    label:'OYM Encargado' },
-    { key:'motivo_asignacion',label:'Motivo',          span:true },
-    { key:'seguimiento',      label:'Seguimiento',     span:true },
-  ]
-
   // Stats por proveedor
   const proveedores = [...new Set(data.map(r=>r.proveedor).filter(Boolean))].slice(0,4)
 
@@ -1556,9 +1556,9 @@ function TabUpgrades() {
             ✕ Limpiar filtros
           </button>
         )}
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={()=>setShowUpload(v=>!v)}><Upload size={14}/> Importar XLSX</button>}
-        {isAdmin && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+        {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
           onClick={exportXLSX}><Download size={14}/>
           {hasFilter ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${data.length})`}
         </button>}
@@ -1571,10 +1571,10 @@ function TabUpgrades() {
           <Trash2 size={14}/> Limpiar todo
         </button>}
         <ColumnSelector allCols={COLS_UPGRADES} visibleCols={visibleCols} onChange={setVisibleCols} />
-        <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
-          onClick={()=>{ setEditItem(null); setShowModal(true) }}>
+        {canEdit && <button className="btn-primary" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }}
+          onClick={()=>setModalItem({ _api: API_UPGRADES })}>
           <Plus size={14}/> Nuevo
-        </button>
+        </button>}
       </div>
 
       {showUpload && (
@@ -1631,10 +1631,10 @@ function TabUpgrades() {
                     return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
                   })}
                   <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
-                      onClick={()=>{ setEditItem({...row,_api:API_UPGRADES}); setShowModal(true) }}>✏️</button>
-                    <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
-                      onClick={()=>del(row.id)}>🗑</button>
+                    {canEdit && <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
+                      onClick={()=>setModalItem({...row,_api:API_UPGRADES})}>✏️</button>}
+                    {canDelete && <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
+                      onClick={()=>del(row.id)}>🗑</button>}
                   </td>
                 </tr>
               ))}
@@ -1659,13 +1659,14 @@ function TabUpgrades() {
         )}
       </div>
 
-      {showModal && createPortal(
+      {modalItem && createPortal(
         <GenericModal
-          title={editItem?.id ? 'Editar Upgrade/Mtto' : 'Nuevo Upgrade/Mtto'}
-          fields={MODAL_FIELDS}
-          item={editItem ? editItem : { _api: API_UPGRADES }}
-          onClose={()=>setShowModal(false)}
-          onSave={()=>{ load(); setShowModal(false) }}
+          key={modalItem?.id || 'new-upgrades'}
+          title={modalItem?.id ? 'Editar Upgrade/Mtto' : 'Nuevo Upgrade/Mtto'}
+          fields={MODAL_FIELDS_UPGRADES}
+          item={modalItem}
+          onClose={()=>setModalItem(null)}
+          onSave={()=>{ load(); setModalItem(null) }}
           onSapLookup={sapLookup}
         />,
         document.body
@@ -1677,7 +1678,7 @@ function TabUpgrades() {
       {viewUpgradeItem && createPortal(
         <ViewUpgradeModal item={viewUpgradeItem}
           onClose={()=>setViewUpgradeItem(null)}
-          onEdit={()=>{ setEditItem({...viewUpgradeItem,_api:API_UPGRADES}); setShowModal(true); setViewUpgradeItem(null) }} />,
+          onEdit={()=>{ setModalItem({...viewUpgradeItem,_api:API_UPGRADES}); setViewUpgradeItem(null) }} />,
         document.body
       )}
     </div>
@@ -1692,6 +1693,42 @@ function TabUpgrades() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // PÁGINA PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════════
+const MODAL_FIELDS_ASIGNADO = [
+  { key:'red',              label:'Red',              options:['IPRAN','ACCESO','METRO','CORE','PRONATEL'] },
+  { key:'proveedor',        label:'Proveedor',        options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },
+  { key:'sap',              label:'SAP' },
+  { key:'descripcion',      label:'Descripción',      span:true },
+  { key:'cantidad_serie',   label:'Cantidad/Serie' },
+  { key:'lote',             label:'Lote',             options:['VALORADO','NOVALORADO'] },
+  { key:'motivo_asignacion',label:'Motivo',           span:true },
+  { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
+  { key:'status_folio',     label:'Status',           options:['Concluido','No se Utilizó','Pendiente Crear','Aprobado'] },
+  { key:'site',             label:'Site' },
+  { key:'codigo_site',      label:'Código Site' },
+  { key:'elemento_pep',     label:'Elemento PEP' },
+  { key:'numero_pedido',    label:'Nº Pedido' },
+  { key:'folio',            label:'Folio' },
+  { key:'usuario_folio',    label:'Usuario Folio' },
+  { key:'oym_encargado',    label:'OyM Encargado' },
+  { key:'comentarios',      label:'Comentarios',      span:true },
+]
+
+const MODAL_FIELDS_UPGRADES = [
+  { key:'region',           label:'Región',           options:['LIMA','LIMA PROVINCIA','NORTE','CENTRO','SUR'] },
+  { key:'zona',             label:'Zona' },
+  { key:'proveedor',        label:'Proveedor',        options:['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'] },
+  { key:'part_number',      label:'Modelo de Equipo' },
+  { key:'sap',              label:'SAP' },
+  { key:'descripcion',      label:'Descripción',      span:true },
+  { key:'numero_serie',     label:'N° Serie' },
+  { key:'lote',             label:'LOTE',             options:['VALORADO','NOVALORADO'] },
+  { key:'fecha_asignacion', label:'Fecha Asignación', type:'date' },
+  { key:'numero_pedido',    label:'N° Pedido' },
+  { key:'oym_encargado',    label:'OYM Encargado' },
+  { key:'motivo_asignacion',label:'Motivo',           span:true },
+  { key:'seguimiento',      label:'Seguimiento',      span:true },
+]
+
 export default function SeguimientoPage() {
   const [tab, setTab] = useState('asignado')
 

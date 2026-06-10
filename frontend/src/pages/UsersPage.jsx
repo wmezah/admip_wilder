@@ -8,7 +8,7 @@ import {
 const ROLES = [
   { value: 'admin',    label: 'Administrador', color: '#1877f2', bg: '#cce0ff' },
   { value: 'operator', label: 'Operador',      color: '#0369a1', bg: '#e0f2fe' },
-  { value: 'viewer',   label: 'Viewer',        color: '#065f46', bg: '#d1fae5' },
+  { value: 'viewer',   label: 'Visualizador',  color: '#065f46', bg: '#d1fae5' },
 ]
 const roleInfo = (value) => ROLES.find(r => r.value === value) || ROLES[2]
 
@@ -302,6 +302,12 @@ export default function UsersPage() {
   const [modal,      setModal]      = useState(null)
   const [toDelete,   setToDelete]   = useState(null)
   const [toast,      setToast]      = useState(null)
+  const [userRole,      setUserRole]      = useState('viewer')
+  const [currentUsername, setCurrentUsername] = useState('')
+  const isAdmin    = userRole === 'admin'
+  const isOperator = userRole === 'operator'
+  const canDelete  = userRole === 'admin' || userRole === 'operator'
+  const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
 
   const fetchUsers = async () => {
     setLoading(true)
@@ -320,7 +326,19 @@ export default function UsersPage() {
     }
   }
 
-  useEffect(() => { fetchUsers() }, [])
+  useEffect(() => {
+    fetchUsers()
+    const token = localStorage.getItem('access_token')
+    fetch('/api/users/', { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        const username = localStorage.getItem('username')
+        const users = Array.isArray(data) ? data : (data.results || [])
+        const me = users.find(u => u.username === username)
+        if (me?.role) setUserRole(me.role)
+        if (me?.username) setCurrentUsername(me.username)
+      }).catch(() => {})
+  }, [])
 
   const showToast = (type, msg) => {
     setToast({ type, msg })
@@ -396,7 +414,7 @@ export default function UsersPage() {
           <h1 style={{ margin: '0 0 4px', fontSize: 26, fontWeight: 800, color: '#1c1e21' }}>Usuarios</h1>
           <p style={{ margin: 0, color: '#65676b', fontSize: 14 }}>Gestiona el acceso y roles del sistema</p>
         </div>
-        <button onClick={() => setModal({ mode: 'create' })} style={{
+        {canDelete && <button onClick={() => setModal({ mode: 'create' })} style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '10px 20px', borderRadius: 10, border: 'none',
           background: 'linear-gradient(135deg,#1877f2,#1565c0)',
@@ -404,7 +422,7 @@ export default function UsersPage() {
           boxShadow: '0 4px 14px rgba(24,119,242,.4)'
         }}>
           <Plus size={16} /> Nuevo Usuario
-        </button>
+        </button>}
       </div>
 
       {/* Stats */}
@@ -517,14 +535,14 @@ export default function UsersPage() {
                   </td>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => setModal({ mode: 'edit', user: u })} title="Editar" style={{
+                      {(isAdmin || isOperator || u.username === currentUsername) && <button onClick={() => setModal({ mode: 'edit', user: u })} title="Editar" style={{
                         padding: '6px 10px', borderRadius: 7, border: '1px solid #dadde1',
                         background: '#fff', cursor: 'pointer', color: '#65676b', display: 'flex', alignItems: 'center'
-                      }}><Edit2 size={14} /></button>
-                      <button onClick={() => setToDelete(u)} title="Eliminar" style={{
+                      }}><Edit2 size={14} /></button>}
+                      {isAdmin && <button onClick={() => setToDelete(u)} title="Eliminar" style={{
                         padding: '6px 10px', borderRadius: 7, border: '1px solid #dadde1',
                         background: '#fff', cursor: 'pointer', color: '#65676b', display: 'flex', alignItems: 'center'
-                      }}><Trash2 size={14} /></button>
+                      }}><Trash2 size={14} /></button>}
                     </div>
                   </td>
                 </tr>
