@@ -1174,7 +1174,7 @@ function PartNumbersTab() {
                       ) : col.key==='tipo' ? (
                         <select value={val} onChange={e=>{ setColF(p=>({...p,tipo:e.target.value})); setPage(1) }} style={base}>
                           <option value=''>Todos</option>
-                          {['ACCESO','TRANSPORTE','CORE','IPRAN','METRO','ENERGIA','OTROS'].map(o=><option key={o} value={o}>{o}</option>)}
+                          {[...new Set(allItems.map(r=>r.tipo).filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(o=><option key={o} value={o}>{o}</option>)}
                         </select>
                       ) : (
                         <input value={val} onChange={e=>{ setColF(p=>({...p,[col.key]:e.target.value})); setPage(1) }}
