@@ -1682,6 +1682,19 @@ const STOCK_COLS = [
   { key:'unidad_medida', label:'UM',           w:70 },
 ]
 
+// Encabezados EXACTOS que reconoce el backend en /stock-sap/import_xlsx/
+// (ver StockSAPViewSet.import_xlsx). Usar estos mismos nombres en plantilla
+// y export para que el archivo exportado se pueda re-importar sin problemas.
+const STOCK_IMPORT_HEADERS = {
+  material:      'Material',
+  descripcion:   'Descripcion',
+  stock:         'Suma de Stock disponible',
+  lote:          'Lote',
+  centro:        'Centro',
+  almacen:       'Almacen',
+  unidad_medida: 'Unidad medida base',
+}
+
 function StockSAPTab() {
   const [userRole, setUserRole] = useState('viewer')
   const isAdmin    = userRole === 'admin'
@@ -1782,12 +1795,23 @@ function StockSAPTab() {
 
   const exportXLSX = () => {
     const src = hasFilters ? filtered : allItems
-    const header = STOCK_COLS.map(c => c.label)
+    const header = STOCK_COLS.map(c => STOCK_IMPORT_HEADERS[c.key])
     const rows = src.map(r => STOCK_COLS.map(c => r[c.key] ?? ''))
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Stock SAP Logon')
     XLSX.writeFile(wb, hasFilters ? `stock_sap_filtrado_${src.length}.xlsx` : 'stock_sap_logon.xlsx')
+  }
+
+  // Plantilla con encabezados que el backend reconoce — descargar, llenar y
+  // re-importar sin errores de mapeo de columnas.
+  const downloadStockTemplate = () => {
+    const header = STOCK_COLS.map(c => STOCK_IMPORT_HEADERS[c.key])
+    const sample = [['1001736', 'KIT DE SEGURIDAD PARA REJILLA Y TPI', 100, 'NOVALORADO', 'P008', 'D000', 'PZA']]
+    const ws = XLSX.utils.aoa_to_sheet([header, ...sample])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Plantilla')
+    XLSX.writeFile(wb, 'plantilla_stock_sap_logon.xlsx')
   }
 
   return (
@@ -1865,7 +1889,11 @@ function StockSAPTab() {
         {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6 }} onClick={exportXLSX}>
           <Download size={14}/> {hasFilters ? `Exportar filtro (${filtered.length})` : `Exportar Excel (${allItems.length})`}
         </button>}
-        {canDelete && <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}>
+        {canDelete && <button className="btn-ghost" style={{ fontSize:13, display:'flex', alignItems:'center', gap:6, marginLeft:'auto' }}
+          onClick={downloadStockTemplate}>
+          <Download size={14}/> Descargar plantilla
+        </button>}
+        {canDelete && <label className="btn-ghost" style={{ cursor:'pointer', fontSize:13, display:'flex', alignItems:'center', gap:6 }}>
           <Upload size={14}/> {importing ? 'Importando…' : 'Importar Excel SAP Logon'}
           <input type="file" accept=".xlsx,.xls" style={{ display:'none' }}
             onChange={e => { if (e.target.files[0]) handleImport(e.target.files[0]); e.target.value='' }} />
