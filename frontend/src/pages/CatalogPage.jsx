@@ -1782,8 +1782,8 @@ function StockSAPTab() {
 
   const exportXLSX = () => {
     const src = hasFilters ? filtered : allItems
-    const header = COLS.map(c => c.label)
-    const rows = src.map(r => COLS.map(c => r[c.key] ?? ''))
+    const header = STOCK_COLS.map(c => c.label)
+    const rows = src.map(r => STOCK_COLS.map(c => r[c.key] ?? ''))
     const ws = XLSX.utils.aoa_to_sheet([header, ...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Stock SAP Logon')
