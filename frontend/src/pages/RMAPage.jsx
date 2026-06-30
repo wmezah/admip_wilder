@@ -676,6 +676,7 @@ export default function RMAPage() {
   const isOperator = userRole === 'operator'
   const canDelete  = userRole === 'admin' || userRole === 'operator'
   const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
+  const actionsEnabled = userRole === 'admin' || userRole === 'operator'   // viewer ve pero no usa
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
@@ -1150,10 +1151,12 @@ export default function RMAPage() {
                     return <td key={col.key} style={{ padding:'8px 12px', fontSize:11, color:'#374151', whiteSpace:'nowrap', maxWidth:0, overflow:'hidden', textOverflow:'ellipsis' }} title={v||''}>{v||'—'}</td>
                   })}
                   <td style={{ padding:'8px 12px', whiteSpace:'nowrap' }}>
-                    {canEdit && <button style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', marginRight:4 }}
-                      onClick={()=>setModalItem({...row,_api:API_AVERIADAS})}>✏️</button>}
-                    {canDelete && <button style={{ background:'none', border:'none', cursor:'pointer', color:'#dc2626' }}
-                      onClick={()=>del(row.id)}>🗑</button>}
+                    <button disabled={!actionsEnabled} title={actionsEnabled ? 'Editar' : 'Sin permiso'}
+                      style={{ background:'none', border:'none', cursor: actionsEnabled ? 'pointer' : 'not-allowed', color: actionsEnabled ? '#9ca3af' : '#c0c4cc', opacity: actionsEnabled ? 1 : 0.6, marginRight:4 }}
+                      onClick={()=> actionsEnabled && setModalItem({...row,_api:API_AVERIADAS})}>✏️</button>
+                    <button disabled={!actionsEnabled} title={actionsEnabled ? 'Eliminar' : 'Sin permiso'}
+                      style={{ background:'none', border:'none', cursor: actionsEnabled ? 'pointer' : 'not-allowed', color: actionsEnabled ? '#dc2626' : '#c0c4cc', opacity: actionsEnabled ? 1 : 0.6 }}
+                      onClick={()=> actionsEnabled && del(row.id)}>🗑</button>
                   </td>
                 </tr>
               ))}

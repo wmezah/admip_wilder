@@ -84,7 +84,7 @@ function RoleBadge({ role }) {
 }
 
 // ─── UserModal ────────────────────────────────────────────────────────────────
-function UserModal({ user, onClose, onSave }) {
+function UserModal({ user, onClose, onSave, canEditAll = true }) {
   const isEdit = !!user?.id
   const [username,   setUsername]   = useState(user?.username   || '')
   const [firstName,  setFirstName]  = useState(user?.first_name || '')
@@ -120,8 +120,9 @@ function UserModal({ user, onClose, onSave }) {
     if (!validate()) return
     setSaving(true)
     try {
-      const payload = { username, first_name: firstName, last_name: lastName,
-                        email, role, is_active: isActive }
+      const payload = canEditAll
+        ? { username, first_name: firstName, last_name: lastName, email, role, is_active: isActive }
+        : { first_name: firstName, last_name: lastName, email }
       if (password) payload.password = password
       await onSave(payload)
       onClose()
@@ -169,11 +170,11 @@ function UserModal({ user, onClose, onSave }) {
             <Field label="Nombre"   name="first_name" value={firstName} onChange={handleChange} error={errors.first_name} />
             <Field label="Apellido" name="last_name"  value={lastName}  onChange={handleChange} error={errors.last_name}  />
           </div>
-          <Field label="Usuario" name="username" value={username} onChange={handleChange} error={errors.username} required />
+          {canEditAll && <Field label="Usuario" name="username" value={username} onChange={handleChange} error={errors.username} required />}
           <Field label="Email"   name="email"    value={email}    onChange={handleChange} error={errors.email}    required type="email" />
 
           {/* Rol */}
-          <div style={{ marginBottom: 16 }}>
+          {canEditAll && <div style={{ marginBottom: 16 }}>
             <label style={{
               display: 'block', fontSize: 11, fontWeight: 700, color: '#65676b',
               textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 6
@@ -191,7 +192,7 @@ function UserModal({ user, onClose, onSave }) {
                 transform: 'translateY(-50%)', color: '#8a8d91', pointerEvents: 'none'
               }} />
             </div>
-          </div>
+          </div>}
 
           <PasswordField
             label={`Contraseña${isEdit ? ' (vacío = sin cambio)' : ' *'}`}
@@ -203,7 +204,7 @@ function UserModal({ user, onClose, onSave }) {
           />
 
           {/* Activo toggle */}
-          <div style={{
+          {canEditAll && <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '12px 16px', background: '#f0f2f5', borderRadius: 10, border: '1px solid #f0f2f5'
           }}>
@@ -224,7 +225,7 @@ function UserModal({ user, onClose, onSave }) {
                 transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,.2)'
               }} />
             </button>
-          </div>
+          </div>}
         </div>
 
         {/* Footer */}
@@ -414,7 +415,7 @@ export default function UsersPage() {
           <h1 style={{ margin: '0 0 4px', fontSize: 26, fontWeight: 800, color: '#1c1e21' }}>Usuarios</h1>
           <p style={{ margin: 0, color: '#65676b', fontSize: 14 }}>Gestiona el acceso y roles del sistema</p>
         </div>
-        {canDelete && <button onClick={() => setModal({ mode: 'create' })} style={{
+        {isAdmin && <button onClick={() => setModal({ mode: 'create' })} style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '10px 20px', borderRadius: 10, border: 'none',
           background: 'linear-gradient(135deg,#1877f2,#1565c0)',
@@ -535,10 +536,17 @@ export default function UsersPage() {
                   </td>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      {(isAdmin || isOperator || u.username === currentUsername) && <button onClick={() => setModal({ mode: 'edit', user: u })} title="Editar" style={{
+                      {(() => {
+                        const canEditThis = isAdmin || u.username === currentUsername
+                        return <button onClick={() => canEditThis && setModal({ mode: 'edit', user: u })}
+                        disabled={!canEditThis}
+                        title={canEditThis ? 'Editar' : 'Solo puedes editar tu propio usuario'} style={{
                         padding: '6px 10px', borderRadius: 7, border: '1px solid #dadde1',
-                        background: '#fff', cursor: 'pointer', color: '#65676b', display: 'flex', alignItems: 'center'
-                      }}><Edit2 size={14} /></button>}
+                        background: '#fff', cursor: canEditThis ? 'pointer' : 'not-allowed',
+                        opacity: canEditThis ? 1 : 0.45,
+                        color: '#65676b', display: 'flex', alignItems: 'center'
+                      }}><Edit2 size={14} /></button>
+                      })()}
                       {isAdmin && <button onClick={() => setToDelete(u)} title="Eliminar" style={{
                         padding: '6px 10px', borderRadius: 7, border: '1px solid #dadde1',
                         background: '#fff', cursor: 'pointer', color: '#65676b', display: 'flex', alignItems: 'center'
@@ -555,6 +563,7 @@ export default function UsersPage() {
       {modal && (
         <UserModal
           user={modal.user || null}
+          canEditAll={isAdmin}
           onClose={() => setModal(null)}
           onSave={handleSave}
         />

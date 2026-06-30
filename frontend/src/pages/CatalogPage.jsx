@@ -351,6 +351,7 @@ function SAPTab() {
   const isOperator = userRole === 'operator'
   const canDelete  = userRole === 'admin' || userRole === 'operator'
   const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
+  const actionsEnabled = userRole === 'admin' || userRole === 'operator'   // viewer ve pero no usa
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
@@ -541,14 +542,18 @@ function SAPTab() {
                   ))}
                   <td style={{ padding:'8px 12px' }}>
                     <div style={{ display:'flex', gap:3 }}>
-                      <button onClick={() => setEditItem(row)}
-                        style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
-                        onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
-                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
-                      {canDelete && <button onClick={() => handleDelete(row.id)}
-                        style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
-                        onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
-                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>}
+                      <button onClick={() => actionsEnabled && setEditItem(row)}
+                        disabled={!actionsEnabled}
+                        title={actionsEnabled ? 'Editar' : 'Sin permiso'}
+                        style={{ background:'none', border:'none', cursor: actionsEnabled ? 'pointer' : 'not-allowed', color: actionsEnabled ? '#9ca3af' : '#d1d5db', opacity: actionsEnabled ? 1 : 0.6, padding:4 }}
+                        onMouseEnter={e => { if(actionsEnabled) e.currentTarget.style.color='#1877f2' }}
+                        onMouseLeave={e => { if(actionsEnabled) e.currentTarget.style.color='#9ca3af' }}><Edit2 size={13}/></button>
+                      <button onClick={() => actionsEnabled && handleDelete(row.id)}
+                        disabled={!actionsEnabled}
+                        title={actionsEnabled ? 'Eliminar' : 'Sin permiso'}
+                        style={{ background:'none', border:'none', cursor: actionsEnabled ? 'pointer' : 'not-allowed', color: actionsEnabled ? '#9ca3af' : '#d1d5db', opacity: actionsEnabled ? 1 : 0.6, padding:4 }}
+                        onMouseEnter={e => { if(actionsEnabled) e.currentTarget.style.color='#dc2626' }}
+                        onMouseLeave={e => { if(actionsEnabled) e.currentTarget.style.color='#9ca3af' }}><Trash2 size={13}/></button>
                     </div>
                   </td>
                 </tr>
@@ -577,6 +582,7 @@ function CentrosTab() {
   const isOperator = userRole === 'operator'
   const canDelete  = userRole === 'admin' || userRole === 'operator'
   const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
+  const actionsEnabled = userRole === 'admin' || userRole === 'operator'   // viewer ve pero no usa
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
@@ -716,14 +722,18 @@ function CentrosTab() {
                 <td style={{ padding:'10px 14px', fontSize:12, color:'#6b7280', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:0 }} title={row.denom_almacen||''}>{row.denom_almacen || '—'}</td>
                 <td style={{ padding:'10px 14px' }}>
                   <div style={{ display:'flex', gap:4 }}>
-                    <button onClick={() => setEditItem(row)}
-                      style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
-                      onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
-                      onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={14}/></button>
-                    {canDelete && <button onClick={() => handleDelete(row.id)}
-                      style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, borderRadius:4 }}
-                      onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
-                      onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={14}/></button>}
+                    <button onClick={() => actionsEnabled && setEditItem(row)}
+                      disabled={!actionsEnabled}
+                      title={actionsEnabled ? 'Editar' : 'Sin permiso'}
+                      style={{ background:'none', border:'none', cursor: actionsEnabled ? 'pointer' : 'not-allowed', color: actionsEnabled ? '#9ca3af' : '#d1d5db', opacity: actionsEnabled ? 1 : 0.6, padding:4, borderRadius:4 }}
+                      onMouseEnter={e => { if(actionsEnabled) e.currentTarget.style.color='#1877f2' }}
+                      onMouseLeave={e => { if(actionsEnabled) e.currentTarget.style.color='#9ca3af' }}><Edit2 size={14}/></button>
+                    <button onClick={() => actionsEnabled && handleDelete(row.id)}
+                      disabled={!actionsEnabled}
+                      title={actionsEnabled ? 'Eliminar' : 'Sin permiso'}
+                      style={{ background:'none', border:'none', cursor: actionsEnabled ? 'pointer' : 'not-allowed', color: actionsEnabled ? '#9ca3af' : '#d1d5db', opacity: actionsEnabled ? 1 : 0.6, padding:4, borderRadius:4 }}
+                      onMouseEnter={e => { if(actionsEnabled) e.currentTarget.style.color='#dc2626' }}
+                      onMouseLeave={e => { if(actionsEnabled) e.currentTarget.style.color='#9ca3af' }}><Trash2 size={14}/></button>
                   </div>
                 </td>
               </tr>
@@ -772,6 +782,7 @@ function PartNumbersTab() {
   const isOperator = userRole === 'operator'
   const canDelete  = userRole === 'admin' || userRole === 'operator'
   const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
+  const actionsEnabled = userRole === 'admin' || userRole === 'operator'   // viewer ve pero no usa
   useEffect(() => {
     const token = localStorage.getItem('access_token')
     fetch('/api/users/', { headers:{ Authorization:`Bearer ${token}` } })
@@ -1230,14 +1241,18 @@ function PartNumbersTab() {
                   ))}
                   <td style={{ padding:'9px 12px', whiteSpace:'nowrap' }}>
                     <div style={{ display:'flex', gap:4 }}>
-                      <button onClick={() => setEditItem(row)}
-                        style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
-                        onMouseEnter={e => e.currentTarget.style.color='#1877f2'}
-                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Edit2 size={13}/></button>
-                      {canDelete && <button onClick={() => handleDelete(row.id)}
-                        style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}
-                        onMouseEnter={e => e.currentTarget.style.color='#dc2626'}
-                        onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}><Trash2 size={13}/></button>}
+                      <button onClick={() => actionsEnabled && setEditItem(row)}
+                        disabled={!actionsEnabled}
+                        title={actionsEnabled ? 'Editar' : 'Sin permiso'}
+                        style={{ background:'none', border:'none', cursor: actionsEnabled ? 'pointer' : 'not-allowed', color: actionsEnabled ? '#9ca3af' : '#d1d5db', opacity: actionsEnabled ? 1 : 0.6, padding:4 }}
+                        onMouseEnter={e => { if(actionsEnabled) e.currentTarget.style.color='#1877f2' }}
+                        onMouseLeave={e => { if(actionsEnabled) e.currentTarget.style.color='#9ca3af' }}><Edit2 size={13}/></button>
+                      <button onClick={() => actionsEnabled && handleDelete(row.id)}
+                        disabled={!actionsEnabled}
+                        title={actionsEnabled ? 'Eliminar' : 'Sin permiso'}
+                        style={{ background:'none', border:'none', cursor: actionsEnabled ? 'pointer' : 'not-allowed', color: actionsEnabled ? '#9ca3af' : '#d1d5db', opacity: actionsEnabled ? 1 : 0.6, padding:4 }}
+                        onMouseEnter={e => { if(actionsEnabled) e.currentTarget.style.color='#dc2626' }}
+                        onMouseLeave={e => { if(actionsEnabled) e.currentTarget.style.color='#9ca3af' }}><Trash2 size={13}/></button>
                     </div>
                   </td>
                 </tr>
@@ -1701,6 +1716,7 @@ function StockSAPTab() {
   const isOperator = userRole === 'operator'
   const canDelete  = userRole === 'admin' || userRole === 'operator'
   const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
+  const actionsEnabled = userRole === 'admin' || userRole === 'operator'   // viewer ve pero no usa
   const [confirmClear, setConfirmClear] = useState(false)
   useEffect(() => {
     const token = localStorage.getItem('access_token')

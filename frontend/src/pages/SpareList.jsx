@@ -1046,6 +1046,7 @@ function TabControlInventario() {
   const isOperator = userRole === 'operator'
   const canDelete  = userRole === 'admin' || userRole === 'operator'
   const canEdit    = userRole === 'admin' || userRole === 'operator' || userRole === 'viewer'
+  const actionsEnabled = isAdmin || isOperator   // viewer ve los botones pero no puede usarlos
   const [confirmClear, setConfirmClear] = useState(false)
 
   useEffect(() => {
@@ -1977,16 +1978,24 @@ function TabControlInventario() {
                   })}
                   <td style={{ padding:'6px 12px' }}>
                     <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-                      <button onClick={()=>setEditItem(row)}
-                        style={{ background:'none', border:'none', cursor:'pointer',
-                          color:'#1877f2', padding:4, borderRadius:6 }}>
+                      <button onClick={()=> actionsEnabled && setEditItem(row)}
+                        disabled={!actionsEnabled}
+                        title={actionsEnabled ? 'Editar' : 'Sin permiso'}
+                        style={{ background:'none', border:'none',
+                          cursor: actionsEnabled ? 'pointer' : 'not-allowed',
+                          color: actionsEnabled ? '#1877f2' : '#c0c4cc',
+                          opacity: actionsEnabled ? 1 : 0.6, padding:4, borderRadius:6 }}>
                         <Edit2 size={13}/>
                       </button>
-                      {canDelete && <button onClick={()=>handleDelete(row.id)}
-                        style={{ background:'none', border:'none', cursor:'pointer',
-                          color:'#dc2626', padding:4, borderRadius:6 }}>
+                      <button onClick={()=> actionsEnabled && handleDelete(row.id)}
+                        disabled={!actionsEnabled}
+                        title={actionsEnabled ? 'Eliminar' : 'Sin permiso'}
+                        style={{ background:'none', border:'none',
+                          cursor: actionsEnabled ? 'pointer' : 'not-allowed',
+                          color: actionsEnabled ? '#dc2626' : '#c0c4cc',
+                          opacity: actionsEnabled ? 1 : 0.6, padding:4, borderRadius:6 }}>
                         <Trash2 size={13}/>
-                      </button>}
+                      </button>
                     </div>
                   </td>
                 </tr>
