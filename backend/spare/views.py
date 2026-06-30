@@ -1157,6 +1157,7 @@ class ImportSpareCSVView(APIView):
                     fecha_averia      =safe_date(row.get('Fecha Averia') or row.get('fecha_averia')),
                     orden_compra      =safe_str(row.get('Orden Compra') or row.get('orden_compra')),
                     motivo_asignacion =safe_str(row.get('Motivo Asignacion') or row.get('motivo_asignacion')),
+                    responsable_oc    =safe_str(row.get('Responsable OC') or row.get('responsable_oc')),
                     valor_lote        =safe_str(row.get('Valor Lote') or row.get('valor_lote')),
                     **sap_fields,
                 )
@@ -1228,6 +1229,7 @@ class ImportSpareXLSXView(APIView):
                     orden_compra      =safe_str(g('Orden Compra','orden_compra')),
                     procedencia       =safe_str(g('Procedencia','procedencia')),
                     numero_pedido   =safe_str(g('Numero Pedido','numero_pedido')),
+                    responsable_oc    =safe_str(g('Responsable OC','RESPONSABLE OC','responsable_oc')),
                     comentario        =safe_str(g('Comentario','comentario')),
                     precio            =safe_dec(g('Precio','precio')),
                 )

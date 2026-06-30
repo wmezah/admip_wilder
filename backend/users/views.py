@@ -51,7 +51,7 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [UserManagementPermission]
 
     def get_queryset(self):
-        qs     = User.objects.select_related('profile').all()
+        qs     = User.objects.select_related('profile').all().order_by('username')
         search = self.request.query_params.get('search')
         role   = self.request.query_params.get('role')
         if search:

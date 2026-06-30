@@ -113,6 +113,7 @@ function SpareDetailModal({ spare, onClose, onEdit }) {
         ['Fecha Ingreso',     spare.fecha_ingreso],
         ['Fecha Avería',      spare.fecha_averia],
         ['Orden de Compra',   spare.orden_compra],
+        ['Responsable OC',    spare.responsable_oc],
         ['Motivo Asignación', spare.motivo_asignacion],
         ['Valor Lote',        spare.valor_lote],
       ],
@@ -201,6 +202,7 @@ const SPARE_IMPORT_COLS = [
   { key:'fecha_asignacion', label:'Fecha Asignacion' },
   { key:'motivo_asignacion',label:'Motivo Asignacion' },
   { key:'orden_compra',     label:'Orden Compra' },
+  { key:'responsable_oc',   label:'Responsable OC' },
   { key:'procedencia',      label:'Procedencia' },
   { key:'numero_pedido',  label:'Numero Pedido' },
   { key:'comentario',       label:'Comentario' },
@@ -457,6 +459,10 @@ const ESTATUS_LIST = [
   'Operativo','Utilizado','Asignado','Reserva'
 ]
 
+const RESPONSABLES_OC = [
+  'Alejandro Perales','Johnny Francia','Dante Rodriguez','Miguel Neyra','Bertha Yanarico'
+]
+
 const EMPTY = {
   sap:'', part_number:'', tipo:'', modelo:'', proveedor:'', descripcion:'',
   serial_number:'', orden_compra:'', centro:'', almacen:'', zona:'',
@@ -537,6 +543,7 @@ function SpareModal({ spare, onClose, onSaved }) {
   const [almacen, setAlmacen]       = useState(init.almacen || '')
   const [estatus, setEstatus]       = useState(init.estatus || '')
   const [valorLote, setValorLote]   = useState(init.valor_lote || '')
+  const [responsableOc, setResponsableOc] = useState(init.responsable_oc || '')
   const [centros, setCentros]       = useState([])
   const [almacenes, setAlmacenes]   = useState([])
   const sapTimer                    = useRef(null)
@@ -607,6 +614,7 @@ function SpareModal({ spare, onClose, onSaved }) {
       fecha_ingreso:     refs.fecha_ingreso.current?.value     || null,
       fecha_asignacion:  refs.fecha_asignacion.current?.value  || null,
       valor_lote:        valorLote || '',
+      responsable_oc:    responsableOc || '',
       motivo_asignacion: refs.motivo_asignacion.current?.value || '',
     }
     if (!payload.fecha_ingreso)    delete payload.fecha_ingreso
@@ -747,6 +755,13 @@ function SpareModal({ spare, onClose, onSaved }) {
             <F label="Serial Number"    k="serial_number" />
             <F label="Orden de Compra"  k="orden_compra" />
             <div>
+              <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>Responsable OC</label>
+              <select className="input" value={responsableOc} onChange={e => setResponsableOc(e.target.value)}>
+                <option value="">— seleccionar —</option>
+                {RESPONSABLES_OC.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
               <label style={{ fontSize:11, fontWeight:600, color:'#6b7280', display:'block', marginBottom:3 }}>Valor Lote</label>
               <select className="input" value={valorLote} onChange={e => setValorLote(e.target.value)}>
                 <option value="">— seleccionar —</option>
@@ -792,6 +807,7 @@ const ALL_COLS = [
   { key:'estatus',          label:'Estatus',            default:true  },
   { key:'descripcion',      label:'Descripción',        default:false },
   { key:'orden_compra',     label:'Orden Compra',       default:false },
+  { key:'responsable_oc',   label:'Responsable OC',     default:false, dropdown:['Alejandro Perales','Johnny Francia','Dante Rodriguez','Miguel Neyra','Bertha Yanarico'] },
   { key:'zona',             label:'Zona',               default:false },
   { key:'fecha_ingreso',    label:'Fecha Ingreso',      default:false },
   { key:'fecha_asignacion', label:'Fecha Asignación',   default:false },
@@ -1017,6 +1033,7 @@ const CONTROL_COLS = [
   { key:'fecha_asignacion', label:'Fecha Asignacion',    default:false },
   { key:'motivo_asignacion',label:'Motivo Asignacion',   default:false },
   { key:'orden_compra',     label:'Orden Compra',        default:false },
+  { key:'responsable_oc',   label:'Responsable OC',      default:false },
   { key:'procedencia',      label:'Procedencia',         default:true  },
   { key:'numero_pedido',  label:'Numero Pedido',  default:false },
   { key:'comentario',       label:'Comentario',          default:false },
@@ -1085,7 +1102,8 @@ function TabControlInventario() {
   // Opciones únicas para dropdowns (columnas categóricas)
   const DROPDOWN_COLS = ['centro','almacen','zona','tipo','estatus','procedencia','motivo_asignacion','valor_lote']
   const FIXED_OPTS = {
-    proveedor: ['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL']
+    proveedor: ['HUAWEI','ZTE','NOKIA','CISCO','ERICSSON','INFINERA','BMP/SYMMETRICOM','ALCATEL'],
+    responsable_oc: ['Alejandro Perales','Johnny Francia','Dante Rodriguez','Miguel Neyra','Bertha Yanarico']
   }
   const dropdownOpts = useMemo(() => {
     const opts = { ...FIXED_OPTS }
@@ -1832,7 +1850,7 @@ function TabControlInventario() {
               {/* Fila 2 — Inputs de filtro */}
               <tr style={{ background:'#fafafa', borderBottom:'2px solid #e5e7eb' }}>
                 {CONTROL_COLS.filter(c=>visibleCols.includes(c.key)).map(c => {
-                  const isDropdown = ['centro','almacen','zona','proveedor','tipo','estatus','procedencia','motivo_asignacion','valor_lote'].includes(c.key)
+                  const isDropdown = ['centro','almacen','zona','proveedor','tipo','estatus','procedencia','motivo_asignacion','valor_lote','responsable_oc'].includes(c.key)
                   const isFechaIngreso    = c.key === 'fecha_ingreso'
                   const isFechaAsignacion = c.key === 'fecha_asignacion'
                   const isText = ['sap','part_number','descripcion','serial_number','modelo','orden_compra','numero_pedido','comentario','precio'].includes(c.key)
@@ -2381,6 +2399,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
   const [centro,    setCentro]    = useState(item.centro    || '')
   const [almacen,   setAlmacen]   = useState(item.almacen   || '')
   const [estatusVal, setEstatusVal] = useState(item.estatus  || '')
+  const [responsableOc, setResponsableOc] = useState(item.responsable_oc || '')
   const [autoData,  setAutoData]  = useState({
     part_number: item.part_number || '',
     tipo:        item.tipo        || '',
@@ -2467,6 +2486,7 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
         fecha_asignacion: refs.fecha_asignacion.current?.value || null,
         motivo_asignacion:refs.motivo_asignacion.current?.value|| '',
         orden_compra:     refs.orden_compra.current?.value     || '',
+        responsable_oc:   responsableOc || '',
         procedencia:      refs.procedencia.current?.value      || '',
         numero_pedido:  refs.numero_pedido.current?.value  || '',
         comentario:       refs.comentario.current?.value       || '',
@@ -2623,6 +2643,12 @@ function EditControlModal({ item, onClose, onSaved, isNew }) {
               </select>
             </div>
             <div>{lbl('Orden Compra')}<input ref={refs.orden_compra} className="input" defaultValue={item.orden_compra||''}/></div>
+            <div>{lbl('Responsable OC')}
+              <select className="input" value={responsableOc} onChange={e=>setResponsableOc(e.target.value)}>
+                <option value="">— seleccionar —</option>
+                {RESPONSABLES_OC.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
             <div>{lbl('F. Ingreso')}<input ref={refs.fecha_ingreso} type="date" className="input" defaultValue={item.fecha_ingreso||''}/></div>
             <div>{lbl('F. Asignación')}<input ref={refs.fecha_asignacion} type="date" className="input" defaultValue={item.fecha_asignacion||''}/></div>
             <div>{lbl('Procedencia')}<input ref={refs.procedencia} className="input" defaultValue={item.procedencia||''}/></div>

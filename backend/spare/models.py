@@ -19,6 +19,7 @@ class Spare(models.Model):
     motivo_asignacion  = models.CharField(max_length=300, blank=True, null=True)
     procedencia        = models.CharField(max_length=200, blank=True, null=True)
     numero_pedido      = models.CharField(max_length=200, blank=True, null=True)
+    responsable_oc     = models.CharField(max_length=200, blank=True, null=True)
     comentario         = models.TextField(blank=True, null=True)
     precio             = models.DecimalField(max_digits=14, decimal_places=2, blank=True, null=True)
     estatus            = models.CharField(max_length=100, blank=True, null=True, db_index=True)
