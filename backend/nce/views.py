@@ -28,51 +28,69 @@ def _since(hours):
 
 def _build_summary(hours, prefix=''):
     """
-    Agrega CPU avg/peak por equipo en Python (JSONField no soporta AVG en DB).
+    Agrega CPU avg/peak por equipo. La agregación se realiza en MySQL
+    (funciones JSON) en lugar de traer todas las filas crudas a Python,
+    lo que reduce drásticamente el tiempo de respuesta con tablas grandes.
+    Mantiene intacta la granularidad de 5 minutos de los datos crudos.
     Usa caché para evitar recalcular en cada request.
     """
+    from django.db import connection
+
     cache_key = f'nce_summary_{hours}_{prefix}'
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
-    qs = NCEPMData.objects.filter(pm_code='PM_IG45046_5')
-    if hours < 8760:
-        qs = qs.filter(collection_time__gte=_since(hours))
-    if prefix:
-        qs = qs.filter(device_name__startswith=prefix)
+    # Los KPIs pueden venir con clave usando guion bajo o espacio.
+    # JSON_EXTRACT devuelve NULL si la clave no existe; COALESCE toma la primera no nula.
+    avg_expr = ("COALESCE("
+                "JSON_EXTRACT(kpi_data, '$.\"CGN_CPU_Average_Usage\"'), "
+                "JSON_EXTRACT(kpi_data, '$.\"CGN CPU Average Usage\"'))")
+    max_expr = ("COALESCE("
+                "JSON_EXTRACT(kpi_data, '$.\"CGN_CPU_Max_Usage\"'), "
+                "JSON_EXTRACT(kpi_data, '$.\"CGN CPU Max Usage\"'))")
 
-    # Solo traer los campos necesarios
-    device_data = defaultdict(lambda: {'avgs': [], 'maxs': [], 'times': []})
-    for row in qs.only('device_name', 'collection_time', 'kpi_data').values(
-            'device_name', 'collection_time', 'kpi_data'):
-        d  = row['device_name']
-        kd = row['kpi_data'] or {}
-        avg_val = kd.get('CGN_CPU_Average_Usage') or kd.get('CGN CPU Average Usage')
-        max_val = kd.get('CGN_CPU_Max_Usage')     or kd.get('CGN CPU Max Usage')
-        if avg_val is not None:
-            device_data[d]['avgs'].append(float(avg_val))
-        if max_val is not None:
-            device_data[d]['maxs'].append(float(max_val))
-        device_data[d]['times'].append(row['collection_time'].strftime('%Y-%m-%d %H:%M') if row['collection_time'] else '')
+    where = ["pm_code = %s"]
+    params = ['PM_IG45046_5']
+    if hours < 8760:
+        where.append("collection_time >= %s")
+        params.append(_since(hours))
+    if prefix:
+        where.append("device_name LIKE %s")
+        params.append(prefix + '%')
+    where_sql = " AND ".join(where)
+
+    sql = f"""
+        SELECT
+            device_name                                   AS device,
+            COUNT({avg_expr})                             AS samples,
+            ROUND(AVG({avg_expr}), 2)                     AS cpu_avg_mean,
+            ROUND(MAX({avg_expr}), 2)                     AS cpu_avg_max,
+            ROUND(AVG({max_expr}), 2)                     AS cpu_peak_mean,
+            ROUND(MAX({max_expr}), 2)                     AS cpu_peak_max,
+            DATE_FORMAT(MIN(collection_time), '%%Y-%%m-%%d %%H:%%i') AS first_sample,
+            DATE_FORMAT(MAX(collection_time), '%%Y-%%m-%%d %%H:%%i') AS last_sample
+        FROM nce_pm_data
+        WHERE {where_sql}
+        GROUP BY device_name
+        ORDER BY cpu_avg_mean DESC
+    """
 
     result = []
-    for dev, data in device_data.items():
-        avgs  = data['avgs']
-        maxs  = data['maxs']
-        times = data['times']
-        result.append({
-            'device':        dev,
-            'samples':       len(avgs),
-            'cpu_avg_mean':  round(sum(avgs) / len(avgs), 2)  if avgs  else 0,
-            'cpu_avg_max':   round(max(avgs), 2)              if avgs  else 0,
-            'cpu_peak_mean': round(sum(maxs) / len(maxs), 2)  if maxs  else 0,
-            'cpu_peak_max':  round(max(maxs), 2)              if maxs  else 0,
-            'first_sample':  min(times)                       if times else '',
-            'last_sample':   max(times)                       if times else '',
-        })
+    with connection.cursor() as cur:
+        cur.execute(sql, params)
+        for row in cur.fetchall():
+            result.append({
+                'device':        row[0],
+                'samples':       int(row[1] or 0),
+                'cpu_avg_mean':  float(row[2]) if row[2] is not None else 0,
+                'cpu_avg_max':   float(row[3]) if row[3] is not None else 0,
+                'cpu_peak_mean': float(row[4]) if row[4] is not None else 0,
+                'cpu_peak_max':  float(row[5]) if row[5] is not None else 0,
+                'first_sample':  row[6] or '',
+                'last_sample':   row[7] or '',
+            })
 
-    result.sort(key=lambda x: x['cpu_avg_mean'], reverse=True)
     cache.set(cache_key, result, CACHE_SUMMARY_TTL)
     return result
 
