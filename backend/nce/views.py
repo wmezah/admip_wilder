@@ -34,21 +34,18 @@ def _build_summary(hours, prefix=''):
     Mantiene intacta la granularidad de 5 minutos de los datos crudos.
     Usa caché para evitar recalcular en cada request.
     """
-    from django.db import connection
+    from django.db import connections
 
     cache_key = f'nce_summary_{hours}_{prefix}'
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
 
-    # Los KPIs pueden venir con clave usando guion bajo o espacio.
-    # JSON_EXTRACT devuelve NULL si la clave no existe; COALESCE toma la primera no nula.
-    avg_expr = ("COALESCE("
-                "JSON_EXTRACT(kpi_data, '$.\"CGN_CPU_Average_Usage\"'), "
-                "JSON_EXTRACT(kpi_data, '$.\"CGN CPU Average Usage\"'))")
-    max_expr = ("COALESCE("
-                "JSON_EXTRACT(kpi_data, '$.\"CGN_CPU_Max_Usage\"'), "
-                "JSON_EXTRACT(kpi_data, '$.\"CGN CPU Max Usage\"'))")
+    # Los KPIs se guardan con clave usando guion bajo (sin espacios),
+    # así que el operador ->> extrae el valor de forma limpia.
+    # CAST a DECIMAL asegura que AVG/MAX operen sobre números.
+    avg_expr = "CAST(kpi_data->>'$.CGN_CPU_Average_Usage' AS DECIMAL(10,2))"
+    max_expr = "CAST(kpi_data->>'$.CGN_CPU_Max_Usage' AS DECIMAL(10,2))"
 
     where = ["pm_code = %s"]
     params = ['PM_IG45046_5']
@@ -77,7 +74,7 @@ def _build_summary(hours, prefix=''):
     """
 
     result = []
-    with connection.cursor() as cur:
+    with connections['nce'].cursor() as cur:
         cur.execute(sql, params)
         for row in cur.fetchall():
             result.append({
