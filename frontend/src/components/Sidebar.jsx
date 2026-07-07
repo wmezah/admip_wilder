@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Package, Users, ChevronDown, ChevronUp,
   Zap, BookOpen, FileText, Activity, ClipboardList,
-  PanelLeftClose, PanelLeftOpen, AlertTriangle
+  PanelLeftClose, PanelLeftOpen, AlertTriangle, Radio
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -19,6 +19,10 @@ const NAV_GROUPS = [
   {
     section: 'CGNAT KPIs', collapsible: true,
     items: [{ label:'CPU Report', icon:Activity, to:'/nce' }],
+  },
+  {
+    section: 'Backbone / Core', collapsible: true,
+    items: [{ label:'Enlaces', icon:Radio, to:'/backbone' }],
   },
   {
     section: 'Recursos', collapsible: true,

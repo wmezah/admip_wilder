@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     # Apps locales — agrega nuevos aplicativos aquí
     'spare',
     'nce',
+    'backbone',
     'rest_framework_simplejwt',
     'users',
 ]
@@ -84,6 +85,18 @@ DATABASES = {
             'charset': 'utf8mb4',
         },
     },
+    'backbone': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.getenv('BACKBONE_DB_NAME', 'backbone_core'),
+        'USER': os.getenv('BACKBONE_DB_USER', 'backbone'),
+        'PASSWORD': os.getenv('BACKBONE_DB_PASSWORD', ''),
+        'HOST': os.getenv('BACKBONE_DB_HOST', 'localhost'),
+        'PORT': os.getenv('BACKBONE_DB_PORT', '3306'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+        },
+    },
+    
 }
 
 # La app 'nce' usa la base 'nce', todo lo demás usa 'default'

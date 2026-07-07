@@ -5,6 +5,10 @@ export const STATUS_STYLES = {
   'PENDIENTE':       { bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
   'REVISION':        { bg: '#f0f9ff', color: '#0891b2', border: '#bae6fd' },
   'BAJA':            { bg: '#f3f4f6', color: '#65676b', border: '#dadde1' },
+  // ─── Backbone / Core ───
+  'ok':              { bg: '#f0fdf4', color: '#16a34a', border: '#bbf7d0' },
+  'alerta':          { bg: '#fffbeb', color: '#d97706', border: '#fde68a' },
+  'caido':           { bg: '#fef2f2', color: '#dc2626', border: '#fecaca' },
 }
 
 export default function StatusBadge({ estatus }) {

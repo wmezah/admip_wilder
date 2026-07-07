@@ -13,4 +13,5 @@ urlpatterns = [
     path('api/spare/',  include('spare.urls')),
     path('api/nce/',    include('nce.urls')),
     path('api/users/',  include('users.urls')),   # ← NUEVO
+    path('api/backbone/', include('backbone.urls')),
 ]
