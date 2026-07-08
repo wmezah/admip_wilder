@@ -4,6 +4,7 @@ backbone/pipeline.py - Orquestador de recoleccion TWAMP para Backbone/Core.
 Mismo patron que nce/pipeline.py: parsear -> filtrar duplicados -> bulk_create.
 """
 import logging
+import posixpath
 from typing import Optional
 
 logger = logging.getLogger("backbone.pipeline")
@@ -46,8 +47,6 @@ def run_collection_twamp(
 
             rows = [r for r in parsed["rows"] if r["collection_time"] is not None]
 
-            # Filtrar duplicados antes de insertar (MySQL no soporta
-            # update_conflicts con unique_fields, igual que en nce/pipeline.py)
             existing_keys = set(
                 BBDelay.objects.filter(
                     collection_time__in=[r["collection_time"] for r in rows],
@@ -109,14 +108,21 @@ def run_collection_twamp(
         logger.info("Archivos TWAMP ya procesados en BD: %d", len(processed))
 
         with NCECollector(NCE_HOST, NCE_USER, NCE_PASSWORD, NCE_BASE_DIR, True, NCE_PORT) as col:
-            files     = col.list_files(PM_CODE)
-            new_files = [f for f in files if f not in processed]
-            if not new_files:
+            files = col.list_files(PM_CODE)
+            # El NCE puede devolver rutas con subcarpeta de fecha
+            # (ej. '20260707/PM_IGTwamp_5_...csv'). Se filtra y se registra
+            # por el nombre base, pero se descarga con la ruta completa.
+            candidatos = [
+                (f, posixpath.basename(f)) for f in files
+                if posixpath.basename(f).startswith(PM_CODE)
+            ]
+            nuevos = [(ruta, base) for ruta, base in candidatos if base not in processed]
+            if not nuevos:
                 logger.info("Sin archivos TWAMP nuevos.")
-            for fname in new_files:
-                content = col.download_file(fname)
+            for ruta, base in nuevos:
+                content = col.download_file(ruta)
                 if content:
-                    summary.append(process_file(fname, content))
+                    summary.append(process_file(base, content))
 
     logger.info("=== Recoleccion TWAMP completada: %d archivos ===", len(summary))
     return summary

@@ -4,6 +4,7 @@ backbone/pipeline_traffic.py - Orquestador de recoleccion de trafico (PM_IG27_15
 Mismo patron que pipeline.py (TWAMP): parsear -> filtrar duplicados -> bulk_create.
 """
 import logging
+import posixpath
 from typing import Optional
 
 logger = logging.getLogger("backbone.pipeline_traffic")
@@ -91,10 +92,13 @@ def run_collection_traffic(
                 )
             return {"filename": fname, "rows_total": 0, "rows_loaded": 0, "status": "error"}
 
+    # -- Modo local (pruebas con archivos ya descargados) ----------------------
     if local_files is not None:
         for fname, content in local_files.items():
             if fname.startswith(PM_CODE):
                 summary.append(process_file(fname, content))
+
+    # -- Modo SFTP (produccion) -------------------------------------------------
     else:
         processed = set(
             BBCollectionLog.objects
@@ -103,11 +107,20 @@ def run_collection_traffic(
         )
         with NCECollector(NCE_HOST, NCE_USER, NCE_PASSWORD, NCE_BASE_DIR, True, NCE_PORT) as col:
             files = col.list_files(PM_CODE)
-            new_files = [f for f in files if f not in processed]
-            for fname in new_files:
-                content = col.download_file(fname)
+            # El NCE puede devolver rutas con subcarpeta de fecha
+            # (ej. '20260707/PM_IG27_15_...csv'). Se filtra y se registra
+            # por el nombre base, pero se descarga con la ruta completa.
+            candidatos = [
+                (f, posixpath.basename(f)) for f in files
+                if posixpath.basename(f).startswith(PM_CODE)
+            ]
+            nuevos = [(ruta, base) for ruta, base in candidatos if base not in processed]
+            if not nuevos:
+                logger.info("Sin archivos de trafico nuevos.")
+            for ruta, base in nuevos:
+                content = col.download_file(ruta)
                 if content:
-                    summary.append(process_file(fname, content))
+                    summary.append(process_file(base, content))
 
     logger.info("=== Recoleccion trafico completada: %d archivos ===", len(summary))
     return summary
