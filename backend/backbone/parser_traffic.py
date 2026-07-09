@@ -32,6 +32,21 @@ _BPS_TO_MBPS_FIELDS = {'in_rate_avg', 'out_rate_avg', 'max_rate'}
 # Se conserva en extra (JSON) por si sirve para contexto, sin columna fija
 EXTRA_COLS = ['Bandwidth']
 
+# El NCE reporta CollectionTime en hora local de Peru (America/Lima),
+# NO en UTC. Antes se localizaba como pytz.utc.localize(naive), lo que
+# dejaba el timestamp adelantado 5 horas respecto al real (bug detectado
+# en frontend: graficos de trafico mostraban 16:xx en vez de 21:xx). Se
+# corrige localizando a America/Lima; Django convierte a UTC solo para
+# el almacenamiento interno (USE_TZ=True), y las lecturas/serializaciones
+# vuelven a mostrar la hora de Lima correctamente. Mismo fix aplicado en
+# backbone/parser_twamp.py (bug identico, copy-paste original).
+try:
+    from zoneinfo import ZoneInfo
+    _LIMA_TZ = ZoneInfo("America/Lima")
+except ImportError:  # pragma: no cover - fallback por si acaso
+    import pytz
+    _LIMA_TZ = pytz.timezone("America/Lima")
+
 
 def _to_float(value: str):
     try:
@@ -41,11 +56,15 @@ def _to_float(value: str):
 
 
 def _parse_collection_time(raw: str):
-    import pytz
     for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%Y%m%d%H%M%S'):
         try:
             naive = datetime.strptime(raw.strip(), fmt)
-            return pytz.utc.localize(naive)
+            # naive esta en hora de Lima (dato del NCE) -> localizar como
+            # America/Lima, no como UTC.
+            if hasattr(_LIMA_TZ, "localize"):
+                # pytz fallback
+                return _LIMA_TZ.localize(naive)
+            return naive.replace(tzinfo=_LIMA_TZ)
         except ValueError:
             continue
     return None
