@@ -12,6 +12,28 @@ logger = logging.getLogger("backbone.pipeline_traffic")
 PM_CODE = "PM_IG27_15"
 
 
+def _listar_todos(col, pm_code: str) -> list[str]:
+    """
+    Lista TODOS los archivos del pm_code en el directorio del dia
+    (todas las partes _01/_02/... y todos los intervalos), a diferencia
+    de col.list_files() que devuelve solo el mas reciente (logica
+    heredada de CGNAT). Devuelve rutas con prefijo de carpeta, igual
+    que list_files().
+    """
+    from datetime import date
+    today = date.today().strftime("%Y%m%d")
+    dir_path = col._today_path()
+    try:
+        all_files = col._sftp.listdir(dir_path)
+    except Exception as e:
+        logger.error("No se pudo listar %s: %s", dir_path, e)
+        return []
+    return sorted(
+        f"{today}/{f}" for f in all_files
+        if f.startswith(pm_code) and f.endswith(".csv")
+    )
+
+
 def run_collection_traffic(
     dry_run: bool = False,
     local_files: Optional[dict] = None,
@@ -106,10 +128,10 @@ def run_collection_traffic(
             .values_list("filename", flat=True)
         )
         with NCECollector(NCE_HOST, NCE_USER, NCE_PASSWORD, NCE_BASE_DIR, True, NCE_PORT) as col:
-            files = col.list_files(PM_CODE)
-            # El NCE puede devolver rutas con subcarpeta de fecha
-            # (ej. '20260707/PM_IG27_15_...csv'). Se filtra y se registra
-            # por el nombre base, pero se descarga con la ruta completa.
+            # No usar col.list_files(): devuelve SOLO el archivo mas reciente.
+            # Backbone necesita TODAS las partes (_01, _02, ...) de TODOS
+            # los intervalos disponibles del dia.
+            files = _listar_todos(col, PM_CODE)
             candidatos = [
                 (f, posixpath.basename(f)) for f in files
                 if posixpath.basename(f).startswith(PM_CODE)
