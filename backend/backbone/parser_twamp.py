@@ -39,6 +39,20 @@ EXTRA_MAP = {
 }
 _MICRO_TO_MS_FIELDS = {'delay_avg_ms', 'delay_max_ms', 'delay_min_ms', 'jitter_ms'}
 
+# El NCE reporta CollectionTime en hora local de Peru (America/Lima),
+# NO en UTC. Antes se localizaba como pytz.utc.localize(naive), lo que
+# dejaba el timestamp adelantado 5 horas respecto al real (bug detectado
+# en frontend: graficos mostraban 16:xx en vez de 21:xx). Se corrige
+# localizando a America/Lima; Django convierte a UTC solo para el
+# almacenamiento interno (USE_TZ=True), y las lecturas/serializaciones
+# vuelven a mostrar la hora de Lima correctamente.
+try:
+    from zoneinfo import ZoneInfo
+    _LIMA_TZ = ZoneInfo("America/Lima")
+except ImportError:  # pragma: no cover - fallback por si acaso
+    import pytz
+    _LIMA_TZ = pytz.timezone("America/Lima")
+
 
 def _to_float(value: str):
     try:
@@ -48,11 +62,15 @@ def _to_float(value: str):
 
 
 def _parse_collection_time(raw: str):
-    import pytz
     for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%Y%m%d%H%M%S'):
         try:
             naive = datetime.strptime(raw.strip(), fmt)
-            return pytz.utc.localize(naive)
+            # naive esta en hora de Lima (dato del NCE) -> localizar como
+            # America/Lima, no como UTC.
+            if hasattr(_LIMA_TZ, "localize"):
+                # pytz fallback
+                return _LIMA_TZ.localize(naive)
+            return naive.replace(tzinfo=_LIMA_TZ)
         except ValueError:
             continue
     return None
