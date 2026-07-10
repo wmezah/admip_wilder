@@ -23,6 +23,16 @@ const toLocalTime = (val) => {
   } catch { return String(val).substring(0, 16).replace('T', ' ') }
 }
 
+// El backend (bb_trafico / reporting.py) siempre entrega tasas en Mbps.
+// La UI las muestra en Gbps por legibilidad (enlaces de core son de
+// varios Gbps; 34000 Mbps se lee peor que 34.0 Gbps). Toda la conversión
+// vive solo aca, en la capa de presentacion.
+const mbpsToGbps = (mbps) => (mbps == null ? null : mbps / 1000)
+const fmtGbps = (mbps, decimales = 2) => {
+  const g = mbpsToGbps(mbps)
+  return g == null ? '—' : g.toFixed(decimales)
+}
+
 const COLA_COLORS = {
   EF: '#dc2626', CS6: '#7c3aed', CS7: '#2563eb', AF41: '#0891b2',
   AF31: '#16a34a', AF21: '#d97706', AF12: '#db2777', BE: '#65676b',
@@ -85,13 +95,13 @@ function TraficoBlock({ trafico }) {
       <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px', flex: 1 }}>
         <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>Average (in / out)</p>
         <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
-          {trafico.in_average_mbps?.toFixed(1)} / {trafico.out_average_mbps?.toFixed(1)} Mbps
+          {fmtGbps(trafico.in_average_mbps)} / {fmtGbps(trafico.out_average_mbps)} Gbps
         </p>
       </div>
       <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px', flex: 1 }}>
         <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>Pico</p>
         <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
-          {trafico.pico_mbps?.toFixed(1)} Mbps
+          {fmtGbps(trafico.pico_mbps)} Gbps
           {trafico.uso_pico_pct != null && (
             <span style={{ fontSize: 11.5, color: '#65676b', fontWeight: 400 }}> ({trafico.uso_pico_pct}% uso)</span>
           )}
@@ -138,11 +148,12 @@ function EnlaceSerieChart({ enlaceId }) {
   const delayData = Object.values(delayPorTiempo).sort((a, b) => a._raw.localeCompare(b._raw))
   const colas = Array.from(colasVistas)
 
+  // Tráfico: convertir Mbps (backend) -> Gbps solo para mostrar en el grafico.
   const traficoData = serie.trafico_series.map(p => ({
     time: toLocalTime(p.collection_time),
     _raw: p.collection_time,
-    in: p.in_rate_avg,
-    out: p.out_rate_avg,
+    in: mbpsToGbps(p.in_rate_avg),
+    out: mbpsToGbps(p.out_rate_avg),
   })).sort((a, b) => a._raw.localeCompare(b._raw))
 
   return (
@@ -180,8 +191,8 @@ function EnlaceSerieChart({ enlaceId }) {
               <LineChart data={traficoData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
                 <XAxis dataKey="time" fontSize={11} />
-                <YAxis fontSize={11} unit=" Mbps" />
-                <Tooltip />
+                <YAxis fontSize={11} unit=" Gbps" />
+                <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} Gbps`]} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="in" name="Entrada" stroke="#2563eb" strokeWidth={1.5} dot={{ r: 2 }} />
                 <Line type="monotone" dataKey="out" name="Salida" stroke="#16a34a" strokeWidth={1.5} dot={{ r: 2 }} />
