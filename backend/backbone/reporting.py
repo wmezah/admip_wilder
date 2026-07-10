@@ -8,10 +8,34 @@ Contiene:
 - calcular_estado_delay(): estado de alerta por enlace+cola (escenario 2,
   delay alto sostenido), usando el peor camino (resource_id) y persistencia
   de N muestras consecutivas para evitar que un pico aislado dispare alerta.
+
+NOTA DE RENDIMIENTO (fix aplicado):
+calcular_estado_delay() y calcular_trafico_por_enlace() se usan para el
+listado de enlaces (estado "en vivo"), no para reportes historicos. Antes
+de este fix, ambas funciones agregaban/escaneaban bb_delay y bb_trafico
+COMPLETOS (cientos de miles / millones de filas, creciendo sin limite),
+lo que generaba tablas temporales en MySQL demasiado grandes para
+resolverse en memoria (tmp_table_size/max_heap_table_size = 16MB) y
+terminaban volcandose a disco (tmpdir=/var/tmp), llegando a agotar el
+espacio de /var y tirar error "No space left on device".
+
+Se agrega un filtro de ventana de tiempo (collection_time >= ahora - N
+horas) en ambas funciones, ya que para calcular el estado ACTUAL de un
+enlace solo hacen falta las ultimas muestras, no el historico completo.
+El historico completo sigue disponible via obtener_serie_enlace(), que
+es la funcion que alimenta los graficos de detalle por enlace.
 """
 import logging
+from datetime import timedelta
+
+from django.utils import timezone
 
 logger = logging.getLogger('backbone.reporting')
+
+# Ventanas por defecto para las consultas de "estado actual". Ajustables
+# segun necesidad; no afectan el historico completo (obtener_serie_enlace).
+VENTANA_ESTADO_DELAY_HORAS = 2
+VENTANA_TRAFICO_ENLACE_HORAS = 24
 
 
 def obtener_candidatos() -> list[dict]:
@@ -53,6 +77,10 @@ def obtener_candidatos() -> list[dict]:
     return candidatos
 
 
+# Filtro de ventana agregado en el CTE base: reduce drasticamente las filas
+# que entran al GROUP BY y a la funcion de ventana ROW_NUMBER(). Antes
+# escaneaba bb_delay completo (cientos de miles de filas); ahora solo las
+# filas dentro de la ventana reciente.
 _SQL_ULTIMAS_MUESTRAS = """
     WITH pair_cola_time AS (
         SELECT
@@ -63,6 +91,7 @@ _SQL_ULTIMAS_MUESTRAS = """
             MAX(delay_avg_ms)    AS peor_delay_ms,
             MAX(packet_loss_pct) AS peor_perdida_pct
         FROM bb_delay
+        WHERE collection_time >= %s
         GROUP BY equipo_a, equipo_b, cola, collection_time
     ),
     ranked AS (
@@ -80,19 +109,29 @@ _SQL_ULTIMAS_MUESTRAS = """
 """
 
 
-def calcular_estado_delay(n_muestras: int = 3) -> list[dict]:
+def calcular_estado_delay(
+    n_muestras: int = 3,
+    horas_ventana: int = VENTANA_ESTADO_DELAY_HORAS,
+) -> list[dict]:
     """
     Regla (Opcion B, persistencia): un enlace+cola entra en alerta solo si
     las ultimas N muestras consecutivas (peor camino de cada una) estan
     TODAS por encima del umbral_delay_ms configurado para ese enlace.
     100% de perdida en la ultima muestra = estado 'caido'.
+
+    Solo considera datos de las ultimas `horas_ventana` horas: alcanza y
+    sobra para evaluar las ultimas n_muestras (con ciclos de 5 min, 2
+    horas = hasta 24 muestras posibles por enlace+cola), y evita escanear
+    el historico completo de bb_delay en cada carga del listado.
     """
     from django.db import connections
     from .models import BBEnlace
 
+    desde = timezone.now() - timedelta(hours=horas_ventana)
+
     muestras = {}
     with connections['backbone'].cursor() as cur:
-        cur.execute(_SQL_ULTIMAS_MUESTRAS, [n_muestras])
+        cur.execute(_SQL_ULTIMAS_MUESTRAS, [desde, n_muestras])
         for a, b, cola, rn, ct, delay, perdida in cur.fetchall():
             muestras.setdefault((a, b, cola), []).append({
                 'rn': rn,
@@ -138,14 +177,23 @@ def calcular_estado_delay(n_muestras: int = 3) -> list[dict]:
 
     return resultado
 
-def calcular_trafico_por_enlace() -> list[dict]:
+
+def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORAS) -> list[dict]:
     """
     Trafico average/pico por enlace, cruzando con bb_trafico via
     resource = "{origen.nombre}/{iface_origen}".
     Solo devuelve datos para enlaces con iface_origen cargado; el resto
     aparece marcado como sin_iface_configurada.
+
+    Solo considera datos de las ultimas `horas_ventana` horas (24h por
+    defecto): es el promedio/pico "reciente" para el listado, no el
+    historico completo. Evita agregar sobre bb_trafico entero (millones
+    de filas y creciendo).
     """
+    from django.db.models import Avg, Max, Count
     from .models import BBEnlace, BBTrafico
+
+    desde = timezone.now() - timedelta(hours=horas_ventana)
 
     enlaces = BBEnlace.objects.select_related('origen', 'destino').filter(activo=True)
 
@@ -157,15 +205,9 @@ def calcular_trafico_por_enlace() -> list[dict]:
 
     datos_por_resource = {}
     if resource_a_enlaces:
-        qs = (
-            BBTrafico.objects
-            .filter(resource__in=resource_a_enlaces.keys())
-            .values('resource')
-        )
-        from django.db.models import Avg, Max, Count
         agregados = (
             BBTrafico.objects
-            .filter(resource__in=resource_a_enlaces.keys())
+            .filter(resource__in=resource_a_enlaces.keys(), collection_time__gte=desde)
             .values('resource')
             .annotate(
                 in_avg=Avg('in_rate_avg'),
@@ -237,11 +279,17 @@ def enlaces_sin_iface() -> list[dict]:
             .filter(activo=True, iface_origen='')
     ]
 
+
 def obtener_serie_enlace(enlace_id: int) -> dict | None:
     """
     Serie de tiempo completa (todo lo disponible) de delay por cola y
     trafico in/out para un enlace especifico. Sin filtro de ventana de
     tiempo real: trae todo lo que haya en bb_delay/bb_trafico para ese par.
+
+    A diferencia de calcular_estado_delay()/calcular_trafico_por_enlace(),
+    esta funcion se llama una sola vez (al abrir el detalle de UN enlace),
+    no en cada carga del listado completo, por lo que el costo de traer
+    el historico completo es aceptable y necesario para el grafico.
     """
     from django.db.models import Q, Max
     from .models import BBEnlace, BBDelay, BBTrafico
