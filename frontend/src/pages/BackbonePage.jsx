@@ -149,11 +149,15 @@ function EnlaceSerieChart({ enlaceId }) {
   const colas = Array.from(colasVistas)
 
   // Tráfico: convertir Mbps (backend) -> Gbps solo para mostrar en el grafico.
+  // max_rate es el pico DENTRO de cada muestra de 15 min (ya viene asi del
+  // NCE); se grafica como una tercera linea para ver donde ocurren los
+  // picos a lo largo del tiempo, ademas del numero agregado en TraficoBlock.
   const traficoData = serie.trafico_series.map(p => ({
     time: toLocalTime(p.collection_time),
     _raw: p.collection_time,
     in: mbpsToGbps(p.in_rate_avg),
     out: mbpsToGbps(p.out_rate_avg),
+    pico: mbpsToGbps(p.max_rate),
   })).sort((a, b) => a._raw.localeCompare(b._raw))
 
   return (
@@ -196,6 +200,8 @@ function EnlaceSerieChart({ enlaceId }) {
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="in" name="Entrada" stroke="#2563eb" strokeWidth={1.5} dot={{ r: 2 }} />
                 <Line type="monotone" dataKey="out" name="Salida" stroke="#16a34a" strokeWidth={1.5} dot={{ r: 2 }} />
+                <Line type="monotone" dataKey="pico" name="Pico" stroke="#dc2626" strokeWidth={1.2}
+                      strokeDasharray="4 3" dot={{ r: 1.5 }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           )}
