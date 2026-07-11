@@ -98,7 +98,7 @@ def run_collection_traffic(
             filas_totales_parseadas = len(parsed["rows"])
             rows_filtradas = [
                 r for r in parsed["rows"]
-                if f"{r['device_name']}/{r['resource']}" in resources_ok
+                if r['resource'] in resources_ok
             ]
             descartadas_por_iface = filas_totales_parseadas - len(rows_filtradas)
 
