@@ -16,6 +16,7 @@ class BBEquipoSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('Ya existe un equipo con ese nombre.')
         return value
 
+
 from .models import BBEnlace
 
 
@@ -24,6 +25,17 @@ class BBEnlaceSerializer(serializers.ModelSerializer):
     destino_nombre = serializers.CharField(source='destino.nombre', read_only=True)
     origen_rol = serializers.CharField(source='origen.rol', read_only=True)
     destino_rol = serializers.CharField(source='destino.rol', read_only=True)
+    # Coordenadas anidadas de origen/destino, para que el mapa pueda dibujar
+    # el enlace sin tener que resolver cada equipo por separado. Quedan en
+    # None si el equipo todavia no tiene latitud/longitud cargada.
+    origen_latitud = serializers.DecimalField(source='origen.latitud', read_only=True,
+                                               max_digits=9, decimal_places=6)
+    origen_longitud = serializers.DecimalField(source='origen.longitud', read_only=True,
+                                                max_digits=9, decimal_places=6)
+    destino_latitud = serializers.DecimalField(source='destino.latitud', read_only=True,
+                                                max_digits=9, decimal_places=6)
+    destino_longitud = serializers.DecimalField(source='destino.longitud', read_only=True,
+                                                 max_digits=9, decimal_places=6)
 
     class Meta:
         model = BBEnlace
