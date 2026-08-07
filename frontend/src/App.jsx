@@ -13,6 +13,7 @@ const ImportPage      = lazy(() => import('./pages/ImportPage'))
 const CatalogPage     = lazy(() => import('./pages/CatalogPage'))
 const UsersPage       = lazy(() => import('./pages/UsersPage'))
 const BackbonePage    = lazy(() => import('./pages/BackbonePage'))
+const BackboneMapa    = lazy(() => import('./pages/BackboneMapa'))
 
 // Loading fallback
 function PageLoader() {
@@ -202,6 +203,7 @@ export default function App() {
               <Route path="/catalogo"    element={<CatalogPage />}     />
               <Route path="/usuarios"    element={<UsersPage />}       />
               <Route path="/backbone"    element={<BackbonePage />}    />
+              <Route path="/backbone/mapa" element={<BackboneMapa />}  />
               <Route path="*"            element={<Navigate to="/" />} />
             </Routes>
           </Suspense>

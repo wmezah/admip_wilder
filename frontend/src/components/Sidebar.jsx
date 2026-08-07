@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Package, Users, ChevronDown, ChevronUp,
   Zap, BookOpen, FileText, Activity, ClipboardList,
-  PanelLeftClose, PanelLeftOpen, AlertTriangle, Radio
+  PanelLeftClose, PanelLeftOpen, AlertTriangle, Radio, Map
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -22,7 +22,10 @@ const NAV_GROUPS = [
   },
   {
     section: 'Backbone / Core', collapsible: true,
-    items: [{ label:'Enlaces', icon:Radio, to:'/backbone' }],
+    items: [
+      { label:'Enlaces', icon:Radio, to:'/backbone' },
+      { label:'Mapa',    icon:Map,   to:'/backbone/mapa' },
+    ],
   },
   {
     section: 'Recursos', collapsible: true,
