@@ -3,6 +3,10 @@ import * as d3geo from 'd3-geo'
 import { zoom as d3zoom, zoomIdentity } from 'd3-zoom'
 import { select } from 'd3-selection'
 import { Radio, RefreshCw, ZoomIn, ZoomOut, Maximize2, AlertTriangle, Search } from 'lucide-react'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 import peruGeoJsonRaw from '../assets/geo/peru.geojson?raw'
 
 // El archivo fuente (geoBoundaries) trae los anillos en sentido horario
@@ -39,6 +43,28 @@ const peruGeoJson = fixWinding(JSON.parse(peruGeoJsonRaw))
 const API = '/api/backbone'
 const authH = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` })
 
+// Mismos helpers y colores que BackbonePage.jsx, para que el grafico del
+// Mapa se vea identico al de Enlaces (misma libreria, misma paleta).
+const TZ = 'America/Lima'
+const toLocalTime = (val) => {
+  if (!val) return '—'
+  try {
+    return new Date(val).toLocaleString('es-PE', {
+      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+      hour12: false, timeZone: TZ,
+    })
+  } catch { return String(val).substring(0, 16).replace('T', ' ') }
+}
+const mbpsToGbps = (mbps) => (mbps == null ? null : mbps / 1000)
+const fmtGbps = (mbps, decimales = 2) => {
+  const g = mbpsToGbps(mbps)
+  return g == null ? '—' : g.toFixed(decimales)
+}
+const COLA_COLORS = {
+  EF: '#dc2626', CS6: '#7c3aed', CS7: '#2563eb', AF41: '#0891b2',
+  AF31: '#16a34a', AF21: '#d97706', AF12: '#db2777', BE: '#65676b',
+}
+
 const ANCHO = 640
 const ALTO = 700
 
@@ -74,8 +100,6 @@ export default function BackboneMapa() {
   const [loading, setLoading] = useState(true)
   const [transform, setTransform] = useState(zoomIdentity)
   const [enlaceSeleccionado, setEnlaceSeleccionado] = useState(null)
-  const [historial, setHistorial] = useState(null)
-  const [historialCargando, setHistorialCargando] = useState(false)
 
   // Panel de "agregar coordenada"
   const [busqueda, setBusqueda] = useState('')
@@ -298,13 +322,6 @@ export default function BackboneMapa() {
 
   const seleccionarEnlace = (enlace) => {
     setEnlaceSeleccionado(enlace)
-    setHistorial(null)
-    setHistorialCargando(true)
-    fetch(`${API}/enlaces/${enlace.id}/serie/`, { headers: authH() })
-      .then(r => r.json())
-      .then(d => setHistorial(d))
-      .catch(e => console.error(e))
-      .finally(() => setHistorialCargando(false))
   }
 
   const guardarCoordenada = () => {
@@ -486,7 +503,7 @@ export default function BackboneMapa() {
             {!enlaceSeleccionado ? (
               <p style={{ fontSize: 13, color: '#9ca3af' }}>Hacé clic en una línea del mapa.</p>
             ) : (
-              <DetalleEnlace enlace={enlaceSeleccionado} historial={historial} cargando={historialCargando} />
+              <DetalleEnlace enlace={enlaceSeleccionado} />
             )}
           </div>
 
@@ -498,7 +515,7 @@ export default function BackboneMapa() {
   )
 }
 
-function DetalleEnlace({ enlace, historial, cargando }) {
+function DetalleEnlace({ enlace }) {
   const t = enlace.trafico
   const usoPico = t && t.uso_pico_pct != null ? Number(t.uso_pico_pct) : null
   const barraColor = usoPico == null ? '#d1d5db' : enlace.saturado ? '#dc2626' : usoPico > 60 ? '#d97706' : '#16a34a'
@@ -560,186 +577,116 @@ function DetalleEnlace({ enlace, historial, cargando }) {
       </div>
 
       <div style={{ borderTop: '1px solid #ececec', marginTop: 14, paddingTop: 12 }}>
-        <p style={{ fontSize: 12, color: '#65676b', margin: '0 0 6px' }}>Historial (últimas 24h)</p>
-        {cargando ? (
-          <p style={{ fontSize: 12, color: '#9ca3af' }}>Cargando...</p>
-        ) : (
-          <>
-            <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 4px' }}>Delay</p>
-            <DelayChart delaySeries={historial?.delay_series || []} />
-            <p style={{ fontSize: 11, color: '#9ca3af', margin: '10px 0 4px' }}>Tráfico (in/out)</p>
-            <TraficoChart traficoSeries={historial?.trafico_series || []} />
-          </>
-        )}
+        <EnlaceSerieChart enlaceId={enlace.id} />
       </div>
     </div>
   )
 }
 
-// Filtra una serie a las ultimas 24h en base a collection_time. El backend
-// (obtener_serie_enlace) trae el historico completo sin ventana, asi que el
-// recorte a 24h se hace del lado del cliente.
+// Ventana de recorte para el historico (el backend / obtener_serie_enlace
+// trae todo sin filtro, a proposito, porque tambien alimenta el grafico
+// completo de BackbonePage.jsx). Acá lo acotamos a 24h para el panel del mapa.
 function ultimas24h(serie) {
   const corte = Date.now() - 24 * 60 * 60 * 1000
   return serie.filter(m => new Date(m.collection_time).getTime() >= corte)
 }
 
-// Paleta categorica fija (Cove), para que cada cola siempre tenga el mismo
-// color sin importar el orden en que llegue del backend. No se cicla al
-// azar: se asigna por nombre de cola, asi es consistente entre el panel
-// "Por cola" (arriba) y este grafico.
-const PALETA_COLAS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948']
+// Mismo componente que EnlaceSerieChart en BackbonePage.jsx (recharts, con
+// ejes de fecha y leyenda por cola), para que el historial se vea IDENTICO
+// entre la pagina de Enlaces y el Mapa. Unica diferencia: acá se recorta a
+// las ultimas 24h antes de armar los datos del grafico.
+function EnlaceSerieChart({ enlaceId }) {
+  const [serie, setSerie] = useState(null)
+  const [loading, setLoading] = useState(true)
 
-function colorParaCola(nombreCola, todasLasColas) {
-  const idx = todasLasColas.indexOf(nombreCola)
-  return PALETA_COLAS[idx % PALETA_COLAS.length]
-}
+  useEffect(() => {
+    let activo = true
+    setLoading(true)
+    fetch(`${API}/enlaces/${enlaceId}/serie/`, { headers: authH() })
+      .then(r => r.json())
+      .then(d => { if (activo) setSerie(d) })
+      .catch(() => { if (activo) setSerie(null) })
+      .finally(() => { if (activo) setLoading(false) })
+    return () => { activo = false }
+  }, [enlaceId])
 
-// Grafico de delay con UNA LINEA POR COLA (en vez de una sola linea de
-// peor-caso), filtrado a las ultimas 24h. Cada cola mantiene su color fijo
-// de la paleta Cove, igual que el desglose "Por cola" de arriba.
-function DelayChart({ delaySeries }) {
-  const { series, colas } = useMemo(() => {
-    const recientes = ultimas24h(delaySeries)
-    const porCola = new Map()
-    for (const m of recientes) {
-      if (m.delay_ms == null || !m.cola) continue
-      if (!porCola.has(m.cola)) porCola.set(m.cola, [])
-      porCola.get(m.cola).push(m)
-    }
-    const colas = Array.from(porCola.keys()).sort()
-    const series = colas.map(cola => {
-      const ordenado = porCola.get(cola).sort((a, b) => new Date(a.collection_time) - new Date(b.collection_time))
-      return {
-        cola,
-        valores: ordenado.map(m => m.delay_ms),
-        color: colorParaCola(cola, colas),
-      }
-    })
-    return { series, colas }
-  }, [delaySeries])
-
-  if (series.length === 0) {
-    return <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin datos en las últimas 24h.</p>
+  if (loading) {
+    return <p style={{ fontSize: 12, color: '#9ca3af' }}>Cargando gráfico...</p>
   }
+  if (!serie) {
+    return <p style={{ fontSize: 12, color: '#9ca3af' }}>No se pudo cargar el histórico.</p>
+  }
+
+  const delaySeries24h = ultimas24h(serie.delay_series)
+  const traficoSeries24h = ultimas24h(serie.trafico_series)
+
+  const delayPorTiempo = {}
+  const colasVistas = new Set()
+  for (const p of delaySeries24h) {
+    const t = p.collection_time
+    colasVistas.add(p.cola)
+    if (!delayPorTiempo[t]) delayPorTiempo[t] = { time: toLocalTime(t), _raw: t }
+    delayPorTiempo[t][p.cola] = p.delay_ms
+  }
+  const delayData = Object.values(delayPorTiempo).sort((a, b) => a._raw.localeCompare(b._raw))
+  const colas = Array.from(colasVistas)
+
+  const traficoData = traficoSeries24h.map(p => ({
+    time: toLocalTime(p.collection_time),
+    _raw: p.collection_time,
+    in: mbpsToGbps(p.in_rate_avg),
+    out: mbpsToGbps(p.out_rate_avg),
+  })).sort((a, b) => a._raw.localeCompare(b._raw))
 
   return (
     <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-        {series.map(s => (
-          <span key={s.cola} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#65676b' }}>
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, display: 'inline-block' }} />
-            {s.cola}
-          </span>
-        ))}
-      </div>
-      <MiniLineChart
-        series={series.map(s => ({ valores: s.valores, color: s.color }))}
-      />
-    </div>
-  )
-}
-
-// Grafico de trafico: entrada y salida en el MISMO grafico, misma escala.
-// La salida usa linea punteada ademas de otro color, para que se puedan
-// distinguir aunque el color no alcance a diferenciarlas (ej. en un cruce).
-function TraficoChart({ traficoSeries }) {
-  const { entradas, salidas } = useMemo(() => {
-    const recientes = ultimas24h(traficoSeries)
-      .filter(m => m.in_rate_avg != null || m.out_rate_avg != null)
-      .sort((a, b) => new Date(a.collection_time) - new Date(b.collection_time))
-    return {
-      entradas: recientes.map(m => m.in_rate_avg).filter(v => v != null),
-      salidas: recientes.map(m => m.out_rate_avg).filter(v => v != null),
-    }
-  }, [traficoSeries])
-
-  if (entradas.length === 0 && salidas.length === 0) {
-    return <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin datos de tráfico en las últimas 24h.</p>
-  }
-
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 14, fontSize: 11, color: '#65676b', marginBottom: 4 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 12, height: 2, background: '#2a78d6', display: 'inline-block' }} /> Entrada
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <svg width="12" height="4"><line x1="0" y1="2" x2="12" y2="2" stroke="#eb6834" strokeWidth="2" strokeDasharray="3,2" /></svg> Salida
-        </span>
-      </div>
-      <MiniLineChart
-        series={[
-          { valores: entradas, color: '#2a78d6' },
-          { valores: salidas, color: '#eb6834', dash: '4,3' },
-        ]}
-      />
-    </div>
-  )
-}
-
-// Convierte una lista de puntos {x,y} en un path suavizado (spline
-// Catmull-Rom -> Bezier), en vez de una polilinea recta con quiebres.
-// Los puntos reales siguen marcados con circulos; solo la interpolacion
-// entre ellos se ve suave, sin inventar valores intermedios.
-function pathSuave(coords) {
-  if (coords.length < 2) return ''
-  if (coords.length === 2) return `M${coords[0].x},${coords[0].y} L${coords[1].x},${coords[1].y}`
-  let d = `M${coords[0].x},${coords[0].y} `
-  for (let i = 0; i < coords.length - 1; i++) {
-    const p0 = coords[i - 1] || coords[i]
-    const p1 = coords[i]
-    const p2 = coords[i + 1]
-    const p3 = coords[i + 2] || p2
-    const cp1x = p1.x + (p2.x - p0.x) / 6
-    const cp1y = p1.y + (p2.y - p0.y) / 6
-    const cp2x = p2.x - (p3.x - p1.x) / 6
-    const cp2y = p2.y - (p3.y - p1.y) / 6
-    d += `C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y} `
-  }
-  return d
-}
-
-// Componente generico: dibuja 1 o mas series de linea suavizada en el mismo
-// eje. Si se pasa mas de una serie, comparten escala (para casos donde
-// realmente conviene compararlas juntas); si son magnitudes muy distintas,
-// mejor llamar el componente por separado (ver TraficoChart).
-function MiniLineChart({ series, etiquetaFinal }) {
-  const w = 260, h = 70, pad = 8
-
-  const todosLosValores = series.flatMap(s => s.valores)
-  if (todosLosValores.length === 0) return null
-
-  const max = Math.max(...todosLosValores), min = Math.min(...todosLosValores)
-  const rango = (max - min) || 1
-
-  return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h + (etiquetaFinal ? 16 : 4)}`}>
-      {series.map((s, si) => {
-        if (s.valores.length === 0) return null
-        const stepX = s.valores.length > 1 ? (w - pad * 2) / (s.valores.length - 1) : 0
-        const coords = s.valores.map((v, i) => {
-          const x = pad + i * stepX
-          const y = pad + (h - pad * 2) * (1 - (v - min) / rango)
-          return { x, y }
-        })
-        return (
-          <g key={si}>
-            <path d={pathSuave(coords)} fill="none" stroke={s.color} strokeWidth={2} strokeDasharray={s.dash || undefined} />
-            {coords.map((c, i) => (
-              <circle key={i} cx={c.x} cy={c.y} r={1.8} fill={s.color} />
+      <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px' }}>Histórico de delay por cola (24h)</p>
+      {delayData.length < 2 ? (
+        <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
+          Solo hay {delayData.length} muestra{delayData.length === 1 ? '' : 's'} en las últimas 24h.
+        </p>
+      ) : (
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={delayData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
+            <XAxis dataKey="time" fontSize={10} />
+            <YAxis fontSize={10} unit=" ms" />
+            <Tooltip />
+            <Legend wrapperStyle={{ fontSize: 10 }} />
+            {colas.map(c => (
+              <Line key={c} type="monotone" dataKey={c} stroke={COLA_COLORS[c] || '#999'}
+                    strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
             ))}
-          </g>
-        )
-      })}
-      {etiquetaFinal && (
-        <text x={w - pad} y={h + 12} textAnchor="end" fontSize={11} fill="#65676b">
-          {etiquetaFinal}
-        </text>
+          </LineChart>
+        </ResponsiveContainer>
       )}
-    </svg>
+
+      {serie.iface_origen && (
+        <>
+          <p style={{ fontSize: 12, fontWeight: 600, margin: '14px 0 6px' }}>Histórico de tráfico in/out (24h)</p>
+          {traficoData.length < 2 ? (
+            <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
+              Solo hay {traficoData.length} muestra{traficoData.length === 1 ? '' : 's'} de tráfico en las últimas 24h.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <LineChart data={traficoData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
+                <XAxis dataKey="time" fontSize={10} />
+                <YAxis fontSize={10} unit=" Gbps" />
+                <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} Gbps`]} />
+                <Legend wrapperStyle={{ fontSize: 10 }} />
+                <Line type="monotone" dataKey="in" name="Entrada" stroke="#2563eb" strokeWidth={1.5} dot={{ r: 2 }} />
+                <Line type="monotone" dataKey="out" name="Salida" stroke="#16a34a" strokeWidth={1.5} dot={{ r: 2 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </>
+      )}
+    </div>
   )
 }
+
 
 const ctrlBtnStyle = {
   width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
