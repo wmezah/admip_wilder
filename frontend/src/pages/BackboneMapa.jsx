@@ -584,38 +584,65 @@ function ultimas24h(serie) {
   return serie.filter(m => new Date(m.collection_time).getTime() >= corte)
 }
 
-// Grafico de linea simple (sin librerias) para el delay: agrupa por
-// collection_time tomando el PEOR delay entre colas de esa muestra (mismo
-// criterio que el color del mapa), filtrado a las ultimas 24h.
+// Paleta categorica fija (Cove), para que cada cola siempre tenga el mismo
+// color sin importar el orden en que llegue del backend. No se cicla al
+// azar: se asigna por nombre de cola, asi es consistente entre el panel
+// "Por cola" (arriba) y este grafico.
+const PALETA_COLAS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#4a3aa7', '#e34948']
+
+function colorParaCola(nombreCola, todasLasColas) {
+  const idx = todasLasColas.indexOf(nombreCola)
+  return PALETA_COLAS[idx % PALETA_COLAS.length]
+}
+
+// Grafico de delay con UNA LINEA POR COLA (en vez de una sola linea de
+// peor-caso), filtrado a las ultimas 24h. Cada cola mantiene su color fijo
+// de la paleta Cove, igual que el desglose "Por cola" de arriba.
 function DelayChart({ delaySeries }) {
-  const puntos = useMemo(() => {
+  const { series, colas } = useMemo(() => {
     const recientes = ultimas24h(delaySeries)
-    const porTiempo = new Map()
+    const porCola = new Map()
     for (const m of recientes) {
-      if (m.delay_ms == null) continue
-      const actual = porTiempo.get(m.collection_time)
-      if (actual == null || m.delay_ms > actual) porTiempo.set(m.collection_time, m.delay_ms)
+      if (m.delay_ms == null || !m.cola) continue
+      if (!porCola.has(m.cola)) porCola.set(m.cola, [])
+      porCola.get(m.cola).push(m)
     }
-    return Array.from(porTiempo.entries())
-      .sort((a, b) => new Date(a[0]) - new Date(b[0]))
-      .map(([, v]) => v)
+    const colas = Array.from(porCola.keys()).sort()
+    const series = colas.map(cola => {
+      const ordenado = porCola.get(cola).sort((a, b) => new Date(a.collection_time) - new Date(b.collection_time))
+      return {
+        cola,
+        valores: ordenado.map(m => m.delay_ms),
+        color: colorParaCola(cola, colas),
+      }
+    })
+    return { series, colas }
   }, [delaySeries])
 
-  if (puntos.length === 0) {
+  if (series.length === 0) {
     return <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin datos en las últimas 24h.</p>
   }
 
   return (
-    <MiniLineChart
-      series={[{ valores: puntos, color: '#1877f2' }]}
-      etiquetaFinal={`${puntos[puntos.length - 1].toFixed(2)} ms actual`}
-    />
+    <div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+        {series.map(s => (
+          <span key={s.cola} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#65676b' }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, display: 'inline-block' }} />
+            {s.cola}
+          </span>
+        ))}
+      </div>
+      <MiniLineChart
+        series={series.map(s => ({ valores: s.valores, color: s.color }))}
+      />
+    </div>
   )
 }
 
-// Grafico de trafico: entrada y salida en graficos SEPARADOS (cada uno con
-// su propia escala), porque cuando un pico de salida domina, la entrada
-// queda invisible si comparten el mismo eje.
+// Grafico de trafico: entrada y salida en el MISMO grafico, misma escala.
+// La salida usa linea punteada ademas de otro color, para que se puedan
+// distinguir aunque el color no alcance a diferenciarlas (ej. en un cruce).
 function TraficoChart({ traficoSeries }) {
   const { entradas, salidas } = useMemo(() => {
     const recientes = ultimas24h(traficoSeries)
@@ -632,33 +659,21 @@ function TraficoChart({ traficoSeries }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#65676b', marginBottom: 2 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: '#1877f2', display: 'inline-block' }} /> Entrada
-        </div>
-        {entradas.length > 0 ? (
-          <MiniLineChart
-            series={[{ valores: entradas, color: '#1877f2' }]}
-            etiquetaFinal={`${entradas[entradas.length - 1].toFixed(2)} Mbps`}
-          />
-        ) : (
-          <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Sin datos de entrada.</p>
-        )}
+    <div>
+      <div style={{ display: 'flex', gap: 14, fontSize: 11, color: '#65676b', marginBottom: 4 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 12, height: 2, background: '#2a78d6', display: 'inline-block' }} /> Entrada
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <svg width="12" height="4"><line x1="0" y1="2" x2="12" y2="2" stroke="#eb6834" strokeWidth="2" strokeDasharray="3,2" /></svg> Salida
+        </span>
       </div>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#65676b', marginBottom: 2 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: '#d97706', display: 'inline-block' }} /> Salida
-        </div>
-        {salidas.length > 0 ? (
-          <MiniLineChart
-            series={[{ valores: salidas, color: '#d97706' }]}
-            etiquetaFinal={`${salidas[salidas.length - 1].toFixed(2)} Mbps`}
-          />
-        ) : (
-          <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Sin datos de salida.</p>
-        )}
-      </div>
+      <MiniLineChart
+        series={[
+          { valores: entradas, color: '#2a78d6' },
+          { valores: salidas, color: '#eb6834', dash: '4,3' },
+        ]}
+      />
     </div>
   )
 }
@@ -710,7 +725,7 @@ function MiniLineChart({ series, etiquetaFinal }) {
         })
         return (
           <g key={si}>
-            <path d={pathSuave(coords)} fill="none" stroke={s.color} strokeWidth={2} />
+            <path d={pathSuave(coords)} fill="none" stroke={s.color} strokeWidth={2} strokeDasharray={s.dash || undefined} />
             {coords.map((c, i) => (
               <circle key={i} cx={c.x} cy={c.y} r={1.8} fill={s.color} />
             ))}
