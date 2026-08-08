@@ -560,62 +560,132 @@ function DetalleEnlace({ enlace, historial, cargando }) {
       </div>
 
       <div style={{ borderTop: '1px solid #ececec', marginTop: 14, paddingTop: 12 }}>
-        <p style={{ fontSize: 12, color: '#65676b', margin: '0 0 6px' }}>Historial de delay</p>
+        <p style={{ fontSize: 12, color: '#65676b', margin: '0 0 6px' }}>Historial (últimas 24h)</p>
         {cargando ? (
           <p style={{ fontSize: 12, color: '#9ca3af' }}>Cargando...</p>
         ) : (
-          <HistorialChart delaySeries={historial?.delay_series || []} />
+          <>
+            <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 4px' }}>Delay</p>
+            <DelayChart delaySeries={historial?.delay_series || []} />
+            <p style={{ fontSize: 11, color: '#9ca3af', margin: '10px 0 4px' }}>Tráfico (in/out)</p>
+            <TraficoChart traficoSeries={historial?.trafico_series || []} />
+          </>
         )}
       </div>
     </div>
   )
 }
 
-// Grafico simple de linea (sin librerias): agrupa por collection_time
-// tomando el PEOR delay entre colas de esa muestra (mismo criterio que el
-// color del mapa), y muestra los ultimos N puntos.
-function HistorialChart({ delaySeries }) {
-  const MAX_PUNTOS = 30
+// Filtra una serie a las ultimas 24h en base a collection_time. El backend
+// (obtener_serie_enlace) trae el historico completo sin ventana, asi que el
+// recorte a 24h se hace del lado del cliente.
+function ultimas24h(serie) {
+  const corte = Date.now() - 24 * 60 * 60 * 1000
+  return serie.filter(m => new Date(m.collection_time).getTime() >= corte)
+}
 
+// Grafico de linea simple (sin librerias) para el delay: agrupa por
+// collection_time tomando el PEOR delay entre colas de esa muestra (mismo
+// criterio que el color del mapa), filtrado a las ultimas 24h.
+function DelayChart({ delaySeries }) {
   const puntos = useMemo(() => {
+    const recientes = ultimas24h(delaySeries)
     const porTiempo = new Map()
-    for (const m of delaySeries) {
+    for (const m of recientes) {
       if (m.delay_ms == null) continue
-      const key = m.collection_time
-      const actual = porTiempo.get(key)
-      if (actual == null || m.delay_ms > actual) porTiempo.set(key, m.delay_ms)
+      const actual = porTiempo.get(m.collection_time)
+      if (actual == null || m.delay_ms > actual) porTiempo.set(m.collection_time, m.delay_ms)
     }
-    const ordenado = Array.from(porTiempo.entries())
+    return Array.from(porTiempo.entries())
       .sort((a, b) => new Date(a[0]) - new Date(b[0]))
-    return ordenado.slice(-MAX_PUNTOS).map(([, v]) => v)
+      .map(([, v]) => v)
   }, [delaySeries])
 
   if (puntos.length === 0) {
-    return <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin datos históricos.</p>
+    return <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin datos en las últimas 24h.</p>
   }
 
-  const w = 260, h = 70, pad = 8
-  const max = Math.max(...puntos), min = Math.min(...puntos)
-  const rango = (max - min) || 1
-  const stepX = puntos.length > 1 ? (w - pad * 2) / (puntos.length - 1) : 0
+  return (
+    <MiniLineChart
+      series={[{ valores: puntos, color: '#1877f2' }]}
+      etiquetaFinal={`${puntos[puntos.length - 1].toFixed(2)} ms actual`}
+    />
+  )
+}
 
-  const coords = puntos.map((v, i) => {
-    const x = pad + i * stepX
-    const y = pad + (h - pad * 2) * (1 - (v - min) / rango)
-    return { x, y, v }
-  })
+// Grafico de linea para trafico: dos series (entrada/salida), filtrado a
+// las ultimas 24h. Usa in_rate_avg / out_rate_avg de BBTrafico.
+function TraficoChart({ traficoSeries }) {
+  const { entradas, salidas } = useMemo(() => {
+    const recientes = ultimas24h(traficoSeries)
+      .filter(m => m.in_rate_avg != null || m.out_rate_avg != null)
+      .sort((a, b) => new Date(a.collection_time) - new Date(b.collection_time))
+    return {
+      entradas: recientes.map(m => m.in_rate_avg).filter(v => v != null),
+      salidas: recientes.map(m => m.out_rate_avg).filter(v => v != null),
+    }
+  }, [traficoSeries])
 
-  const polyPoints = coords.map(c => `${c.x},${c.y}`).join(' ')
+  if (entradas.length === 0 && salidas.length === 0) {
+    return <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin datos de tráfico en las últimas 24h.</p>
+  }
 
   return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h + 16}`}>
-      <polyline points={polyPoints} fill="none" stroke="#1877f2" strokeWidth={2} />
-      {coords.map((c, i) => (
-        <circle key={i} cx={c.x} cy={c.y} r={2} fill="#1877f2" />
-      ))}
-      <text x={w - pad} y={h + 12} textAnchor="end" fontSize={11} fill="#65676b">
-        {puntos[puntos.length - 1].toFixed(2)} ms actual
-      </text>
+    <>
+      <MiniLineChart
+        series={[
+          { valores: entradas, color: '#1877f2' },
+          { valores: salidas, color: '#d97706' },
+        ]}
+      />
+      <div style={{ display: 'flex', gap: 14, fontSize: 11, color: '#65676b', marginTop: 2 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: '#1877f2', display: 'inline-block' }} /> Entrada
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: '#d97706', display: 'inline-block' }} /> Salida
+        </span>
+      </div>
+    </>
+  )
+}
+
+// Componente generico: dibuja 1 o mas series de linea en el mismo eje,
+// escaladas juntas para que sean comparables entre si.
+function MiniLineChart({ series, etiquetaFinal }) {
+  const w = 260, h = 70, pad = 8
+
+  const todosLosValores = series.flatMap(s => s.valores)
+  if (todosLosValores.length === 0) return null
+
+  const max = Math.max(...todosLosValores), min = Math.min(...todosLosValores)
+  const rango = (max - min) || 1
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h + (etiquetaFinal ? 16 : 4)}`}>
+      {series.map((s, si) => {
+        if (s.valores.length === 0) return null
+        const stepX = s.valores.length > 1 ? (w - pad * 2) / (s.valores.length - 1) : 0
+        const coords = s.valores.map((v, i) => {
+          const x = pad + i * stepX
+          const y = pad + (h - pad * 2) * (1 - (v - min) / rango)
+          return { x, y }
+        })
+        const polyPoints = coords.map(c => `${c.x},${c.y}`).join(' ')
+        return (
+          <g key={si}>
+            <polyline points={polyPoints} fill="none" stroke={s.color} strokeWidth={2} />
+            {coords.map((c, i) => (
+              <circle key={i} cx={c.x} cy={c.y} r={1.8} fill={s.color} />
+            ))}
+          </g>
+        )
+      })}
+      {etiquetaFinal && (
+        <text x={w - pad} y={h + 12} textAnchor="end" fontSize={11} fill="#65676b">
+          {etiquetaFinal}
+        </text>
+      )}
     </svg>
   )
 }
