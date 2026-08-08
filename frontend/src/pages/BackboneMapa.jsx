@@ -74,6 +74,8 @@ export default function BackboneMapa() {
   const [loading, setLoading] = useState(true)
   const [transform, setTransform] = useState(zoomIdentity)
   const [enlaceSeleccionado, setEnlaceSeleccionado] = useState(null)
+  const [historial, setHistorial] = useState(null)
+  const [historialCargando, setHistorialCargando] = useState(false)
 
   // Panel de "agregar coordenada"
   const [busqueda, setBusqueda] = useState('')
@@ -240,15 +242,70 @@ export default function BackboneMapa() {
     })
   }, [puntosScreen])
 
+  // Curva las lineas cuando hay mas de un enlace entre el mismo par de
+  // equipos (ej. varias colas fisicas, rutas redundantes). Un solo enlace
+  // entre un par queda recto; el resto se abre simetricamente a los costados
+  // (indice -1, +1, -2, +2...) para que ninguno tape a otro visualmente.
+  const CURVA_OFFSET_PX = 16
+
   const lineasScreen = useMemo(() => {
+    // Agrupar por par normalizado (A,B) = (B,A)
+    const grupos = new Map()
+    for (const e of lineas) {
+      const key = [e.origen_nombre, e.destino_nombre].sort().join('|')
+      if (!grupos.has(key)) grupos.set(key, [])
+      grupos.get(key).push(e)
+    }
+
+    // Asignar un indice de curvatura simetrico dentro de cada grupo
+    const curvaPorId = new Map()
+    for (const grupo of grupos.values()) {
+      if (grupo.length === 1) {
+        curvaPorId.set(grupo[0].id, 0)
+        continue
+      }
+      grupo.forEach((e, i) => {
+        // 0,1,2,3... -> 0,-1,+1,-2,+2... (el primero casi recto, resto abre a los costados)
+        const rank = Math.ceil(i / 2)
+        const signo = i % 2 === 0 ? -1 : 1
+        curvaPorId.set(e.id, i === 0 ? 0 : signo * rank)
+      })
+    }
+
     return lineas.map(e => {
       const [px1, py1] = projection([e.origen_longitud, e.origen_latitud])
       const [px2, py2] = projection([e.destino_longitud, e.destino_latitud])
       const x1 = transform.applyX(px1), y1 = transform.applyY(py1)
       const x2 = transform.applyX(px2), y2 = transform.applyY(py2)
-      return { ...e, x1, y1, x2, y2, mx: (x1 + x2) / 2, my: (y1 + y2) / 2 }
+
+      const curvaIndice = curvaPorId.get(e.id) || 0
+      const mx0 = (x1 + x2) / 2, my0 = (y1 + y2) / 2
+      const dx = x2 - x1, dy = y2 - y1
+      const len = Math.hypot(dx, dy) || 1
+      // Normal perpendicular a la linea, para desplazar el punto de control
+      const nx = -dy / len, ny = dx / len
+      const offset = curvaIndice * CURVA_OFFSET_PX
+      const cx = mx0 + nx * offset
+      const cy = my0 + ny * offset
+
+      const pathD = curvaIndice === 0
+        ? `M${x1},${y1} L${x2},${y2}`
+        : `M${x1},${y1} Q${cx},${cy} ${x2},${y2}`
+
+      return { ...e, x1, y1, x2, y2, mx: cx, my: cy, pathD }
     })
   }, [lineas, projection, transform])
+
+  const seleccionarEnlace = (enlace) => {
+    setEnlaceSeleccionado(enlace)
+    setHistorial(null)
+    setHistorialCargando(true)
+    fetch(`${API}/enlaces/${enlace.id}/serie/`, { headers: authH() })
+      .then(r => r.json())
+      .then(d => setHistorial(d))
+      .catch(e => console.error(e))
+      .finally(() => setHistorialCargando(false))
+  }
 
   const guardarCoordenada = () => {
     if (!equipoElegido || latInput.trim() === '' || lonInput.trim() === '') {
@@ -320,15 +377,16 @@ export default function BackboneMapa() {
                 const seleccionado = enlaceSeleccionado?.id === e.id
                 return (
                   <g key={e.id}>
-                    <line
-                      x1={e.x1} y1={e.y1} x2={e.x2} y2={e.y2}
+                    <path
+                      d={e.pathD}
+                      fill="none"
                       stroke={color}
                       strokeWidth={seleccionado ? LINEA_GROSOR + 2 : LINEA_GROSOR}
                       style={{ cursor: 'pointer' }}
-                      onClick={() => setEnlaceSeleccionado(e)}
+                      onClick={() => seleccionarEnlace(e)}
                     />
                     {e.saturado && (
-                      <g style={{ cursor: 'pointer' }} onClick={() => setEnlaceSeleccionado(e)}>
+                      <g style={{ cursor: 'pointer' }} onClick={() => seleccionarEnlace(e)}>
                         <circle cx={e.mx} cy={e.my} r={8} fill="#d97706" stroke="#fff" strokeWidth={1.5} />
                         <text x={e.mx} y={e.my + 3.5} fontSize={10} fontWeight="600" fill="#fff" textAnchor="middle">!</text>
                       </g>
@@ -428,7 +486,7 @@ export default function BackboneMapa() {
             {!enlaceSeleccionado ? (
               <p style={{ fontSize: 13, color: '#9ca3af' }}>Hacé clic en una línea del mapa.</p>
             ) : (
-              <DetalleEnlace enlace={enlaceSeleccionado} />
+              <DetalleEnlace enlace={enlaceSeleccionado} historial={historial} cargando={historialCargando} />
             )}
           </div>
 
@@ -440,7 +498,7 @@ export default function BackboneMapa() {
   )
 }
 
-function DetalleEnlace({ enlace }) {
+function DetalleEnlace({ enlace, historial, cargando }) {
   const t = enlace.trafico
   const usoPico = t && t.uso_pico_pct != null ? Number(t.uso_pico_pct) : null
   const barraColor = usoPico == null ? '#d1d5db' : enlace.saturado ? '#dc2626' : usoPico > 60 ? '#d97706' : '#16a34a'
@@ -500,7 +558,65 @@ function DetalleEnlace({ enlace }) {
           </div>
         )}
       </div>
+
+      <div style={{ borderTop: '1px solid #ececec', marginTop: 14, paddingTop: 12 }}>
+        <p style={{ fontSize: 12, color: '#65676b', margin: '0 0 6px' }}>Historial de delay</p>
+        {cargando ? (
+          <p style={{ fontSize: 12, color: '#9ca3af' }}>Cargando...</p>
+        ) : (
+          <HistorialChart delaySeries={historial?.delay_series || []} />
+        )}
+      </div>
     </div>
+  )
+}
+
+// Grafico simple de linea (sin librerias): agrupa por collection_time
+// tomando el PEOR delay entre colas de esa muestra (mismo criterio que el
+// color del mapa), y muestra los ultimos N puntos.
+function HistorialChart({ delaySeries }) {
+  const MAX_PUNTOS = 30
+
+  const puntos = useMemo(() => {
+    const porTiempo = new Map()
+    for (const m of delaySeries) {
+      if (m.delay_ms == null) continue
+      const key = m.collection_time
+      const actual = porTiempo.get(key)
+      if (actual == null || m.delay_ms > actual) porTiempo.set(key, m.delay_ms)
+    }
+    const ordenado = Array.from(porTiempo.entries())
+      .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+    return ordenado.slice(-MAX_PUNTOS).map(([, v]) => v)
+  }, [delaySeries])
+
+  if (puntos.length === 0) {
+    return <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin datos históricos.</p>
+  }
+
+  const w = 260, h = 70, pad = 8
+  const max = Math.max(...puntos), min = Math.min(...puntos)
+  const rango = (max - min) || 1
+  const stepX = puntos.length > 1 ? (w - pad * 2) / (puntos.length - 1) : 0
+
+  const coords = puntos.map((v, i) => {
+    const x = pad + i * stepX
+    const y = pad + (h - pad * 2) * (1 - (v - min) / rango)
+    return { x, y, v }
+  })
+
+  const polyPoints = coords.map(c => `${c.x},${c.y}`).join(' ')
+
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h + 16}`}>
+      <polyline points={polyPoints} fill="none" stroke="#1877f2" strokeWidth={2} />
+      {coords.map((c, i) => (
+        <circle key={i} cx={c.x} cy={c.y} r={2} fill="#1877f2" />
+      ))}
+      <text x={w - pad} y={h + 12} textAnchor="end" fontSize={11} fill="#65676b">
+        {puntos[puntos.length - 1].toFixed(2)} ms actual
+      </text>
+    </svg>
   )
 }
 
