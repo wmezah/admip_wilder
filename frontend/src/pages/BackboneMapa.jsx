@@ -613,8 +613,9 @@ function DelayChart({ delaySeries }) {
   )
 }
 
-// Grafico de linea para trafico: dos series (entrada/salida), filtrado a
-// las ultimas 24h. Usa in_rate_avg / out_rate_avg de BBTrafico.
+// Grafico de trafico: entrada y salida en graficos SEPARADOS (cada uno con
+// su propia escala), porque cuando un pico de salida domina, la entrada
+// queda invisible si comparten el mismo eje.
 function TraficoChart({ traficoSeries }) {
   const { entradas, salidas } = useMemo(() => {
     const recientes = ultimas24h(traficoSeries)
@@ -631,27 +632,63 @@ function TraficoChart({ traficoSeries }) {
   }
 
   return (
-    <>
-      <MiniLineChart
-        series={[
-          { valores: entradas, color: '#1877f2' },
-          { valores: salidas, color: '#d97706' },
-        ]}
-      />
-      <div style={{ display: 'flex', gap: 14, fontSize: 11, color: '#65676b', marginTop: 2 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#65676b', marginBottom: 2 }}>
           <span style={{ width: 8, height: 8, borderRadius: 2, background: '#1877f2', display: 'inline-block' }} /> Entrada
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 2, background: '#d97706', display: 'inline-block' }} /> Salida
-        </span>
+        </div>
+        {entradas.length > 0 ? (
+          <MiniLineChart
+            series={[{ valores: entradas, color: '#1877f2' }]}
+            etiquetaFinal={`${entradas[entradas.length - 1].toFixed(2)} Mbps`}
+          />
+        ) : (
+          <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Sin datos de entrada.</p>
+        )}
       </div>
-    </>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#65676b', marginBottom: 2 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 2, background: '#d97706', display: 'inline-block' }} /> Salida
+        </div>
+        {salidas.length > 0 ? (
+          <MiniLineChart
+            series={[{ valores: salidas, color: '#d97706' }]}
+            etiquetaFinal={`${salidas[salidas.length - 1].toFixed(2)} Mbps`}
+          />
+        ) : (
+          <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>Sin datos de salida.</p>
+        )}
+      </div>
+    </div>
   )
 }
 
-// Componente generico: dibuja 1 o mas series de linea en el mismo eje,
-// escaladas juntas para que sean comparables entre si.
+// Convierte una lista de puntos {x,y} en un path suavizado (spline
+// Catmull-Rom -> Bezier), en vez de una polilinea recta con quiebres.
+// Los puntos reales siguen marcados con circulos; solo la interpolacion
+// entre ellos se ve suave, sin inventar valores intermedios.
+function pathSuave(coords) {
+  if (coords.length < 2) return ''
+  if (coords.length === 2) return `M${coords[0].x},${coords[0].y} L${coords[1].x},${coords[1].y}`
+  let d = `M${coords[0].x},${coords[0].y} `
+  for (let i = 0; i < coords.length - 1; i++) {
+    const p0 = coords[i - 1] || coords[i]
+    const p1 = coords[i]
+    const p2 = coords[i + 1]
+    const p3 = coords[i + 2] || p2
+    const cp1x = p1.x + (p2.x - p0.x) / 6
+    const cp1y = p1.y + (p2.y - p0.y) / 6
+    const cp2x = p2.x - (p3.x - p1.x) / 6
+    const cp2y = p2.y - (p3.y - p1.y) / 6
+    d += `C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y} `
+  }
+  return d
+}
+
+// Componente generico: dibuja 1 o mas series de linea suavizada en el mismo
+// eje. Si se pasa mas de una serie, comparten escala (para casos donde
+// realmente conviene compararlas juntas); si son magnitudes muy distintas,
+// mejor llamar el componente por separado (ver TraficoChart).
 function MiniLineChart({ series, etiquetaFinal }) {
   const w = 260, h = 70, pad = 8
 
@@ -671,10 +708,9 @@ function MiniLineChart({ series, etiquetaFinal }) {
           const y = pad + (h - pad * 2) * (1 - (v - min) / rango)
           return { x, y }
         })
-        const polyPoints = coords.map(c => `${c.x},${c.y}`).join(' ')
         return (
           <g key={si}>
-            <polyline points={polyPoints} fill="none" stroke={s.color} strokeWidth={2} />
+            <path d={pathSuave(coords)} fill="none" stroke={s.color} strokeWidth={2} />
             {coords.map((c, i) => (
               <circle key={i} cx={c.x} cy={c.y} r={1.8} fill={s.color} />
             ))}
