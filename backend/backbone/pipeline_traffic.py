@@ -211,3 +211,187 @@ def run_collection_traffic(
 
     logger.info("=== Recoleccion trafico completada: %d archivos ===", len(summary))
     return summary
+
+
+# ─── Fuente nueva: PM_IGlogic_ni_data_IPInterface_5 ────────────────────────────
+# Reemplaza a run_collection_traffic() de arriba. Ver parser_ipinterface.py
+# para el detalle de las conversiones. Reusa _resources_configurados() (de
+# arriba en este mismo archivo) para el mismo filtro por iface_origen ya
+# configurado -- sin este filtro, el volumen crece igual que el incidente
+# de disco ya documentado para PM_IG27_15 (ver docstring del modulo).
+PM_CODE_IPINTERFACE = "PM_IGlogic_ni_data_IPInterface_5"
+
+
+def _actualizar_capacidad_desde_speed(rows_filtradas: list[dict]) -> int:
+    """
+    Decision de producto: capacidad_gbps SIEMPRE se sobreescribe con el
+    valor real mas reciente de Interface Speed (no solo si esta vacio).
+    Solo aplica a filas cuyo resource ya coincide con un iface_origen
+    configurado (rows_filtradas ya viene filtrado asi).
+
+    BBEnlace.iface_origen guarda solo el nombre de interfaz (ej.
+    "Eth-Trunk60"), SIN el equipo -- a diferencia de BBTrafico.resource
+    que es compuesto "device_name/interfaz". Hay que separar antes de
+    comparar.
+    """
+    from .models import BBEnlace
+
+    actualizados = 0
+    por_iface = {}
+    for r in rows_filtradas:
+        speed = r.get("extra", {}).get("interface_speed_gbps")
+        if speed is None:
+            continue
+        # resource viene como "device_name/interfaz" (ver parser_ipinterface.py)
+        _, _, iface = r["resource"].partition("/")
+        por_iface[(r["device_name"], iface)] = speed
+
+    for (device_name, iface), speed_gbps in por_iface.items():
+        actualizados += BBEnlace.objects.filter(
+            origen__nombre=device_name, iface_origen=iface, activo=True,
+        ).update(capacidad_gbps=round(speed_gbps, 2))
+
+    return actualizados
+
+
+def run_collection_ipinterface(
+    dry_run: bool = False,
+    local_files: Optional[dict] = None,
+) -> list[dict]:
+    from backbone.backbone_settings import (
+        NCE_HOST, NCE_USER, NCE_PASSWORD, NCE_BASE_DIR_TELEMETRIA, NCE_PORT,
+        BACKBONE_DEVICE_PREFIXES,
+    )
+    from nce.collector import NCECollector
+    from backbone.parser_ipinterface import parse_ipinterface_csv
+    from backbone.models import BBTrafico, BBCollectionLog
+
+    summary = []
+    resources_ok = _resources_configurados()
+    if not resources_ok:
+        logger.warning(
+            "Sin interfaces configuradas (iface_origen) en ningun enlace: "
+            "no se guardara trafico en este ciclo."
+        )
+
+    def process_file(fname, content):
+        try:
+            parsed = parse_ipinterface_csv(content, fname, BACKBONE_DEVICE_PREFIXES)
+
+            filas_totales_parseadas = len(parsed["rows"])
+            rows_filtradas = [
+                r for r in parsed["rows"]
+                if r['resource'] in resources_ok
+            ]
+            descartadas_por_iface = filas_totales_parseadas - len(rows_filtradas)
+
+            if not rows_filtradas:
+                if not dry_run:
+                    BBCollectionLog.objects.create(
+                        pm_code=PM_CODE_IPINTERFACE, filename=fname,
+                        rows_total=parsed["rows_total"], rows_loaded=0,
+                        status="skipped",
+                        message=(
+                            "Sin filas core validas" if not parsed["rows"]
+                            else f"Sin interfaces configuradas entre las "
+                                 f"{filas_totales_parseadas} filas core "
+                                 f"(iface_origen no coincide)"
+                        ),
+                    )
+                return {"filename": fname, "rows_total": parsed["rows_total"],
+                        "rows_loaded": 0, "status": "skipped"}
+
+            if dry_run:
+                logger.info(
+                    "[DRY RUN] %s -> %d filas core, %d con interfaz "
+                    "configurada (%d descartadas).",
+                    fname, filas_totales_parseadas, len(rows_filtradas),
+                    descartadas_por_iface,
+                )
+                return {"filename": fname, "rows_total": parsed["rows_total"],
+                        "rows_loaded": 0, "status": "dry_run"}
+
+            rows = [r for r in rows_filtradas if r["collection_time"] is not None]
+
+            existing_keys = set(
+                BBTrafico.objects.filter(
+                    collection_time__in=[r["collection_time"] for r in rows],
+                ).values_list("device_name", "resource", "collection_time")
+            )
+            objs = [
+                BBTrafico(
+                    device_name=r["device_name"],
+                    resource=r["resource"],
+                    collection_time=r["collection_time"],
+                    in_rate_avg=r["in_rate_avg"],
+                    out_rate_avg=r["out_rate_avg"],
+                    in_util_avg_pct=r["in_util_avg_pct"],
+                    out_util_avg_pct=r["out_util_avg_pct"],
+                    max_rate=r["max_rate"],
+                    max_util_pct=r["max_util_pct"],
+                    extra=r["extra"],
+                    filename=fname,
+                )
+                for r in rows
+                if (r["device_name"], r["resource"], r["collection_time"])
+                not in existing_keys
+            ]
+
+            from django.db import transaction
+            with transaction.atomic(using="backbone"):
+                BBTrafico.objects.bulk_create(objs, ignore_conflicts=True, batch_size=500)
+            loaded = len(objs)
+
+            capacidades_actualizadas = _actualizar_capacidad_desde_speed(rows_filtradas)
+
+            BBCollectionLog.objects.create(
+                pm_code=PM_CODE_IPINTERFACE, filename=fname,
+                rows_total=parsed["rows_total"], rows_loaded=loaded, status="ok",
+                message=(
+                    f"{descartadas_por_iface} filas descartadas por interfaz "
+                    f"no configurada; {capacidades_actualizadas} enlaces con "
+                    f"capacidad_gbps actualizada" if descartadas_por_iface or capacidades_actualizadas else ""
+                ),
+            )
+            return {"filename": fname, "rows_total": parsed["rows_total"],
+                    "rows_loaded": loaded, "status": "ok"}
+
+        except Exception as e:
+            logger.exception("Error procesando %s: %s", fname, e)
+            if not dry_run:
+                BBCollectionLog.objects.create(
+                    pm_code=PM_CODE_IPINTERFACE, filename=fname,
+                    rows_total=0, rows_loaded=0, status="error", message=str(e),
+                )
+            return {"filename": fname, "rows_total": 0, "rows_loaded": 0, "status": "error"}
+
+    # -- Modo local (pruebas con archivos ya descargados) ----------------------
+    if local_files is not None:
+        for fname, content in local_files.items():
+            if fname.startswith(PM_CODE_IPINTERFACE):
+                summary.append(process_file(fname, content))
+
+    # -- Modo SFTP (produccion) -------------------------------------------------
+    else:
+        processed = set(
+            BBCollectionLog.objects
+            .filter(pm_code=PM_CODE_IPINTERFACE, status__in=["ok", "skipped"])
+            .values_list("filename", flat=True)
+        )
+        with NCECollector(NCE_HOST, NCE_USER, NCE_PASSWORD,
+                           NCE_BASE_DIR_TELEMETRIA, True, NCE_PORT) as col:
+            files = _listar_todos(col, PM_CODE_IPINTERFACE)
+            candidatos = [
+                (f, posixpath.basename(f)) for f in files
+                if posixpath.basename(f).startswith(PM_CODE_IPINTERFACE)
+            ]
+            nuevos = [(ruta, base) for ruta, base in candidatos if base not in processed]
+            if not nuevos:
+                logger.info("Sin archivos de telemetria de trafico nuevos.")
+            for ruta, base in nuevos:
+                content = col.download_file(ruta)
+                if content:
+                    summary.append(process_file(base, content))
+
+    logger.info("=== Recoleccion IPInterface completada: %d archivos ===", len(summary))
+    return summary
