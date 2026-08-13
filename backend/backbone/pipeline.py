@@ -34,6 +34,50 @@ def _listar_todos(col, pm_code: str) -> list[str]:
     )
 
 
+def _listar_todos_utc_aware(col, pm_code: str) -> list[str]:
+    """
+    Version UTC-aware de _listar_todos(). BUG REAL encontrado en
+    produccion: las fuentes nuevas (TwampTest confirmado por evidencia
+    directa; IPInterface con la misma sospecha, sin confirmar aun)
+    organizan sus carpetas remotas por fecha UTC, no por fecha de Lima
+    como _today_path() asume.
+
+    Como UTC le lleva 5 horas a Lima, entre las 19:00 y las 23:59 hora
+    Lima de cada dia la carpeta "de hoy" en UTC ya es la de MAÑANA en el
+    calendario de Lima. Con _listar_todos() (que solo mira "hoy" en
+    calendario Lima), a las 22:50 hora Lima se estaba recolectando el
+    delay de las 18:55 -- una brecha de ~4h en vez de los ~5 min
+    esperados, porque el NCE ya habia rotado a la carpeta del dia
+    siguiente en UTC casi 4 horas antes.
+
+    Se revisan las dos carpetas (hoy y mañana, calendario Lima) y se
+    mezclan los resultados. Durante el resto del dia (00:00-18:59 Lima)
+    la carpeta de "mañana" simplemente no existe todavia o esta vacia
+    -- sin efecto negativo, solo un listdir() extra que falla rapido.
+    """
+    from datetime import date, timedelta
+    hoy = date.today()
+    manana = hoy + timedelta(days=1)
+
+    encontrados = []
+    for d in (hoy, manana):
+        carpeta = d.strftime("%Y%m%d")
+        dir_path = f"{col.base_dir}/{carpeta}"
+        try:
+            archivos = col._sftp.listdir(dir_path)
+        except Exception as e:
+            logger.debug(
+                "No se pudo listar %s (esperado si la carpeta de "
+                "'manana' aun no existe): %s", dir_path, e,
+            )
+            continue
+        encontrados.extend(
+            f"{carpeta}/{f}" for f in archivos
+            if f.startswith(pm_code) and f.endswith(".csv")
+        )
+    return sorted(encontrados)
+
+
 def run_collection_twamp(
     dry_run: bool = False,
     local_files: Optional[dict] = None,
@@ -255,7 +299,7 @@ def run_collection_twamptest(
 
         with NCECollector(NCE_HOST, NCE_USER, NCE_PASSWORD,
                            NCE_BASE_DIR_TWAMP_NUEVO, True, NCE_PORT) as col:
-            files = _listar_todos(col, PM_CODE_TWAMPTEST)
+            files = _listar_todos_utc_aware(col, PM_CODE_TWAMPTEST)
             candidatos = [
                 (f, posixpath.basename(f)) for f in files
                 if posixpath.basename(f).startswith(PM_CODE_TWAMPTEST)

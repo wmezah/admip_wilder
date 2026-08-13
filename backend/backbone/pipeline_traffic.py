@@ -46,6 +46,44 @@ def _listar_todos(col, pm_code: str) -> list[str]:
     )
 
 
+def _listar_todos_utc_aware(col, pm_code: str) -> list[str]:
+    """
+    Version UTC-aware de _listar_todos(). BUG REAL encontrado en
+    produccion con la fuente hermana TwampTest (ver pipeline.py): las
+    fuentes nuevas pueden organizar sus carpetas remotas por fecha UTC,
+    no por fecha de Lima como _today_path() asume. Se aplica el mismo
+    resguardo aca para IPInterface como precaucion -- la timezone de
+    esta fuente especifica todavia NO esta confirmada de forma directa
+    (ver docstring de parser_ipinterface.py, solo inferida por la
+    ausencia de sufijo 'Z' en el nombre de archivo).
+
+    Revisa hoy y mañana (calendario Lima) y mezcla resultados. Durante
+    la mayor parte del dia la carpeta de "mañana" no existe aun -- sin
+    efecto negativo, solo un listdir() extra que falla rapido.
+    """
+    from datetime import date, timedelta
+    hoy = date.today()
+    manana = hoy + timedelta(days=1)
+
+    encontrados = []
+    for d in (hoy, manana):
+        carpeta = d.strftime("%Y%m%d")
+        dir_path = f"{col.base_dir}/{carpeta}"
+        try:
+            archivos = col._sftp.listdir(dir_path)
+        except Exception as e:
+            logger.debug(
+                "No se pudo listar %s (esperado si la carpeta de "
+                "'manana' aun no existe): %s", dir_path, e,
+            )
+            continue
+        encontrados.extend(
+            f"{carpeta}/{f}" for f in archivos
+            if f.startswith(pm_code) and f.endswith(".csv")
+        )
+    return sorted(encontrados)
+
+
 def _resources_configurados() -> set[str]:
     """
     Devuelve el conjunto de "device_name/iface_origen" ya configurados en
@@ -380,7 +418,7 @@ def run_collection_ipinterface(
         )
         with NCECollector(NCE_HOST, NCE_USER, NCE_PASSWORD,
                            NCE_BASE_DIR_TELEMETRIA, True, NCE_PORT) as col:
-            files = _listar_todos(col, PM_CODE_IPINTERFACE)
+            files = _listar_todos_utc_aware(col, PM_CODE_IPINTERFACE)
             candidatos = [
                 (f, posixpath.basename(f)) for f in files
                 if posixpath.basename(f).startswith(PM_CODE_IPINTERFACE)
