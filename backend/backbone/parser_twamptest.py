@@ -54,6 +54,16 @@ REQUIRED = [
     'Source NE Name', 'Sink NE Name', 'Testcase Nick Name', 'Session ID',
 ]
 
+# Columna opcional (no se agrega a REQUIRED para no romper archivos viejos
+# que no la traigan): interfaz de salida real usada por el Source NE para
+# esta sesion TWAMP -- en la practica ya viene como el Eth-Trunk agregado
+# (ej. "Eth-Trunk1"), no una fisica suelta, verificado en muestra real.
+# Se usa para autocompletar BBEnlace.iface_origen automaticamente (ver
+# _actualizar_iface_origen_desde_twamp() en pipeline.py). Solo el lado
+# Source viene poblado en este reporte; Sink Interface Name llega vacio
+# en el 100% de la muestra revisada.
+SOURCE_IFACE_COL = 'Source Interface Name'
+
 # Solo estas 8 colas son validas para bb_delay -- el resto de valores de
 # 'Testcase Nick Name' son pruebas SLA de acceso, no colas (ver docstring).
 COLAS_VALIDAS = {'BE', 'AF12', 'AF21', 'AF31', 'AF41', 'EF', 'CS6', 'CS7'}
@@ -167,6 +177,9 @@ def parse_twamptest_csv(content: bytes, filename: str = '', allowed_prefixes=Non
             'cola':            cola,
             'resource_id':     f"{src}_{dst}_{cola}_{session_id}",
             'collection_time': _parse_collection_time_utc(raw[idx['CollectionTime']].strip()),
+            # Ver SOURCE_IFACE_COL arriba. Puede venir vacio; el pipeline
+            # decide que hacer en ese caso (no pisa iface_origen con '').
+            'source_iface':    raw[idx[SOURCE_IFACE_COL]].strip() if SOURCE_IFACE_COL in idx else '',
         }
 
         for csv_col, field in KPI_MAP.items():

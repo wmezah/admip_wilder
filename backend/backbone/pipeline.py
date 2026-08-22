@@ -202,6 +202,42 @@ def run_collection_twamp(
 PM_CODE_TWAMPTEST = "PM_IGlogic_ni_data_TwampTest_5"
 
 
+def _actualizar_iface_origen_desde_twamp(rows: list[dict]) -> int:
+    """
+    Autocompleta BBEnlace.iface_origen a partir de 'Source Interface Name'
+    (ver parser_twamptest.py). Solo actualiza enlaces que:
+      - existen ya en BBEnlace para ese par (origen=source_device,
+        destino=dest_device) -- no crea enlaces nuevos, eso lo sigue
+        haciendo backbone_confirm_candidatos;
+      - todavia tienen iface_origen vacio -- decision de producto: NO se
+        sobreescribe un valor ya cargado (a mano o por un ciclo anterior),
+        a diferencia de capacidad_gbps en pipeline_traffic.py que si se
+        sobreescribe siempre. Aca preferimos no pisar un valor que alguien
+        pudo haber corregido manualmente tras revisar el trunk real.
+    Ignora filas sin source_iface (el Sink NE Name nunca trae interfaz,
+    ver docstring de parser_twamptest.py).
+    """
+    from .models import BBEnlace
+
+    # Ultimo valor visto por par (origen, destino) en este lote de filas.
+    por_par = {}
+    for r in rows:
+        iface = r.get('source_iface')
+        if not iface:
+            continue
+        por_par[(r['source_device'], r['dest_device'])] = iface
+
+    actualizados = 0
+    for (origen_nombre, destino_nombre), iface in por_par.items():
+        actualizados += BBEnlace.objects.filter(
+            origen__nombre=origen_nombre,
+            destino__nombre=destino_nombre,
+            iface_origen='',
+        ).update(iface_origen=iface)
+
+    return actualizados
+
+
 def run_collection_twamptest(
     dry_run: bool = False,
     local_files: Optional[dict] = None,
@@ -266,9 +302,15 @@ def run_collection_twamptest(
                 BBDelay.objects.bulk_create(objs, ignore_conflicts=True, batch_size=500)
             loaded = len(objs)
 
+            ifaces_actualizadas = _actualizar_iface_origen_desde_twamp(rows)
+
             BBCollectionLog.objects.create(
                 pm_code=PM_CODE_TWAMPTEST, filename=fname,
                 rows_total=parsed["rows_total"], rows_loaded=loaded, status="ok",
+                message=(
+                    f"{ifaces_actualizadas} enlaces con iface_origen "
+                    f"autocompletada" if ifaces_actualizadas else ""
+                ),
             )
             return {"filename": fname, "rows_total": parsed["rows_total"],
                     "rows_loaded": loaded, "status": "ok"}
