@@ -1,44 +1,14 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import * as d3geo from 'd3-geo'
-import { zoom as d3zoom, zoomIdentity } from 'd3-zoom'
-import { select } from 'd3-selection'
-import { Radio, RefreshCw, ZoomIn, ZoomOut, Maximize2, AlertTriangle, Search } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import 'leaflet.markercluster'
+import 'leaflet.markercluster/dist/MarkerCluster.css'
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
+import { Radio, RefreshCw, AlertTriangle, Search } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
-import peruGeoJsonRaw from '../assets/geo/peru.geojson?raw'
-
-// El archivo fuente (geoBoundaries) trae los anillos en sentido horario
-// (convencion pre-RFC7946), pero d3-geo espera sentido antihorario para el
-// anillo exterior. Sin corregir esto, d3 interpreta cada poligono como su
-// COMPLEMENTO (el planeta entero menos la forma real): d3.geoArea() daba
-// ~12.566 (=4*PI, area de toda la esfera) en vez de un valor chico como
-// corresponde a un pais. Se corrige invirtiendo el orden de cada anillo.
-function rewindRingForce(ring) {
-  return ring.slice().reverse()
-}
-
-function rewindPolygonCoords(polygonCoords) {
-  return polygonCoords.map(rewindRingForce)
-}
-
-function fixWinding(geojson) {
-  const fixGeometry = (geometry) => {
-    if (geometry.type === 'Polygon') {
-      geometry.coordinates = rewindPolygonCoords(geometry.coordinates)
-    } else if (geometry.type === 'MultiPolygon') {
-      geometry.coordinates = geometry.coordinates.map(rewindPolygonCoords)
-    }
-  }
-  for (const feature of geojson.features) {
-    if (feature.geometry) fixGeometry(feature.geometry)
-  }
-  return geojson
-}
-
-// Se ejecuta una sola vez al cargar el módulo, no en cada render.
-const peruGeoJson = fixWinding(JSON.parse(peruGeoJsonRaw))
 
 const API = '/api/backbone'
 const authH = () => ({ Authorization: `Bearer ${localStorage.getItem('access_token')}` })
@@ -56,17 +26,10 @@ const toLocalTime = (val) => {
   } catch { return String(val).substring(0, 16).replace('T', ' ') }
 }
 const mbpsToGbps = (mbps) => (mbps == null ? null : mbps / 1000)
-const fmtGbps = (mbps, decimales = 2) => {
-  const g = mbpsToGbps(mbps)
-  return g == null ? '—' : g.toFixed(decimales)
-}
 const COLA_COLORS = {
   EF: '#dc2626', CS6: '#7c3aed', CS7: '#2563eb', AF41: '#0891b2',
   AF31: '#16a34a', AF21: '#d97706', AF12: '#db2777', BE: '#65676b',
 }
-
-const ANCHO = 640
-const ALTO = 700
 
 const COLOR_ESTADO = {
   ok: '#16a34a',
@@ -79,26 +42,31 @@ const LABEL_ESTADO = { ok: 'Ok', alerta: 'Alerta', caido: 'Caído', sin_datos: '
 // Prioridad para reducir "estado por cola" -> un solo color de línea en el mapa.
 const PRIORIDAD_ESTADO = { caido: 3, alerta: 2, ok: 1, sin_datos: 0 }
 
-// ── Constantes de "zoom semántico" ──────────────────────────────────────────
-// El fondo geográfico (departamentos) escala normalmente con el zoom
-// ("zoom geométrico"), porque representa territorio real. Los pines de
-// equipos, sus etiquetas y las líneas de enlace mantienen tamaño FIJO en
-// pantalla ("zoom semántico") — solo su POSICIÓN se recalcula con el zoom.
-// Es el mismo patrón que usan Google Maps / Leaflet / Mapbox para marcadores.
-const PIN_RADIO = 5
-const PIN_STROKE = 2
-const LINEA_GROSOR = 3
-const LABEL_FONT_SIZE = 11
-const LABEL_MIN_GAP = 26
-const ZOOM_MIN = 1
-const ZOOM_MAX = 12
+// Centro y zoom inicial: Peru completo.
+const CENTRO_PERU = [-9.2, -75.5]
+const ZOOM_INICIAL = 5.3
+
+// Curva las lineas cuando hay mas de un enlace entre el mismo par de
+// equipos (ej. varias colas fisicas, rutas redundantes). Un solo enlace
+// entre un par queda recto; el resto se abre simetricamente a los costados.
+function puntoCurvado(latlng1, latlng2, indice) {
+  if (indice === 0) return null
+  const centro = { lat: (latlng1.lat + latlng2.lat) / 2, lng: (latlng1.lng + latlng2.lng) / 2 }
+  const dLat = latlng2.lat - latlng1.lat
+  const dLng = latlng2.lng - latlng1.lng
+  const len = Math.hypot(dLat, dLng) || 1
+  // Normal perpendicular, escalada a grados (offset pequeño y proporcional).
+  const nLat = -dLng / len
+  const nLng = dLat / len
+  const offset = indice * 0.06
+  return { lat: centro.lat + nLat * offset, lng: centro.lng + nLng * offset }
+}
 
 export default function BackboneMapa() {
   const [enlaces, setEnlaces] = useState([])
   const [estadoLista, setEstadoLista] = useState([])
   const [traficoLista, setTraficoLista] = useState([])
   const [loading, setLoading] = useState(true)
-  const [transform, setTransform] = useState(zoomIdentity)
   const [enlaceSeleccionado, setEnlaceSeleccionado] = useState(null)
 
   // Panel de "agregar coordenada"
@@ -109,7 +77,14 @@ export default function BackboneMapa() {
   const [lonInput, setLonInput] = useState('')
   const [mensajeCoord, setMensajeCoord] = useState(null)
 
-  const svgRef = useRef(null)
+  const mapDivRef = useRef(null)
+  const mapRef = useRef(null)
+  const clusterGroupRef = useRef(null)
+  const lineasLayerRef = useRef(null)
+  // Ref para que los handlers de Leaflet (creados una sola vez) siempre
+  // puedan leer el enlace seleccionado mas reciente sin tener que
+  // reconstruir el mapa entero en cada click.
+  const seleccionarEnlaceRef = useRef(() => {})
 
   const cargar = () => {
     setLoading(true)
@@ -138,50 +113,12 @@ export default function BackboneMapa() {
         .then(r => r.json())
         .then(d => {
           const items = d.results || d
-          // Mostramos TODOS los que matchean la busqueda, tengan o no
-          // coordenada ya cargada: asi el panel sirve tanto para agregar
-          // como para editar/corregir una coordenada existente.
           setResultadosEquipos(items)
         })
         .catch(e => console.error(e))
     }, 300)
     return () => clearTimeout(t)
   }, [busqueda])
-
-  // Proyeccion: convierte [longitud, latitud] -> [x, y] en pixeles del SVG.
-  // Se calcula una sola vez: lat/lon siguen siendo la fuente de verdad,
-  // el zoom nunca las toca, solo opera sobre las coordenadas ya proyectadas.
-  const projection = useMemo(() => {
-    return d3geo.geoMercator().fitSize([ANCHO, ALTO], peruGeoJson)
-  }, [])
-
-  const pathGenerator = useMemo(() => d3geo.geoPath(projection), [projection])
-  const peruPathD = useMemo(() => pathGenerator(peruGeoJson), [pathGenerator])
-
-  // ── Zoom/pan estilo Google Maps ───────────────────────────────────────────
-  const zoomBehavior = useMemo(() => (
-    d3zoom()
-      .scaleExtent([ZOOM_MIN, ZOOM_MAX])
-      .translateExtent([[0, 0], [ANCHO, ALTO]])
-      .on('zoom', (event) => setTransform(event.transform))
-  ), [])
-
-  useEffect(() => {
-    if (!svgRef.current) return
-    const sel = select(svgRef.current)
-    sel.call(zoomBehavior)
-    return () => sel.on('.zoom', null)
-  }, [zoomBehavior])
-
-  const hacerZoom = useCallback((factor) => {
-    if (!svgRef.current) return
-    select(svgRef.current).transition().duration(200).call(zoomBehavior.scaleBy, factor)
-  }, [zoomBehavior])
-
-  const resetZoom = useCallback(() => {
-    if (!svgRef.current) return
-    select(svgRef.current).transition().duration(250).call(zoomBehavior.transform, zoomIdentity)
-  }, [zoomBehavior])
 
   // ── Estado por enlace (peor cola) ─────────────────────────────────────────
   const estadoPorEnlace = useMemo(() => {
@@ -191,7 +128,6 @@ export default function BackboneMapa() {
       if (!actual || PRIORIDAD_ESTADO[s.estado] > PRIORIDAD_ESTADO[actual.estado]) {
         mapa.set(s.enlace_id, s)
       }
-      // Guardamos tambien todas las colas para el panel de detalle.
       const colas = mapa.get('_colas_' + s.enlace_id) || []
       colas.push(s)
       mapa.set('_colas_' + s.enlace_id, colas)
@@ -206,7 +142,7 @@ export default function BackboneMapa() {
   }, [traficoLista])
 
   // Puntos: un equipo por cada extremo de enlace que ya tenga coordenada,
-  // deduplicados por nombre (un mismo equipo puede aparecer en varios enlaces).
+  // deduplicados por nombre.
   const puntos = useMemo(() => {
     const mapa = new Map()
     for (const e of enlaces) {
@@ -220,8 +156,8 @@ export default function BackboneMapa() {
     return Array.from(mapa.entries()).map(([nombre, coords]) => ({ nombre, ...coords }))
   }, [enlaces])
 
-  // Lineas: solo enlaces donde AMBOS extremos tienen coordenada. Se les suma
-  // el estado (peor cola), el detalle por cola, y el trafico/saturacion.
+  // Lineas: solo enlaces donde AMBOS extremos tienen coordenada, con estado
+  // (peor cola), detalle por cola, y trafico/saturacion.
   const lineas = useMemo(() => {
     return enlaces
       .filter(e =>
@@ -235,94 +171,12 @@ export default function BackboneMapa() {
         const umbral = e.umbral_uso_pct != null ? Number(e.umbral_uso_pct) : null
         const usoPico = trafico && trafico.uso_pico_pct != null ? Number(trafico.uso_pico_pct) : null
         const saturado = umbral != null && usoPico != null && usoPico >= umbral
-        return {
-          ...e,
-          estado: peorEstado ? peorEstado.estado : 'sin_datos',
-          colas,
-          trafico,
-          saturado,
-        }
+        return { ...e, estado: peorEstado ? peorEstado.estado : 'sin_datos', colas, trafico, saturado }
       })
   }, [enlaces, estadoPorEnlace, traficoPorEnlace])
 
-  // Posiciones en pantalla: proyección geográfica (fija) + transform del
-  // zoom actual (cambia con cada interacción).
-  const puntosScreen = useMemo(() => {
-    return puntos.map(p => {
-      const [px, py] = projection([p.lon, p.lat])
-      return { ...p, sx: transform.applyX(px), sy: transform.applyY(py) }
-    })
-  }, [puntos, projection, transform])
-
-  const puntosConLabel = useMemo(() => {
-    return puntosScreen.map(p => {
-      let minDist = Infinity
-      for (const q of puntosScreen) {
-        if (q === p) continue
-        const d = Math.hypot(p.sx - q.sx, p.sy - q.sy)
-        if (d < minDist) minDist = d
-      }
-      return { ...p, showLabel: minDist > LABEL_MIN_GAP }
-    })
-  }, [puntosScreen])
-
-  // Curva las lineas cuando hay mas de un enlace entre el mismo par de
-  // equipos (ej. varias colas fisicas, rutas redundantes). Un solo enlace
-  // entre un par queda recto; el resto se abre simetricamente a los costados
-  // (indice -1, +1, -2, +2...) para que ninguno tape a otro visualmente.
-  const CURVA_OFFSET_PX = 16
-
-  const lineasScreen = useMemo(() => {
-    // Agrupar por par normalizado (A,B) = (B,A)
-    const grupos = new Map()
-    for (const e of lineas) {
-      const key = [e.origen_nombre, e.destino_nombre].sort().join('|')
-      if (!grupos.has(key)) grupos.set(key, [])
-      grupos.get(key).push(e)
-    }
-
-    // Asignar un indice de curvatura simetrico dentro de cada grupo
-    const curvaPorId = new Map()
-    for (const grupo of grupos.values()) {
-      if (grupo.length === 1) {
-        curvaPorId.set(grupo[0].id, 0)
-        continue
-      }
-      grupo.forEach((e, i) => {
-        // 0,1,2,3... -> 0,-1,+1,-2,+2... (el primero casi recto, resto abre a los costados)
-        const rank = Math.ceil(i / 2)
-        const signo = i % 2 === 0 ? -1 : 1
-        curvaPorId.set(e.id, i === 0 ? 0 : signo * rank)
-      })
-    }
-
-    return lineas.map(e => {
-      const [px1, py1] = projection([e.origen_longitud, e.origen_latitud])
-      const [px2, py2] = projection([e.destino_longitud, e.destino_latitud])
-      const x1 = transform.applyX(px1), y1 = transform.applyY(py1)
-      const x2 = transform.applyX(px2), y2 = transform.applyY(py2)
-
-      const curvaIndice = curvaPorId.get(e.id) || 0
-      const mx0 = (x1 + x2) / 2, my0 = (y1 + y2) / 2
-      const dx = x2 - x1, dy = y2 - y1
-      const len = Math.hypot(dx, dy) || 1
-      // Normal perpendicular a la linea, para desplazar el punto de control
-      const nx = -dy / len, ny = dx / len
-      const offset = curvaIndice * CURVA_OFFSET_PX
-      const cx = mx0 + nx * offset
-      const cy = my0 + ny * offset
-
-      const pathD = curvaIndice === 0
-        ? `M${x1},${y1} L${x2},${y2}`
-        : `M${x1},${y1} Q${cx},${cy} ${x2},${y2}`
-
-      return { ...e, x1, y1, x2, y2, mx: cx, my: cy, pathD }
-    })
-  }, [lineas, projection, transform])
-
-  const seleccionarEnlace = (enlace) => {
-    setEnlaceSeleccionado(enlace)
-  }
+  const seleccionarEnlace = (enlace) => setEnlaceSeleccionado(enlace)
+  seleccionarEnlaceRef.current = seleccionarEnlace
 
   const guardarCoordenada = () => {
     if (!equipoElegido || latInput.trim() === '' || lonInput.trim() === '') {
@@ -346,6 +200,125 @@ export default function BackboneMapa() {
       .catch(() => setMensajeCoord({ tipo: 'error', texto: 'No se pudo guardar. Reintentá.' }))
   }
 
+  // ── Inicializa el mapa de Leaflet UNA sola vez ────────────────────────────
+  useEffect(() => {
+    if (!mapDivRef.current || mapRef.current) return
+
+    const map = L.map(mapDivRef.current, { zoomControl: true }).setView(CENTRO_PERU, ZOOM_INICIAL)
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 18,
+    }).addTo(map)
+
+    // Grupo de clustering para los pines de equipos: agrupa nodos cercanos
+    // en un circulo con contador, y los separa automaticamente al hacer
+    // zoom -- mismo comportamiento que Google Maps.
+    const clusterGroup = L.markerClusterGroup({
+      maxClusterRadius: 45,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+    })
+    map.addLayer(clusterGroup)
+
+    // Capa aparte (fuera del cluster) para las lineas de enlace: las lineas
+    // no deben agruparse, solo los pines.
+    const lineasLayer = L.layerGroup().addTo(map)
+
+    mapRef.current = map
+    clusterGroupRef.current = clusterGroup
+    lineasLayerRef.current = lineasLayer
+
+    return () => {
+      map.remove()
+      mapRef.current = null
+    }
+  }, [])
+
+  // ── Redibuja pines cada vez que cambian los puntos ────────────────────────
+  useEffect(() => {
+    const clusterGroup = clusterGroupRef.current
+    if (!clusterGroup) return
+    clusterGroup.clearLayers()
+
+    for (const p of puntos) {
+      const marker = L.circleMarker([p.lat, p.lon], {
+        radius: 7, color: '#fff', weight: 2, fillColor: '#1877f2', fillOpacity: 1,
+      })
+      marker.bindTooltip(p.nombre, { permanent: false, direction: 'top' })
+      clusterGroup.addLayer(marker)
+    }
+  }, [puntos])
+
+  // ── Redibuja lineas cada vez que cambian los enlaces o la seleccion ──────
+  useEffect(() => {
+    const lineasLayer = lineasLayerRef.current
+    if (!lineasLayer) return
+    lineasLayer.clearLayers()
+
+    // Agrupar por par normalizado (A,B) = (B,A) para curvar duplicados.
+    const grupos = new Map()
+    for (const e of lineas) {
+      const key = [e.origen_nombre, e.destino_nombre].sort().join('|')
+      if (!grupos.has(key)) grupos.set(key, [])
+      grupos.get(key).push(e)
+    }
+    const curvaPorId = new Map()
+    for (const grupo of grupos.values()) {
+      if (grupo.length === 1) { curvaPorId.set(grupo[0].id, 0); continue }
+      grupo.forEach((e, i) => {
+        const rank = Math.ceil(i / 2)
+        const signo = i % 2 === 0 ? -1 : 1
+        curvaPorId.set(e.id, i === 0 ? 0 : signo * rank)
+      })
+    }
+
+    for (const e of lineas) {
+      const latlng1 = L.latLng(e.origen_latitud, e.origen_longitud)
+      const latlng2 = L.latLng(e.destino_latitud, e.destino_longitud)
+      const curvaIndice = curvaPorId.get(e.id) || 0
+      const color = COLOR_ESTADO[e.estado] || COLOR_ESTADO.sin_datos
+      const seleccionado = enlaceSeleccionado?.id === e.id
+
+      let linea
+      const puntoMedio = puntoCurvado(latlng1, latlng2, curvaIndice)
+      if (curvaIndice === 0) {
+        linea = L.polyline([latlng1, latlng2], {
+          color, weight: seleccionado ? 5 : 3,
+        })
+      } else {
+        // Leaflet no tiene curvas Bezier nativas: se aproxima con varios
+        // segmentos rectos pasando por el punto de control (misma idea
+        // visual que la curva cuadratica SVG anterior).
+        const pasos = 20
+        const puntosCurva = []
+        for (let t = 0; t <= pasos; t++) {
+          const tt = t / pasos
+          const lat = (1 - tt) * (1 - tt) * latlng1.lat + 2 * (1 - tt) * tt * puntoMedio.lat + tt * tt * latlng2.lat
+          const lng = (1 - tt) * (1 - tt) * latlng1.lng + 2 * (1 - tt) * tt * puntoMedio.lng + tt * tt * latlng2.lng
+          puntosCurva.push([lat, lng])
+        }
+        linea = L.polyline(puntosCurva, { color, weight: seleccionado ? 5 : 3 })
+      }
+
+      linea.on('click', () => seleccionarEnlaceRef.current(e))
+      linea.addTo(lineasLayer)
+
+      if (e.saturado) {
+        const centro = puntoMedio || {
+          lat: (latlng1.lat + latlng2.lat) / 2,
+          lng: (latlng1.lng + latlng2.lng) / 2,
+        }
+        const iconoAlerta = L.divIcon({
+          html: `<div style="width:18px;height:18px;border-radius:50%;background:#d97706;border:1.5px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600;">!</div>`,
+          className: '', iconSize: [18, 18],
+        })
+        const marcadorAlerta = L.marker([centro.lat, centro.lng], { icon: iconoAlerta })
+        marcadorAlerta.on('click', () => seleccionarEnlaceRef.current(e))
+        marcadorAlerta.addTo(lineasLayer)
+      }
+    }
+  }, [lineas, enlaceSeleccionado])
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -354,7 +327,7 @@ export default function BackboneMapa() {
             <Radio size={20} color="#1877f2" /> Backbone / Mapa
           </h1>
           <p style={{ fontSize: 13, color: '#65676b', margin: '4px 0 0' }}>
-            {puntos.length} equipos con coordenada · {lineas.length} enlaces dibujados · zoom {transform.k.toFixed(1)}x
+            {puntos.length} equipos con coordenada · {lineas.length} enlaces dibujados
           </p>
         </div>
         <button onClick={cargar} style={{
@@ -379,56 +352,8 @@ export default function BackboneMapa() {
             ))}
           </div>
 
-          <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 12, position: 'relative' }}>
-            <svg
-              ref={svgRef}
-              viewBox={`0 0 ${ANCHO} ${ALTO}`}
-              style={{ width: '100%', height: 'auto', touchAction: 'none', cursor: 'grab' }}
-            >
-              <g transform={`translate(${transform.x},${transform.y}) scale(${transform.k})`}>
-                <path d={peruPathD} fill="#f9fafb" stroke="#d1d5db" strokeWidth={1 / transform.k} />
-              </g>
-
-              {lineasScreen.map(e => {
-                const color = COLOR_ESTADO[e.estado] || COLOR_ESTADO.sin_datos
-                const seleccionado = enlaceSeleccionado?.id === e.id
-                return (
-                  <g key={e.id}>
-                    <path
-                      d={e.pathD}
-                      fill="none"
-                      stroke={color}
-                      strokeWidth={seleccionado ? LINEA_GROSOR + 2 : LINEA_GROSOR}
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => seleccionarEnlace(e)}
-                    />
-                    {e.saturado && (
-                      <g style={{ cursor: 'pointer' }} onClick={() => seleccionarEnlace(e)}>
-                        <circle cx={e.mx} cy={e.my} r={8} fill="#d97706" stroke="#fff" strokeWidth={1.5} />
-                        <text x={e.mx} y={e.my + 3.5} fontSize={10} fontWeight="600" fill="#fff" textAnchor="middle">!</text>
-                      </g>
-                    )}
-                  </g>
-                )
-              })}
-
-              {puntosConLabel.map(p => (
-                <g key={p.nombre}>
-                  <circle cx={p.sx} cy={p.sy} r={PIN_RADIO} fill="#1877f2" stroke="#fff" strokeWidth={PIN_STROKE} />
-                  {p.showLabel && (
-                    <text x={p.sx + PIN_RADIO + 4} y={p.sy + 4} fontSize={LABEL_FONT_SIZE} fill="#1c1e21" style={{ pointerEvents: 'none' }}>
-                      {p.nombre}
-                    </text>
-                  )}
-                </g>
-              ))}
-            </svg>
-
-            <div style={{ position: 'absolute', bottom: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <button onClick={() => hacerZoom(1.4)} title="Acercar" style={ctrlBtnStyle}><ZoomIn size={15} /></button>
-              <button onClick={() => hacerZoom(1 / 1.4)} title="Alejar" style={ctrlBtnStyle}><ZoomOut size={15} /></button>
-              <button onClick={resetZoom} title="Restablecer vista" style={ctrlBtnStyle}><Maximize2 size={14} /></button>
-            </div>
+          <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 12 }}>
+            <div ref={mapDivRef} style={{ width: '100%', height: 700, borderRadius: 6 }} />
           </div>
         </div>
 
@@ -462,8 +387,6 @@ export default function BackboneMapa() {
                       onClick={() => {
                         setEquipoElegido(eq)
                         setResultadosEquipos([])
-                        // Precarga los valores actuales si ya tenia coordenada,
-                        // asi el panel sirve para editar, no solo para agregar.
                         setLatInput(yaTiene ? String(eq.latitud) : '')
                         setLonInput(yaTiene ? String(eq.longitud) : '')
                       }}
@@ -685,13 +608,6 @@ function EnlaceSerieChart({ enlaceId }) {
       )}
     </div>
   )
-}
-
-
-const ctrlBtnStyle = {
-  width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
-  border: '1px solid #dadde1', borderRadius: 8, background: '#fff', cursor: 'pointer',
-  color: '#1c1e21', boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
 }
 
 const panelStyle = {
