@@ -205,21 +205,39 @@ PM_CODE_TWAMPTEST = "PM_IGlogic_ni_data_TwampTest_5"
 def _actualizar_iface_origen_desde_twamp(rows: list[dict]) -> int:
     """
     Autocompleta BBEnlace.iface_origen a partir de 'Source Interface Name'
-    (ver parser_twamptest.py). Solo actualiza enlaces que:
-      - existen ya en BBEnlace para ese par (origen=source_device,
-        destino=dest_device) -- no crea enlaces nuevos, eso lo sigue
-        haciendo backbone_confirm_candidatos;
-      - todavia tienen iface_origen vacio -- decision de producto: NO se
-        sobreescribe un valor ya cargado (a mano o por un ciclo anterior),
-        a diferencia de capacidad_gbps en pipeline_traffic.py que si se
-        sobreescribe siempre. Aca preferimos no pisar un valor que alguien
-        pudo haber corregido manualmente tras revisar el trunk real.
-    Ignora filas sin source_iface (el Sink NE Name nunca trae interfaz,
-    ver docstring de parser_twamptest.py).
+    (ver parser_twamptest.py). iface_origen se interpreta SIEMPRE como "la
+    interfaz del equipo BBEnlace.origen" (ver _resources_configurados() en
+    pipeline_traffic.py, que arma f"{origen__nombre}/{iface_origen}").
+
+    TWAMP solo reporta la interfaz del lado que INICIA la sesion (Source
+    NE Name) -- el lado Sink nunca trae interfaz (ver docstring de
+    parser_twamptest.py). Ese lado iniciador no necesariamente coincide
+    con el "origen" que backbone_confirm_candidatos le asigno al enlace
+    (el orden ahi es arbitrario, viene del primer avistamiento en
+    bb_delay). Caso real detectado: BBEnlace tiene
+    origen=rMPLSCoreVillaSalvador5, destino=rMPLSTumbes2, pero TWAMP
+    SIEMPRE inicia desde rMPLSTumbes2 -- la interfaz que llega es de
+    rMPLSTumbes2, no de CoreVillaSalvador5.
+
+    Por eso, ademas del caso directo (source_device == origen), se cubre
+    el caso invertido (source_device == destino): ahi se PERMUTAN origen
+    y destino del enlace (llamando a origen_id/destino_id directamente,
+    sin pasar por los objetos FK ya cacheados) para que origen quede
+    siempre del lado que TWAMP reporta, y recien ahi se guarda
+    iface_origen -- asi el campo sigue significando lo mismo en toda la
+    tabla, sin necesidad de otro campo iface_destino.
+
+    Solo actualiza enlaces que ya existen (no crea nuevos -- eso lo hace
+    backbone_confirm_candidatos) y que todavia tienen iface_origen vacio:
+    decision de producto, no se sobreescribe un valor ya cargado (a mano
+    o por un ciclo anterior), a diferencia de capacidad_gbps en
+    pipeline_traffic.py que si se sobreescribe siempre. Aca preferimos no
+    pisar un valor que alguien pudo haber corregido manualmente tras
+    revisar el trunk real.
     """
     from .models import BBEnlace
 
-    # Ultimo valor visto por par (origen, destino) en este lote de filas.
+    # Ultimo valor visto por par (source_device, dest_device) en este lote.
     por_par = {}
     for r in rows:
         iface = r.get('source_iface')
@@ -228,12 +246,32 @@ def _actualizar_iface_origen_desde_twamp(rows: list[dict]) -> int:
         por_par[(r['source_device'], r['dest_device'])] = iface
 
     actualizados = 0
-    for (origen_nombre, destino_nombre), iface in por_par.items():
+    for (source_device, dest_device), iface in por_par.items():
+        # Caso directo: el enlace ya tiene origen=source_device tal cual
+        # TWAMP lo reporta. Nada que permutar.
         actualizados += BBEnlace.objects.filter(
-            origen__nombre=origen_nombre,
-            destino__nombre=destino_nombre,
+            origen__nombre=source_device,
+            destino__nombre=dest_device,
             iface_origen='',
         ).update(iface_origen=iface)
+
+        # Caso invertido: el enlace existe pero con origen/destino al
+        # reves de como TWAMP inicia la sesion (origen=dest_device,
+        # destino=source_device). Se permutan los IDs para que origen
+        # quede del lado que realmente reporta la interfaz -- si no se
+        # permuta, iface_origen quedaria mal asociado (ver docstring).
+        # update() con F() evita el problema de objetos ya cargados en
+        # memoria pisandose entre si.
+        candidatos = BBEnlace.objects.filter(
+            origen__nombre=dest_device,
+            destino__nombre=source_device,
+            iface_origen='',
+        )
+        for enlace in candidatos:
+            enlace.origen_id, enlace.destino_id = enlace.destino_id, enlace.origen_id
+            enlace.iface_origen = iface
+            enlace.save(update_fields=['origen_id', 'destino_id', 'iface_origen', 'updated_at'])
+            actualizados += 1
 
     return actualizados
 
