@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, BarChart, Bar, Cell, LabelList, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import {
@@ -353,10 +353,24 @@ function pctUso(bwGbps, capacidadGbps) {
 // consumido por la peor cola). Asi un enlace entra al ranking ya sea por
 // saturación de ancho de banda o por delay alto, sin depender de un solo
 // criterio (pedido explicito: "% uso + delay alto, ambos criterios").
+// Trunca "origen ↔ destino" para que quepa en el eje Y sin superponerse
+// con las barras -- nombres reales de equipos pueden ser largos
+// (ej. "rMPLSCoreArequipa4 ↔ rMPLSCuzco6").
+function truncarNombreEnlace(origen, destino, max = 16) {
+  const trunc = (s) => (s.length > max ? s.slice(0, max - 1) + '…' : s)
+  return `${trunc(origen)} ↔ ${trunc(destino)}`
+}
+
 function TopSaturadosCard({ ranking }) {
   const top = [...ranking].slice(0, 8).reverse().map(r => ({
-    nombre: `${r.enlace.origen_nombre} ↔ ${r.enlace.destino_nombre}`,
-    score: Math.round(r.score * 10) / 10,
+    nombre: truncarNombreEnlace(r.enlace.origen_nombre, r.enlace.destino_nombre),
+    // El eje se fija en 0-100% (barra llena = "a capacidad o mas"); el
+    // valor real (puede superar 100% si el trafico ya excedio la
+    // capacidad configurada) se conserva aparte para la etiqueta y el
+    // tooltip, asi un solo enlace desbordado no aplasta el resto del
+    // grafico contra el eje.
+    scoreReal: Math.round(r.score * 10) / 10,
+    scoreChart: Math.min(r.score, 100),
   }))
 
   return (
@@ -369,14 +383,20 @@ function TopSaturadosCard({ ranking }) {
           Ningún enlace con datos de tráfico registrados ahora mismo.
         </p>
       ) : (
-        <ResponsiveContainer width="100%" height={Math.max(top.length * 36, 140)}>
-          <BarChart data={top} layout="vertical" margin={{ left: 170, right: 40, top: 5, bottom: 5 }}>
+        <ResponsiveContainer width="100%" height={Math.max(top.length * 40, 160)}>
+          <BarChart data={top} layout="vertical" margin={{ left: 4, right: 46, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-            <XAxis type="number" tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
-            <YAxis type="category" dataKey="nombre" tick={{ fontSize: 10.5, fontFamily: 'monospace' }} width={165} />
-            <Tooltip formatter={v => [`${v}%`, '% de uso']} />
-            <Bar dataKey="score" radius={[0, 4, 4, 0]}>
-              {top.map((r, i) => <Cell key={i} fill={severidadColor(r.score)} />)}
+            <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
+            <YAxis type="category" dataKey="nombre" tick={{ fontSize: 10.5, fontFamily: 'monospace' }} width={155} />
+            <Tooltip formatter={(_, __, { payload }) => [`${payload.scoreReal}%`, '% de uso real']} />
+            <Bar dataKey="scoreChart" radius={[0, 4, 4, 0]}>
+              {top.map((r, i) => <Cell key={i} fill={severidadColor(r.scoreReal)} />)}
+              <LabelList
+                dataKey="scoreReal"
+                position="right"
+                formatter={v => `${v}%`}
+                style={{ fontSize: 11, fill: '#374151' }}
+              />
             </Bar>
           </BarChart>
         </ResponsiveContainer>
