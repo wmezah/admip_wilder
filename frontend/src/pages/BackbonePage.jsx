@@ -381,16 +381,6 @@ const SAT_C = { primary: '#7c3aed', warn: '#d97706', danger: '#dc2626', muted: '
 const SAT_TH = 80
 const satColor = v => v >= SAT_TH ? SAT_C.danger : v >= SAT_TH * 0.8 ? SAT_C.warn : SAT_C.primary
 
-// Trunca "origen ↔ destino" para que quepa en una sola linea del eje Y --
-// Recharts hace wrap automatico a 2 lineas cuando el texto excede el
-// "width" del YAxis, que es justo lo que se veia feo (label partido en 2
-// lineas). Mas corto que en la tabla porque aca comparten espacio con 8
-// barras; el nombre completo va aparte para el tooltip.
-function truncarNombreEnlace(origen, destino, max = 11) {
-  const trunc = (s) => (s.length > max ? s.slice(0, max - 1) + '…' : s)
-  return `${trunc(origen)}↔${trunc(destino)}`
-}
-
 function SaturacionTooltip({ active, payload, etiqueta }) {
   if (!active || !payload?.length) return null
   const p = payload[0].payload
@@ -409,7 +399,7 @@ function SaturacionTooltip({ active, payload, etiqueta }) {
 
 function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
   const top = [...ranking].slice(0, 8).reverse().map(r => ({
-    nombre: truncarNombreEnlace(r.enlace.origen_nombre, r.enlace.destino_nombre),
+    nombre: `${r.enlace.origen_nombre} ↔ ${r.enlace.destino_nombre}`,
     origenCompleto: r.enlace.origen_nombre,
     destinoCompleto: r.enlace.destino_nombre,
     // El eje se fija en 0-100% (barra llena = "a capacidad o mas"); el
@@ -420,6 +410,11 @@ function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
     scoreChart: Math.min(r.score, 100),
   }))
   const etiquetaMetrica = metrica === 'peak' ? '% uso pico' : '% uso promedio'
+  // Ancho del eje Y calculado segun el nombre mas largo del lote (nombres
+  // completos, sin truncar) -- evita tanto el wrap a 2 lineas (ancho
+  // insuficiente) como desperdiciar espacio cuando los nombres son cortos.
+  const maxLen = top.reduce((m, r) => Math.max(m, r.nombre.length), 0)
+  const yAxisWidth = Math.min(280, Math.max(120, maxLen * 6.3))
 
   return (
     <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 16, minWidth: 0, overflow: 'hidden' }}>
@@ -450,10 +445,10 @@ function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={Math.max(top.length * 34, 140)}>
-          <BarChart data={top} layout="vertical" barSize={16} margin={{ left: 140, right: 60, top: 5, bottom: 5 }}>
+          <BarChart data={top} layout="vertical" barSize={16} margin={{ left: yAxisWidth + 5, right: 60, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
             <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
-            <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={135} />
+            <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={yAxisWidth} />
             <Tooltip content={<SaturacionTooltip etiqueta={etiquetaMetrica} />} />
             <ReferenceLine x={SAT_TH} stroke={SAT_C.danger} strokeDasharray="4 4"
               label={{ value: `${SAT_TH}%`, fontSize: 10, fill: SAT_C.danger }} />
