@@ -344,8 +344,13 @@ function bwUtilizadoGbps(trafico) {
 }
 
 function pctUso(bwGbps, capacidadGbps) {
-  if (bwGbps == null || !capacidadGbps) return null
-  return (bwGbps / capacidadGbps) * 100
+  const cap = Number(capacidadGbps)
+  // capacidad_gbps llega del API como string (DecimalField serializado por
+  // DRF, ej. "0.00") -- un string no vacio es "truthy" en JS aunque su
+  // valor numerico sea 0, asi que el chequeo debe hacerse sobre el numero
+  // ya convertido. Sin esto, bwGbps / 0 da Infinity en vez de "sin dato".
+  if (bwGbps == null || !Number.isFinite(cap) || cap <= 0) return null
+  return (bwGbps / cap) * 100
 }
 
 // ─── Top enlaces más saturados / con delay alto ───────────────────────────────
@@ -361,7 +366,7 @@ function truncarNombreEnlace(origen, destino, max = 16) {
   return `${trunc(origen)} ↔ ${trunc(destino)}`
 }
 
-function TopSaturadosCard({ ranking }) {
+function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
   const top = [...ranking].slice(0, 8).reverse().map(r => ({
     nombre: truncarNombreEnlace(r.enlace.origen_nombre, r.enlace.destino_nombre),
     // El eje se fija en 0-100% (barra llena = "a capacidad o mas"); el
@@ -372,12 +377,31 @@ function TopSaturadosCard({ ranking }) {
     scoreReal: Math.round(r.score * 10) / 10,
     scoreChart: Math.min(r.score, 100),
   }))
+  const etiquetaMetrica = metrica === 'peak' ? '% uso pico' : '% uso promedio'
 
   return (
     <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 16 }}>
-      <p style={{ fontWeight: 700, fontSize: 14, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Flame size={15} color="#dc2626" /> Top enlaces más saturados (% uso)
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+        <p style={{ fontWeight: 700, fontSize: 14, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Flame size={15} color="#dc2626" /> Top enlaces más saturados ({etiquetaMetrica})
+        </p>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[['avg', 'Promedio'], ['peak', 'Pico']].map(([val, label]) => (
+            <button
+              key={val}
+              onClick={() => onMetricaChange(val)}
+              style={{
+                padding: '4px 12px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
+                border: metrica === val ? '1px solid #1877f2' : '1px solid #dadde1',
+                background: metrica === val ? '#e7f3ff' : '#fff',
+                color: metrica === val ? '#1877f2' : '#374151', fontWeight: metrica === val ? 600 : 400,
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       {top.length === 0 ? (
         <p style={{ color: '#9ca3af', textAlign: 'center', padding: 30, fontSize: 13 }}>
           Ningún enlace con datos de tráfico registrados ahora mismo.
@@ -388,7 +412,7 @@ function TopSaturadosCard({ ranking }) {
             <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
             <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="nombre" tick={{ fontSize: 10.5, fontFamily: 'monospace' }} width={155} />
-            <Tooltip formatter={(_, __, { payload }) => [`${payload.scoreReal}%`, '% de uso real']} />
+            <Tooltip formatter={(_, __, { payload }) => [`${payload.scoreReal}%`, etiquetaMetrica]} />
             <Bar dataKey="scoreChart" radius={[0, 4, 4, 0]}>
               {top.map((r, i) => <Cell key={i} fill={severidadColor(r.scoreReal)} />)}
               <LabelList
@@ -535,6 +559,7 @@ export default function BackbonePage() {
   const [busqueda, setBusqueda] = useState('')
   const [expandido, setExpandido] = useState(null)
   const [editando, setEditando] = useState(null)
+  const [metricaTop, setMetricaTop] = useState('avg') // 'avg' | 'peak'
 
   const cargar = useCallback(async () => {
     setLoading(true)
@@ -594,25 +619,28 @@ export default function BackbonePage() {
     return r
   }, [enlaces, colasPorEnlace])
 
-  // Ranking combinado: score = max(% uso de trafico, % del umbral de delay
-  // consumido por la peor cola). Un enlace entra aca por saturacion de BW
-  // o por delay alto, cualquiera de los dos -- no exclusivamente uno.
+  // Ranking por saturacion de trafico. "Promedio" se calcula en el cliente
+  // (bwUtilizadoGbps / capacidad); "Pico" usa uso_pico_pct, que el backend
+  // ya entrega calculado (Max(max_util_pct) en calcular_trafico_por_enlace,
+  // reporting.py) -- no requiere ningun calculo nuevo.
   const ranking = useMemo(() => {
     return enlaces
       .map(enlace => {
         const colas = colasPorEnlace[enlace.id] || []
         const trafico = traficoPorEnlace[enlace.id]
         const bwGbps = bwUtilizadoGbps(trafico)
-        const trafficPct = pctUso(bwGbps, enlace.capacidad_gbps) || 0
+        const avgPct = pctUso(bwGbps, enlace.capacidad_gbps) || 0
+        const peakPct = trafico?.uso_pico_pct ?? 0
         return {
           enlace, colas, trafico,
           estado: peorEstado(colas),
-          score: trafficPct,
+          avgPct, peakPct,
+          score: metricaTop === 'peak' ? peakPct : avgPct,
         }
       })
       .filter(r => r.score > 0)
       .sort((a, b) => b.score - a.score)
-  }, [enlaces, colasPorEnlace, traficoPorEnlace])
+  }, [enlaces, colasPorEnlace, traficoPorEnlace, metricaTop])
 
   const alertasActivas = useMemo(
     () => ranking.filter(r => r.estado !== 'ok'),
@@ -640,7 +668,7 @@ export default function BackbonePage() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 12, marginBottom: 20 }}>
-        <TopSaturadosCard ranking={ranking} />
+        <TopSaturadosCard ranking={ranking} metrica={metricaTop} onMetricaChange={setMetricaTop} />
         <ResumenEstadoCard resumen={resumen} alertas={alertasActivas} />
       </div>
 
