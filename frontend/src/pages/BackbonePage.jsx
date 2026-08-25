@@ -415,7 +415,7 @@ function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
   const etiquetaMetrica = metrica === 'peak' ? '% uso pico' : '% uso promedio'
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 16 }}>
+    <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 16, minWidth: 0, overflow: 'hidden' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <p style={{ fontWeight: 700, fontSize: 14, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
           <Flame size={15} color={SAT_C.danger} /> Top enlaces más saturados ({etiquetaMetrica})
@@ -443,7 +443,7 @@ function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={top} layout="vertical" margin={{ left: 130, right: 60, top: 5, bottom: 5 }}>
+          <BarChart data={top} layout="vertical" barSize={16} margin={{ left: 130, right: 60, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
             <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={125} />
@@ -704,7 +704,7 @@ export default function BackbonePage() {
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: 12, marginBottom: 20 }}>
         <TopSaturadosCard ranking={ranking} metrica={metricaTop} onMetricaChange={setMetricaTop} />
         <ResumenEstadoCard resumen={resumen} alertas={alertasActivas} />
       </div>
