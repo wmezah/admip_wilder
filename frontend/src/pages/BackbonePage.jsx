@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  LineChart, Line, BarChart, Bar, Cell, LabelList, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, BarChart, Bar, Cell, ReferenceLine, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import {
@@ -42,10 +42,6 @@ const PEOR = { ok: 0, alerta: 1, caido: 2 }
 
 function peorEstado(colas) {
   return colas.reduce((peor, c) => (PEOR[c.estado] > PEOR[peor] ? c.estado : peor), 'ok')
-}
-
-function severidadColor(score) {
-  return score >= 80 ? '#dc2626' : score >= 60 ? '#d97706' : '#1877f2'
 }
 
 function ColaRow({ cola }) {
@@ -353,11 +349,14 @@ function pctUso(bwGbps, capacidadGbps) {
   return (bwGbps / cap) * 100
 }
 
-// ─── Top enlaces más saturados / con delay alto ───────────────────────────────
-// Score combinado = max(% de uso de tráfico, % del umbral de delay
-// consumido por la peor cola). Asi un enlace entra al ranking ya sea por
-// saturación de ancho de banda o por delay alto, sin depender de un solo
-// criterio (pedido explicito: "% uso + delay alto, ambos criterios").
+// ─── Top enlaces más saturados ──────────────────────────────────────────────
+// Mismo estilo visual que el chart "Top 20 — CPU Promedio" de NCEPage.jsx
+// (CGNAT KPIs): barra morada base, ReferenceLine punteada en el umbral,
+// tooltip custom, sin etiquetas de valor sobre la barra.
+const SAT_C = { primary: '#7c3aed', warn: '#d97706', danger: '#dc2626', muted: '#6b7280', border: '#e5e7eb' }
+const SAT_TH = 80
+const satColor = v => v >= SAT_TH ? SAT_C.danger : v >= SAT_TH * 0.8 ? SAT_C.warn : SAT_C.primary
+
 // Trunca "origen ↔ destino" para que quepa en el eje Y sin superponerse
 // con las barras -- nombres reales de equipos pueden ser largos
 // (ej. "rMPLSCoreArequipa4 ↔ rMPLSCuzco6").
@@ -366,14 +365,26 @@ function truncarNombreEnlace(origen, destino, max = 16) {
   return `${trunc(origen)} ↔ ${trunc(destino)}`
 }
 
+function SaturacionTooltip({ active, payload, label, etiqueta }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${SAT_C.border}`, borderRadius: 8,
+      padding: '8px 12px', fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
+      <p style={{ fontWeight: 700, margin: '0 0 4px', color: '#1f2937' }}>{label}</p>
+      <p style={{ margin: '2px 0', color: satColor(payload[0].payload.scoreReal) }}>
+        {etiqueta}: <strong>{payload[0].payload.scoreReal.toFixed(1)}%</strong>
+      </p>
+    </div>
+  )
+}
+
 function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
   const top = [...ranking].slice(0, 8).reverse().map(r => ({
     nombre: truncarNombreEnlace(r.enlace.origen_nombre, r.enlace.destino_nombre),
     // El eje se fija en 0-100% (barra llena = "a capacidad o mas"); el
     // valor real (puede superar 100% si el trafico ya excedio la
-    // capacidad configurada) se conserva aparte para la etiqueta y el
-    // tooltip, asi un solo enlace desbordado no aplasta el resto del
-    // grafico contra el eje.
+    // capacidad configurada) se conserva aparte para el tooltip, asi un
+    // solo enlace desbordado no aplasta el resto del grafico contra el eje.
     scoreReal: Math.round(r.score * 10) / 10,
     scoreChart: Math.min(r.score, 100),
   }))
@@ -383,7 +394,7 @@ function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
     <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
         <p style={{ fontWeight: 700, fontSize: 14, margin: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Flame size={15} color="#dc2626" /> Top enlaces más saturados ({etiquetaMetrica})
+          <Flame size={15} color={SAT_C.danger} /> Top enlaces más saturados ({etiquetaMetrica})
         </p>
         <div style={{ display: 'flex', gap: 4 }}>
           {[['avg', 'Promedio'], ['peak', 'Pico']].map(([val, label]) => (
@@ -392,9 +403,9 @@ function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
               onClick={() => onMetricaChange(val)}
               style={{
                 padding: '4px 12px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
-                border: metrica === val ? '1px solid #1877f2' : '1px solid #dadde1',
-                background: metrica === val ? '#e7f3ff' : '#fff',
-                color: metrica === val ? '#1877f2' : '#374151', fontWeight: metrica === val ? 600 : 400,
+                border: metrica === val ? `1px solid ${SAT_C.primary}` : '1px solid #dadde1',
+                background: metrica === val ? '#f3e8ff' : '#fff',
+                color: metrica === val ? SAT_C.primary : '#374151', fontWeight: metrica === val ? 600 : 400,
               }}
             >
               {label}
@@ -407,20 +418,16 @@ function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
           Ningún enlace con datos de tráfico registrados ahora mismo.
         </p>
       ) : (
-        <ResponsiveContainer width="100%" height={Math.max(top.length * 40, 160)}>
-          <BarChart data={top} layout="vertical" margin={{ left: 4, right: 46, top: 5, bottom: 5 }}>
+        <ResponsiveContainer width="100%" height={400}>
+          <BarChart data={top} layout="vertical" margin={{ left: 130, right: 60, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
             <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
-            <YAxis type="category" dataKey="nombre" tick={{ fontSize: 10.5, fontFamily: 'monospace' }} width={155} />
-            <Tooltip formatter={(_, __, { payload }) => [`${payload.scoreReal}%`, etiquetaMetrica]} />
-            <Bar dataKey="scoreChart" radius={[0, 4, 4, 0]}>
-              {top.map((r, i) => <Cell key={i} fill={severidadColor(r.scoreReal)} />)}
-              <LabelList
-                dataKey="scoreReal"
-                position="right"
-                formatter={v => `${v}%`}
-                style={{ fontSize: 11, fill: '#374151' }}
-              />
+            <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={125} />
+            <Tooltip content={<SaturacionTooltip etiqueta={etiquetaMetrica} />} />
+            <ReferenceLine x={SAT_TH} stroke={SAT_C.danger} strokeDasharray="4 4"
+              label={{ value: `${SAT_TH}%`, fontSize: 10, fill: SAT_C.danger }} />
+            <Bar dataKey="scoreChart" name={etiquetaMetrica} radius={[0, 4, 4, 0]}>
+              {top.map((r, i) => <Cell key={i} fill={satColor(r.scoreReal)} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
