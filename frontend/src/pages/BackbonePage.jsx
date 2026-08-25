@@ -449,7 +449,7 @@ function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
           Ningún enlace con datos de tráfico registrados ahora mismo.
         </p>
       ) : (
-        <ResponsiveContainer width="100%" height={400}>
+        <ResponsiveContainer width="100%" height={Math.max(top.length * 34, 140)}>
           <BarChart data={top} layout="vertical" barSize={16} margin={{ left: 140, right: 60, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
             <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
