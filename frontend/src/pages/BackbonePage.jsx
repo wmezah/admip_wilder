@@ -66,7 +66,7 @@ function ColaRow({ cola }) {
   )
 }
 
-function TraficoBlock({ trafico }) {
+function TraficoBlock({ trafico, capacidadGbps }) {
   if (!trafico || trafico.sin_iface_configurada) {
     return (
       <p style={{ fontSize: 11.5, color: '#9ca3af', margin: '10px 10px 0' }}>
@@ -81,6 +81,15 @@ function TraficoBlock({ trafico }) {
       </p>
     )
   }
+  // Pico real = la muestra de 5 min mas alta del dia entre in/out (ver
+  // reporting.py::calcular_trafico_por_enlace) -- no un instantaneo, pero
+  // es el pico real disponible con esta fuente (max_rate/max_util_pct
+  // siempre vienen vacios, ver docstring de parser_ipinterface.py).
+  const picoGbps = bwUtilizadoGbps({
+    in_average_mbps: trafico.in_peak_mbps,
+    out_average_mbps: trafico.out_peak_mbps,
+  })
+  const picoPct = pctUso(picoGbps, capacidadGbps)
   return (
     <div style={{ display: 'flex', gap: 10, margin: '10px 10px 0' }}>
       <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px', flex: 1 }}>
@@ -90,11 +99,11 @@ function TraficoBlock({ trafico }) {
         </p>
       </div>
       <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px', flex: 1 }}>
-        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>Pico</p>
+        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>Pico (in / out)</p>
         <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
-          {fmtGbps(trafico.pico_mbps)} Gbps
-          {trafico.uso_pico_pct != null && (
-            <span style={{ fontSize: 11.5, color: '#65676b', fontWeight: 400 }}> ({trafico.uso_pico_pct}% uso)</span>
+          {fmtGbps(trafico.in_peak_mbps)} / {fmtGbps(trafico.out_peak_mbps)} Gbps
+          {picoPct != null && (
+            <span style={{ fontSize: 11.5, color: '#65676b', fontWeight: 400 }}> ({picoPct.toFixed(1)}% uso)</span>
           )}
         </p>
       </div>
@@ -106,7 +115,7 @@ function TraficoBlock({ trafico }) {
   )
 }
 
-function EnlaceSerieChart({ enlaceId }) {
+function EnlaceSerieChart({ enlaceId, capacidadGbps }) {
   const [serie, setSerie] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -139,13 +148,19 @@ function EnlaceSerieChart({ enlaceId }) {
   const delayData = Object.values(delayPorTiempo).sort((a, b) => a._raw.localeCompare(b._raw))
   const colas = Array.from(colasVistas)
 
-  // Tráfico: convertir Mbps (backend) -> Gbps solo para mostrar en el grafico.
+  // Tráfico: cada muestra de 5 min convertida a % de la capacidad del
+  // enlace (no promedio ni pico -- la lectura individual, tal cual llega
+  // cada ciclo). Asi se ve visualmente cuando el enlace tocó el umbral,
+  // no solo un numero resumen que puede diluir un pico puntual.
   const traficoData = serie.trafico_series.map(p => ({
     time: toLocalTime(p.collection_time),
     _raw: p.collection_time,
-    in: mbpsToGbps(p.in_rate_avg),
-    out: mbpsToGbps(p.out_rate_avg),
+    inPct: pctUso(mbpsToGbps(p.in_rate_avg), capacidadGbps),
+    outPct: pctUso(mbpsToGbps(p.out_rate_avg), capacidadGbps),
+    inGbps: mbpsToGbps(p.in_rate_avg),
+    outGbps: mbpsToGbps(p.out_rate_avg),
   })).sort((a, b) => a._raw.localeCompare(b._raw))
+  const maxPct = Math.max(100, ...traficoData.map(p => Math.max(p.inPct || 0, p.outPct || 0)))
 
   return (
     <div style={{ margin: '14px 10px 0' }}>
@@ -172,21 +187,30 @@ function EnlaceSerieChart({ enlaceId }) {
 
       {serie.iface_origen && (
         <>
-          <p style={{ fontSize: 12, fontWeight: 600, margin: '14px 0 6px' }}>Histórico de tráfico (in/out)</p>
+          <p style={{ fontSize: 12, fontWeight: 600, margin: '14px 0 6px' }}>
+            Histórico de % de uso (in/out, cada lectura de 5 min)
+          </p>
           {traficoData.length < 2 ? (
             <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
               Solo hay {traficoData.length} muestra{traficoData.length === 1 ? '' : 's'} de tráfico — hace falta más historia para ver una curva.
             </p>
           ) : (
-            <ResponsiveContainer width="100%" height={200}>
+            <ResponsiveContainer width="100%" height={220}>
               <LineChart data={traficoData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
                 <XAxis dataKey="time" fontSize={11} />
-                <YAxis fontSize={11} unit=" Gbps" />
-                <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} Gbps`]} />
+                <YAxis domain={[0, maxPct]} tickFormatter={v => `${v}%`} fontSize={11} />
+                <Tooltip
+                  formatter={(value, name, { payload }) => {
+                    const gbps = name === 'Entrada' ? payload.inGbps : payload.outGbps
+                    return [`${value?.toFixed(1)}% (${gbps?.toFixed(2)} Gbps)`, name]
+                  }}
+                />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="in" name="Entrada" stroke="#2563eb" strokeWidth={1.5} dot={{ r: 2 }} />
-                <Line type="monotone" dataKey="out" name="Salida" stroke="#16a34a" strokeWidth={1.5} dot={{ r: 2 }} />
+                <ReferenceLine y={80} stroke="#dc2626" strokeDasharray="4 4"
+                  label={{ value: '80%', fontSize: 10, fill: '#dc2626', position: 'right' }} />
+                <Line type="monotone" dataKey="inPct" name="Entrada" stroke="#2563eb" strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
+                <Line type="monotone" dataKey="outPct" name="Salida" stroke="#16a34a" strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -548,8 +572,8 @@ function EnlaceRow({ enlace, colas, trafico, expanded, onToggle, onEdit }) {
                 {colas.map(c => <ColaRow key={c.cola} cola={c} />)}
               </tbody>
             </table>
-            <TraficoBlock trafico={trafico} />
-            <EnlaceSerieChart enlaceId={enlace.id} />
+            <TraficoBlock trafico={trafico} capacidadGbps={enlace.capacidad_gbps} />
+            <EnlaceSerieChart enlaceId={enlace.id} capacidadGbps={enlace.capacidad_gbps} />
           </td>
         </tr>
       )}
@@ -626,18 +650,24 @@ export default function BackbonePage() {
     return r
   }, [enlaces, colasPorEnlace])
 
-  // Ranking por saturacion de trafico. "Promedio" se calcula en el cliente
-  // (bwUtilizadoGbps / capacidad); "Pico" usa uso_pico_pct, que el backend
-  // ya entrega calculado (Max(max_util_pct) en calcular_trafico_por_enlace,
-  // reporting.py) -- no requiere ningun calculo nuevo.
+  // Ranking por saturacion de trafico. "Promedio" y "Pico" se calculan
+  // igual (bwUtilizadoGbps / capacidad), solo que "Pico" toma el maximo
+  // entre las muestras de 5 min del dia (in_peak_mbps/out_peak_mbps) en
+  // vez del promedio de 24h -- ver nota en reporting.py sobre por que ya
+  // no se usa uso_pico_pct (dependia de columnas siempre vacias con la
+  // fuente activa hoy).
   const ranking = useMemo(() => {
     return enlaces
       .map(enlace => {
         const colas = colasPorEnlace[enlace.id] || []
         const trafico = traficoPorEnlace[enlace.id]
-        const bwGbps = bwUtilizadoGbps(trafico)
-        const avgPct = pctUso(bwGbps, enlace.capacidad_gbps) || 0
-        const peakPct = trafico?.uso_pico_pct ?? 0
+        const avgGbps = bwUtilizadoGbps(trafico)
+        const avgPct = pctUso(avgGbps, enlace.capacidad_gbps) || 0
+        const peakGbps = trafico ? bwUtilizadoGbps({
+          in_average_mbps: trafico.in_peak_mbps,
+          out_average_mbps: trafico.out_peak_mbps,
+        }) : null
+        const peakPct = pctUso(peakGbps, enlace.capacidad_gbps) || 0
         return {
           enlace, colas, trafico,
           estado: peorEstado(colas),
