@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import {
-  RefreshCw, AlertTriangle, CheckCircle2, XCircle,
+  RefreshCw, AlertTriangle, CheckCircle2, XCircle, Flame,
   ChevronDown, ChevronRight, Search, Radio, Pencil, X, Check,
 } from 'lucide-react'
 import StatusBadge from '../components/StatusBadge'
@@ -44,13 +44,8 @@ function peorEstado(colas) {
   return colas.reduce((peor, c) => (PEOR[c.estado] > PEOR[peor] ? c.estado : peor), 'ok')
 }
 
-function StatCard({ label, value, color }) {
-  return (
-    <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: '14px 18px' }}>
-      <p style={{ fontSize: 12.5, color: '#65676b', margin: '0 0 4px' }}>{label}</p>
-      <p style={{ fontSize: 24, fontWeight: 700, margin: 0, color: color || '#111827' }}>{value}</p>
-    </div>
-  )
+function severidadColor(score) {
+  return score >= 80 ? '#dc2626' : score >= 60 ? '#d97706' : '#1877f2'
 }
 
 function ColaRow({ cola }) {
@@ -240,17 +235,12 @@ function Field({ label, name, value, onChange, type = 'text', error, suffix }) {
 
 // ─── EditEnlaceModal ──────────────────────────────────────────────────────────
 function EditEnlaceModal({ enlace, onClose, onSaved }) {
-  const [ifaceOrigen, setIfaceOrigen] = useState(enlace.iface_origen || '')
-  const [capacidad, setCapacidad] = useState(String(enlace.capacidad_gbps ?? ''))
   const [umbralDelay, setUmbralDelay] = useState(String(enlace.umbral_delay_ms ?? ''))
   const [umbralUso, setUmbralUso] = useState(String(enlace.umbral_uso_pct ?? ''))
-  const [activo, setActivo] = useState(!!enlace.activo)
   const [errors, setErrors] = useState({})
   const [saving, setSaving] = useState(false)
 
   const handleChange = (name, value) => {
-    if (name === 'iface_origen') setIfaceOrigen(value)
-    if (name === 'capacidad') setCapacidad(value)
     if (name === 'umbral_delay') setUmbralDelay(value)
     if (name === 'umbral_uso') setUmbralUso(value)
   }
@@ -263,11 +253,8 @@ function EditEnlaceModal({ enlace, onClose, onSaved }) {
         method: 'PATCH',
         headers: { ...authH(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          iface_origen: ifaceOrigen,
-          capacidad_gbps: parseFloat(capacidad) || 0,
           umbral_delay_ms: parseFloat(umbralDelay) || 0,
           umbral_uso_pct: umbralUso ? parseFloat(umbralUso) : null,
-          activo,
         }),
       })
       if (!res.ok) {
@@ -312,24 +299,12 @@ function EditEnlaceModal({ enlace, onClose, onSaved }) {
         </div>
 
         <div style={{ padding: 24 }}>
-          <Field label="Interfaz origen" name="iface_origen" value={ifaceOrigen} onChange={handleChange}
-                 error={errors.iface_origen} />
-          <p style={{ margin: '-10px 0 16px', fontSize: 11.5, color: '#9ca3af' }}>
-            Debe coincidir con la interfaz real en {enlace.origen_nombre} (ej: Eth-Trunk1). Necesaria para calcular tráfico.
-          </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
-            <Field label="Capacidad" name="capacidad" type="number" value={capacidad} onChange={handleChange}
-                   error={errors.capacidad_gbps} suffix="Gbps" />
             <Field label="Umbral delay" name="umbral_delay" type="number" value={umbralDelay} onChange={handleChange}
                    error={errors.umbral_delay_ms} suffix="ms" />
+            <Field label="Umbral de uso" name="umbral_uso" type="number" value={umbralUso} onChange={handleChange}
+                   error={errors.umbral_uso_pct} suffix="%" />
           </div>
-          <Field label="Umbral de uso" name="umbral_uso" type="number" value={umbralUso} onChange={handleChange}
-                 error={errors.umbral_uso_pct} suffix="%" />
-
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-            <input type="checkbox" checked={activo} onChange={e => setActivo(e.target.checked)} />
-            Enlace activo
-          </label>
 
           {errors.detail && <p style={{ color: '#ef4444', fontSize: 12.5, marginTop: 10 }}>{errors.detail}</p>}
         </div>
@@ -357,8 +332,103 @@ function EditEnlaceModal({ enlace, onClose, onSaved }) {
   )
 }
 
+// BW utilizado = el mayor entre in/out average (mismo criterio que ya usa
+// TraficoBlock para mostrar "Average (in / out)"), convertido a Gbps.
+// % uso = ese BW sobre la capacidad configurada del enlace. Todo calculado
+// en el cliente -- no requiere cambios en reporting.py, capacidad_gbps y
+// los promedios in/out ya vienen en las respuestas actuales.
+function bwUtilizadoGbps(trafico) {
+  if (!trafico || trafico.sin_iface_configurada || trafico.sin_datos_de_trafico) return null
+  if (trafico.in_average_mbps == null && trafico.out_average_mbps == null) return null
+  return mbpsToGbps(Math.max(trafico.in_average_mbps || 0, trafico.out_average_mbps || 0))
+}
+
+function pctUso(bwGbps, capacidadGbps) {
+  if (bwGbps == null || !capacidadGbps) return null
+  return (bwGbps / capacidadGbps) * 100
+}
+
+// ─── Top enlaces más saturados / con delay alto ───────────────────────────────
+// Score combinado = max(% de uso de tráfico, % del umbral de delay
+// consumido por la peor cola). Asi un enlace entra al ranking ya sea por
+// saturación de ancho de banda o por delay alto, sin depender de un solo
+// criterio (pedido explicito: "% uso + delay alto, ambos criterios").
+function TopSaturadosCard({ ranking }) {
+  const top = [...ranking].slice(0, 8).reverse().map(r => ({
+    nombre: `${r.enlace.origen_nombre} ↔ ${r.enlace.destino_nombre}`,
+    score: Math.round(r.score * 10) / 10,
+  }))
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 16 }}>
+      <p style={{ fontWeight: 700, fontSize: 14, margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+        <Flame size={15} color="#dc2626" /> Top enlaces más saturados (% uso)
+      </p>
+      {top.length === 0 ? (
+        <p style={{ color: '#9ca3af', textAlign: 'center', padding: 30, fontSize: 13 }}>
+          Ningún enlace con datos de tráfico registrados ahora mismo.
+        </p>
+      ) : (
+        <ResponsiveContainer width="100%" height={Math.max(top.length * 36, 140)}>
+          <BarChart data={top} layout="vertical" margin={{ left: 170, right: 40, top: 5, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+            <XAxis type="number" tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
+            <YAxis type="category" dataKey="nombre" tick={{ fontSize: 10.5, fontFamily: 'monospace' }} width={165} />
+            <Tooltip formatter={v => [`${v}%`, '% de uso']} />
+            <Bar dataKey="score" radius={[0, 4, 4, 0]}>
+              {top.map((r, i) => <Cell key={i} fill={severidadColor(r.score)} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  )
+}
+
+function ResumenEstadoCard({ resumen, alertas }) {
+  return (
+    <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 16 }}>
+      <p style={{ fontWeight: 700, fontSize: 14, margin: '0 0 12px' }}>Resumen por estado</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 16 }}>
+        {[['OK', resumen.ok, '#16a34a', '#f0fdf4'], ['Alerta', resumen.alerta, '#d97706', '#fffbeb'], ['Caído', resumen.caido, '#dc2626', '#fef2f2']]
+          .map(([label, val, color, bg]) => (
+            <div key={label} style={{ background: bg, borderRadius: 8, padding: '8px 4px', textAlign: 'center' }}>
+              <p style={{ fontSize: 10, color, margin: '0 0 2px', textTransform: 'uppercase' }}>{label}</p>
+              <p style={{ fontSize: 18, fontWeight: 700, color, margin: 0 }}>{val}</p>
+            </div>
+          ))}
+      </div>
+      <div style={{ borderTop: '1px solid #f0f2f5', paddingTop: 12 }}>
+        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '.4px' }}>
+          Alertas activas
+        </p>
+        {alertas.length === 0 ? (
+          <p style={{ color: '#16a34a', fontSize: 13, fontWeight: 600, margin: 0 }}>Sin alertas</p>
+        ) : (
+          alertas.slice(0, 6).map((r, i) => (
+            <div key={i} style={{
+              fontSize: 11.5, padding: '5px 8px', marginBottom: 4, borderRadius: 6,
+              background: r.estado === 'caido' ? '#fef2f2' : '#fffbeb',
+              color: r.estado === 'caido' ? '#dc2626' : '#d97706',
+              display: 'flex', justifyContent: 'space-between', gap: 8,
+            }}>
+              <span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {r.enlace.origen_nombre} ↔ {r.enlace.destino_nombre}
+              </span>
+              <strong style={{ flexShrink: 0 }}>{r.estado === 'caido' ? 'caído' : `${Math.round(r.score)}%`}</strong>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  )
+}
+
 function EnlaceRow({ enlace, colas, trafico, expanded, onToggle, onEdit }) {
   const estado = peorEstado(colas)
+  const bwGbps = bwUtilizadoGbps(trafico)
+  const pct = pctUso(bwGbps, enlace.capacidad_gbps)
+  const pctColor = pct == null ? '#65676b' : pct >= 80 ? '#dc2626' : pct >= 60 ? '#d97706' : '#65676b'
   return (
     <>
       <tr
@@ -382,6 +452,21 @@ function EnlaceRow({ enlace, colas, trafico, expanded, onToggle, onEdit }) {
           <span style={{ color: '#65676b' }}>{enlace.destino_rol}</span>
         </td>
         <td style={{ padding: '10px 12px', fontSize: 12.5 }}>{enlace.capacidad_gbps} Gbps</td>
+        <td style={{ padding: '10px 12px', fontSize: 12.5 }}>
+          {bwGbps == null ? (
+            <span style={{ color: '#9ca3af' }}>—</span>
+          ) : (
+            <>
+              <span style={{ fontWeight: 600 }}>{bwGbps.toFixed(2)} Gbps</span>
+              <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                in {fmtGbps(trafico.in_average_mbps)} / out {fmtGbps(trafico.out_average_mbps)}
+              </div>
+            </>
+          )}
+        </td>
+        <td style={{ padding: '10px 12px', fontSize: 12.5, fontWeight: 600, color: pctColor }}>
+          {pct == null ? <span style={{ color: '#9ca3af', fontWeight: 400 }}>—</span> : `${pct.toFixed(1)}%`}
+        </td>
         <td style={{ padding: '10px 12px' }}><StatusBadge estatus={estado} /></td>
         <td style={{ padding: '10px 12px', width: 30 }}>
           <button
@@ -398,7 +483,7 @@ function EnlaceRow({ enlace, colas, trafico, expanded, onToggle, onEdit }) {
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={7} style={{ padding: '0 12px 14px 40px', background: '#fafbfc' }}>
+          <td colSpan={9} style={{ padding: '0 12px 14px 40px', background: '#fafbfc' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ fontSize: 11.5, color: '#65676b', textAlign: 'left' }}>
@@ -489,6 +574,31 @@ export default function BackbonePage() {
     return r
   }, [enlaces, colasPorEnlace])
 
+  // Ranking combinado: score = max(% uso de trafico, % del umbral de delay
+  // consumido por la peor cola). Un enlace entra aca por saturacion de BW
+  // o por delay alto, cualquiera de los dos -- no exclusivamente uno.
+  const ranking = useMemo(() => {
+    return enlaces
+      .map(enlace => {
+        const colas = colasPorEnlace[enlace.id] || []
+        const trafico = traficoPorEnlace[enlace.id]
+        const bwGbps = bwUtilizadoGbps(trafico)
+        const trafficPct = pctUso(bwGbps, enlace.capacidad_gbps) || 0
+        return {
+          enlace, colas, trafico,
+          estado: peorEstado(colas),
+          score: trafficPct,
+        }
+      })
+      .filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+  }, [enlaces, colasPorEnlace, traficoPorEnlace])
+
+  const alertasActivas = useMemo(
+    () => ranking.filter(r => r.estado !== 'ok'),
+    [ranking],
+  )
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -509,10 +619,9 @@ export default function BackbonePage() {
         </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
-        <StatCard label="Enlaces OK" value={resumen.ok} color="#16a34a" />
-        <StatCard label="En alerta" value={resumen.alerta} color="#d97706" />
-        <StatCard label="Caídos" value={resumen.caido} color="#dc2626" />
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 12, marginBottom: 20 }}>
+        <TopSaturadosCard ranking={ranking} />
+        <ResumenEstadoCard resumen={resumen} alertas={alertasActivas} />
       </div>
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, alignItems: 'center' }}>
@@ -554,6 +663,8 @@ export default function BackbonePage() {
               <th style={{ padding: '10px 12px' }}>Destino</th>
               <th style={{ padding: '10px 12px' }}>Roles</th>
               <th style={{ padding: '10px 12px' }}>Capacidad</th>
+              <th style={{ padding: '10px 12px' }}>BW utilizado</th>
+              <th style={{ padding: '10px 12px' }}>% uso</th>
               <th style={{ padding: '10px 12px' }}>Estado</th>
               <th style={{ padding: '10px 12px' }}></th>
             </tr>
