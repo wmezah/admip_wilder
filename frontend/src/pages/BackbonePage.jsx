@@ -381,22 +381,27 @@ const SAT_C = { primary: '#7c3aed', warn: '#d97706', danger: '#dc2626', muted: '
 const SAT_TH = 80
 const satColor = v => v >= SAT_TH ? SAT_C.danger : v >= SAT_TH * 0.8 ? SAT_C.warn : SAT_C.primary
 
-// Trunca "origen ↔ destino" para que quepa en el eje Y sin superponerse
-// con las barras -- nombres reales de equipos pueden ser largos
-// (ej. "rMPLSCoreArequipa4 ↔ rMPLSCuzco6").
-function truncarNombreEnlace(origen, destino, max = 16) {
+// Trunca "origen ↔ destino" para que quepa en una sola linea del eje Y --
+// Recharts hace wrap automatico a 2 lineas cuando el texto excede el
+// "width" del YAxis, que es justo lo que se veia feo (label partido en 2
+// lineas). Mas corto que en la tabla porque aca comparten espacio con 8
+// barras; el nombre completo va aparte para el tooltip.
+function truncarNombreEnlace(origen, destino, max = 11) {
   const trunc = (s) => (s.length > max ? s.slice(0, max - 1) + '…' : s)
-  return `${trunc(origen)} ↔ ${trunc(destino)}`
+  return `${trunc(origen)}↔${trunc(destino)}`
 }
 
-function SaturacionTooltip({ active, payload, label, etiqueta }) {
+function SaturacionTooltip({ active, payload, etiqueta }) {
   if (!active || !payload?.length) return null
+  const p = payload[0].payload
   return (
     <div style={{ background: '#fff', border: `1px solid ${SAT_C.border}`, borderRadius: 8,
-      padding: '8px 12px', fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,.1)' }}>
-      <p style={{ fontWeight: 700, margin: '0 0 4px', color: '#1f2937' }}>{label}</p>
-      <p style={{ margin: '2px 0', color: satColor(payload[0].payload.scoreReal) }}>
-        {etiqueta}: <strong>{payload[0].payload.scoreReal.toFixed(1)}%</strong>
+      padding: '8px 12px', fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,.1)', maxWidth: 260 }}>
+      <p style={{ fontWeight: 700, margin: '0 0 4px', color: '#1f2937' }}>
+        {p.origenCompleto} ↔ {p.destinoCompleto}
+      </p>
+      <p style={{ margin: '2px 0', color: satColor(p.scoreReal) }}>
+        {etiqueta}: <strong>{p.scoreReal.toFixed(1)}%</strong>
       </p>
     </div>
   )
@@ -405,6 +410,8 @@ function SaturacionTooltip({ active, payload, label, etiqueta }) {
 function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
   const top = [...ranking].slice(0, 8).reverse().map(r => ({
     nombre: truncarNombreEnlace(r.enlace.origen_nombre, r.enlace.destino_nombre),
+    origenCompleto: r.enlace.origen_nombre,
+    destinoCompleto: r.enlace.destino_nombre,
     // El eje se fija en 0-100% (barra llena = "a capacidad o mas"); el
     // valor real (puede superar 100% si el trafico ya excedio la
     // capacidad configurada) se conserva aparte para el tooltip, asi un
@@ -443,10 +450,10 @@ function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={top} layout="vertical" barSize={16} margin={{ left: 130, right: 60, top: 5, bottom: 5 }}>
+          <BarChart data={top} layout="vertical" barSize={16} margin={{ left: 140, right: 60, top: 5, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
             <XAxis type="number" domain={[0, 100]} tickFormatter={v => `${v}%`} tick={{ fontSize: 11 }} />
-            <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={125} />
+            <YAxis type="category" dataKey="nombre" tick={{ fontSize: 11 }} width={135} />
             <Tooltip content={<SaturacionTooltip etiqueta={etiquetaMetrica} />} />
             <ReferenceLine x={SAT_TH} stroke={SAT_C.danger} strokeDasharray="4 4"
               label={{ value: `${SAT_TH}%`, fontSize: 10, fill: SAT_C.danger }} />
