@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
-import { Radio, RefreshCw, AlertTriangle, Search } from 'lucide-react'
+import { Radio, RefreshCw, AlertTriangle, Search, X, LocateFixed } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
@@ -26,6 +26,20 @@ const toLocalTime = (val) => {
   } catch { return String(val).substring(0, 16).replace('T', ' ') }
 }
 const mbpsToGbps = (mbps) => (mbps == null ? null : mbps / 1000)
+
+// Pico real (in_peak_mbps/out_peak_mbps, ver reporting.py) convertido a %
+// de uso sobre la capacidad del enlace. Mismo criterio que BackbonePage.jsx:
+// capacidad_gbps llega del API como string -- se convierte a numero antes
+// de dividir para evitar Infinity/NaN si viene "0.00".
+function usoPicoPct(trafico, capacidadGbps) {
+  if (!trafico || trafico.sin_iface_configurada || trafico.sin_datos_de_trafico) return null
+  const cap = Number(capacidadGbps)
+  if (!Number.isFinite(cap) || cap <= 0) return null
+  if (trafico.in_peak_mbps == null && trafico.out_peak_mbps == null) return null
+  const picoGbps = mbpsToGbps(Math.max(trafico.in_peak_mbps || 0, trafico.out_peak_mbps || 0))
+  return (picoGbps / cap) * 100
+}
+
 const COLA_COLORS = {
   EF: '#dc2626', CS6: '#7c3aed', CS7: '#2563eb', AF41: '#0891b2',
   AF31: '#16a34a', AF21: '#d97706', AF12: '#db2777', BE: '#65676b',
@@ -42,9 +56,14 @@ const LABEL_ESTADO = { ok: 'Ok', alerta: 'Alerta', caido: 'Caído', sin_datos: '
 // Prioridad para reducir "estado por cola" -> un solo color de línea en el mapa.
 const PRIORIDAD_ESTADO = { caido: 3, alerta: 2, ok: 1, sin_datos: 0 }
 
-// Centro y zoom inicial: Peru completo.
-const CENTRO_PERU = [-9.2, -75.5]
-const ZOOM_INICIAL = 5.3
+// Recuadro real de Peru (SO / NE), usado con fitBounds para que el pais
+// completo entre siempre en el contenedor -- mas robusto que un
+// center+zoom fijo. Con el mapa a ancho completo (paneles flotantes en
+// vez de columna lateral) esto ya no compite por espacio.
+const PERU_BOUNDS = [
+  [-18.35, -81.35], // suroeste (cerca de Tacna/frontera con Chile)
+  [-0.05, -68.65],  // noreste (selva, frontera con Brasil)
+]
 
 // Curva las lineas cuando hay mas de un enlace entre el mismo par de
 // equipos (ej. varias colas fisicas, rutas redundantes). Un solo enlace
@@ -76,11 +95,16 @@ export default function BackboneMapa() {
   const [latInput, setLatInput] = useState('')
   const [lonInput, setLonInput] = useState('')
   const [mensajeCoord, setMensajeCoord] = useState(null)
+  const [mostrarModalCoordenada, setMostrarModalCoordenada] = useState(false)
+  // Filtro por estado desde la leyenda: null = mostrar todos. Clic en un
+  // estado ya activo lo desactiva (toggle) en vez de quedar pegado.
+  const [filtroEstado, setFiltroEstado] = useState(null)
 
   const mapDivRef = useRef(null)
   const mapRef = useRef(null)
   const clusterGroupRef = useRef(null)
   const lineasLayerRef = useRef(null)
+  const yaEncuadradoRef = useRef(false)
   // Ref para que los handlers de Leaflet (creados una sola vez) siempre
   // puedan leer el enlace seleccionado mas reciente sin tener que
   // reconstruir el mapa entero en cada click.
@@ -169,7 +193,7 @@ export default function BackboneMapa() {
         const colas = estadoPorEnlace.get('_colas_' + e.id) || []
         const trafico = traficoPorEnlace.get(e.id)
         const umbral = e.umbral_uso_pct != null ? Number(e.umbral_uso_pct) : null
-        const usoPico = trafico && trafico.uso_pico_pct != null ? Number(trafico.uso_pico_pct) : null
+        const usoPico = usoPicoPct(trafico, e.capacidad_gbps)
         const saturado = umbral != null && usoPico != null && usoPico >= umbral
         return { ...e, estado: peorEstado ? peorEstado.estado : 'sin_datos', colas, trafico, saturado }
       })
@@ -200,11 +224,37 @@ export default function BackboneMapa() {
       .catch(() => setMensajeCoord({ tipo: 'error', texto: 'No se pudo guardar. Reintentá.' }))
   }
 
+  const cerrarModalCoordenada = () => {
+    setMostrarModalCoordenada(false)
+    setBusqueda('')
+    setResultadosEquipos([])
+    setEquipoElegido(null)
+    setLatInput('')
+    setLonInput('')
+    setMensajeCoord(null)
+  }
+
+  // Encuadra el mapa a los equipos reales (bounding box + padding) en vez
+  // de mostrar Peru completo por defecto -- con solo un puñado de equipos
+  // concentrados en una zona, no tiene sentido arrancar viendo medio
+  // continente. maxZoom evita acercarse demasiado si hay pocos equipos
+  // muy juntos entre si.
+  const centrarEnEquipos = () => {
+    const map = mapRef.current
+    if (!map) return
+    if (puntos.length === 0) {
+      map.fitBounds(PERU_BOUNDS, { padding: [12, 12] })
+      return
+    }
+    const bounds = L.latLngBounds(puntos.map(p => [p.lat, p.lon]))
+    map.fitBounds(bounds, { padding: [60, 60], maxZoom: 11 })
+  }
+
   // ── Inicializa el mapa de Leaflet UNA sola vez ────────────────────────────
   useEffect(() => {
     if (!mapDivRef.current || mapRef.current) return
 
-    const map = L.map(mapDivRef.current, { zoomControl: true }).setView(CENTRO_PERU, ZOOM_INICIAL)
+    const map = L.map(mapDivRef.current, { zoomControl: true }).fitBounds(PERU_BOUNDS, { padding: [12, 12] })
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 18,
@@ -217,6 +267,15 @@ export default function BackboneMapa() {
       maxClusterRadius: 45,
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
+      // Icono propio, mas chico que el default de la libreria (~40px) --
+      // mismo color/l\u00f3gica de "verde segun cantidad", solo mas compacto.
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount()
+        return L.divIcon({
+          html: `<div style="width:26px;height:26px;border-radius:50%;background:#7cc47c;border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#14532d;font-size:11px;font-weight:600;">${count}</div>`,
+          className: '', iconSize: [26, 26],
+        })
+      },
     })
     map.addLayer(clusterGroup)
 
@@ -247,6 +306,14 @@ export default function BackboneMapa() {
       marker.bindTooltip(p.nombre, { permanent: false, direction: 'top' })
       clusterGroup.addLayer(marker)
     }
+
+    // Encuadrar a los equipos reales la primera vez que llegan datos --
+    // solo una vez, para no pisar el zoom/pan manual del usuario en
+    // refrescos posteriores (boton "Centrar" cubre eso despues).
+    if (!yaEncuadradoRef.current && puntos.length > 0) {
+      centrarEnEquipos()
+      yaEncuadradoRef.current = true
+    }
   }, [puntos])
 
   // ── Redibuja lineas cada vez que cambian los enlaces o la seleccion ──────
@@ -256,8 +323,14 @@ export default function BackboneMapa() {
     lineasLayer.clearLayers()
 
     // Agrupar por par normalizado (A,B) = (B,A) para curvar duplicados.
+    // Si hay un filtro de leyenda activo, solo se dibujan los enlaces con
+    // ese estado -- los agrupamientos de curvas se calculan ya filtrados,
+    // para que dos enlaces del mismo par no se curven "de mas" cuando uno
+    // de ellos esta oculto por el filtro.
+    const lineasFiltradas = filtroEstado ? lineas.filter(e => e.estado === filtroEstado) : lineas
+
     const grupos = new Map()
-    for (const e of lineas) {
+    for (const e of lineasFiltradas) {
       const key = [e.origen_nombre, e.destino_nombre].sort().join('|')
       if (!grupos.has(key)) grupos.set(key, [])
       grupos.get(key).push(e)
@@ -272,7 +345,7 @@ export default function BackboneMapa() {
       })
     }
 
-    for (const e of lineas) {
+    for (const e of lineasFiltradas) {
       const latlng1 = L.latLng(e.origen_latitud, e.origen_longitud)
       const latlng2 = L.latLng(e.destino_latitud, e.destino_longitud)
       const curvaIndice = curvaPorId.get(e.id) || 0
@@ -317,120 +390,196 @@ export default function BackboneMapa() {
         marcadorAlerta.addTo(lineasLayer)
       }
     }
-  }, [lineas, enlaceSeleccionado])
+  }, [lineas, enlaceSeleccionado, filtroEstado])
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Radio size={20} color="#1877f2" /> Backbone / Mapa
-          </h1>
-          <p style={{ fontSize: 13, color: '#65676b', margin: '4px 0 0' }}>
-            {puntos.length} equipos con coordenada · {lineas.length} enlaces dibujados
-          </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <h1 style={{ fontSize: 18, fontWeight: 700, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Radio size={18} color="#1877f2" /> Backbone / Mapa
+          <span style={{ fontSize: 13, fontWeight: 400, color: '#65676b' }}>
+            · {puntos.length} equipos con coordenada · {lineas.length} enlaces dibujados
+          </span>
+        </h1>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setMostrarModalCoordenada(true)} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+            border: '1px solid #dadde1', borderRadius: 8, background: '#fff',
+            fontSize: 13, cursor: 'pointer',
+          }}>
+            <Search size={14} /> Coordenada
+          </button>
+          <button onClick={cargar} style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+            border: '1px solid #dadde1', borderRadius: 8, background: '#fff',
+            fontSize: 13, cursor: 'pointer',
+          }}>
+            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Actualizar
+          </button>
         </div>
-        <button onClick={cargar} style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px',
-          border: '1px solid #dadde1', borderRadius: 8, background: '#fff',
-          fontSize: 13, cursor: 'pointer',
-        }}>
-          <RefreshCw size={14} className={loading ? 'spin' : ''} /> Actualizar
-        </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 16, alignItems: 'start' }}>
+      {/* Mapa a ancho/alto completo; "Agregar coordenada" y "Detalle del
+          enlace" flotan encima (estilo Google Maps) en vez de vivir en una
+          columna lateral -- asi no hay dos columnas que alinear entre si,
+          y el mapa usa todo el espacio disponible. */}
+      <div style={{ position: 'relative', background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 12 }}>
+        <div ref={mapDivRef} style={{ width: '100%', height: 'calc(100vh - 230px)', minHeight: 420, borderRadius: 6 }} />
 
-        {/* ── Mapa ── */}
-        <div>
-          <div style={{ display: 'flex', gap: 14, marginBottom: 8, fontSize: 12, color: '#65676b' }}>
-            {Object.entries(LABEL_ESTADO).map(([k, label]) => (
-              <span key={k} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        {/* Leyenda flotante -- clickeable: filtra el mapa por estado.
+            Clic en el mismo estado activo lo apaga (toggle a "todos"). */}
+        <div style={{
+          position: 'absolute', bottom: 24, left: 24, zIndex: 500,
+          background: 'rgba(255,255,255,0.94)', border: '1px solid #dadde1', borderRadius: 8,
+          padding: '6px 10px', display: 'flex', gap: 4, fontSize: 11.5,
+        }}>
+          {Object.entries(LABEL_ESTADO).map(([k, label]) => {
+            const activo = filtroEstado === k
+            return (
+              <button
+                key={k}
+                onClick={() => setFiltroEstado(activo ? null : k)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '3px 8px',
+                  border: 'none', borderRadius: 6, cursor: 'pointer',
+                  background: activo ? '#e7f3ff' : 'transparent',
+                  color: activo ? '#1877f2' : '#65676b',
+                  fontWeight: activo ? 600 : 400, fontSize: 11.5,
+                }}
+              >
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: COLOR_ESTADO[k], display: 'inline-block' }} />
                 {label}
-              </span>
-            ))}
-          </div>
-
-          <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 12 }}>
-            <div ref={mapDivRef} style={{ width: '100%', height: 700, borderRadius: 6 }} />
-          </div>
+              </button>
+            )
+          })}
+          {filtroEstado && (
+            <button
+              onClick={() => setFiltroEstado(null)}
+              style={{
+                border: 'none', borderRadius: 6, cursor: 'pointer', background: 'transparent',
+                color: '#9ca3af', fontSize: 11.5, padding: '3px 8px',
+              }}
+            >
+              Ver todos
+            </button>
+          )}
         </div>
 
-        {/* ── Paneles laterales ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Centrar -- vuelve a encuadrar los equipos reales despues de que
+            el usuario hizo zoom/pan explorando. */}
+        <button
+          onClick={centrarEnEquipos}
+          title="Centrar en los equipos"
+          style={{
+            position: 'absolute', top: 24, right: 24, zIndex: 500,
+            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+            background: 'rgba(255,255,255,0.94)', border: '1px solid #dadde1', borderRadius: 8,
+            fontSize: 12, color: '#374151', cursor: 'pointer',
+          }}
+        >
+          <LocateFixed size={14} /> Centrar
+        </button>
 
-          {/* Agregar coordenada */}
-          <div style={panelStyle}>
-            <p style={panelTitleStyle}>Agregar coordenada</p>
-            <p style={{ fontSize: 12, color: '#65676b', margin: '0 0 10px' }}>
-              Buscá un equipo para agregar o editar su coordenada.
-            </p>
-            <div style={{ position: 'relative' }}>
-              <Search size={14} style={{ position: 'absolute', left: 10, top: 10, color: '#9ca3af' }} />
-              <input
-                type="text"
-                value={busqueda}
-                onChange={e => { setBusqueda(e.target.value); setEquipoElegido(null); setMensajeCoord(null) }}
-                placeholder="Buscar equipo por nombre"
-                style={{ ...inputStyle, paddingLeft: 30 }}
-              />
-            </div>
-
-            {resultadosEquipos.length > 0 && !equipoElegido && (
-              <div style={{ marginTop: 6, maxHeight: 130, overflowY: 'auto' }}>
-                {resultadosEquipos.map(eq => {
-                  const yaTiene = eq.latitud != null && eq.longitud != null
-                  return (
-                    <button
-                      key={eq.id}
-                      onClick={() => {
-                        setEquipoElegido(eq)
-                        setResultadosEquipos([])
-                        setLatInput(yaTiene ? String(eq.latitud) : '')
-                        setLonInput(yaTiene ? String(eq.longitud) : '')
-                      }}
-                      style={resultBtnStyle}
-                    >
-                      {eq.nombre}
-                      {yaTiene && <span style={{ color: '#9ca3af', fontSize: 11, marginLeft: 6 }}>· ya tiene coordenada</span>}
-                    </button>
-                  )
-                })}
+        {/* Agregar coordenada -- ahora es un modal (boton "Coordenada" en
+            el header lo abre), ya no flota permanentemente sobre el mapa. */}
+        {mostrarModalCoordenada && (
+          <div style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: 20,
+          }}>
+            <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 380, overflow: 'hidden' }}>
+              <div style={{
+                padding: '16px 20px', borderBottom: '1px solid #f0f2f5',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              }}>
+                <p style={{ ...panelTitleStyle, margin: 0 }}>Agregar coordenada</p>
+                <button onClick={cerrarModalCoordenada} style={{
+                  background: 'transparent', border: 'none', borderRadius: 8,
+                  padding: 6, cursor: 'pointer', display: 'flex', color: '#65676b',
+                }}><X size={16} /></button>
               </div>
-            )}
 
-            {equipoElegido && (
-              <div style={{ borderTop: '1px solid #ececec', marginTop: 10, paddingTop: 10 }}>
-                <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>{equipoElegido.nombre}</p>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                  <input type="number" step="0.0001" placeholder="Latitud" value={latInput}
-                    onChange={e => setLatInput(e.target.value)} style={inputStyle} />
-                  <input type="number" step="0.0001" placeholder="Longitud" value={lonInput}
-                    onChange={e => setLonInput(e.target.value)} style={inputStyle} />
+              <div style={{ padding: 20 }}>
+                <p style={{ fontSize: 12, color: '#65676b', margin: '0 0 10px' }}>
+                  Buscá un equipo para agregar o editar su coordenada.
+                </p>
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: 10, color: '#9ca3af' }} />
+                  <input
+                    type="text"
+                    value={busqueda}
+                    onChange={e => { setBusqueda(e.target.value); setEquipoElegido(null); setMensajeCoord(null) }}
+                    placeholder="Buscar equipo por nombre"
+                    style={{ ...inputStyle, paddingLeft: 30 }}
+                    autoFocus
+                  />
                 </div>
-                <button onClick={guardarCoordenada} style={saveBtnStyle}>Guardar coordenada</button>
+
+                {resultadosEquipos.length > 0 && !equipoElegido && (
+                  <div style={{ marginTop: 6, maxHeight: 160, overflowY: 'auto' }}>
+                    {resultadosEquipos.map(eq => {
+                      const yaTiene = eq.latitud != null && eq.longitud != null
+                      return (
+                        <button
+                          key={eq.id}
+                          onClick={() => {
+                            setEquipoElegido(eq)
+                            setResultadosEquipos([])
+                            setLatInput(yaTiene ? String(eq.latitud) : '')
+                            setLonInput(yaTiene ? String(eq.longitud) : '')
+                          }}
+                          style={resultBtnStyle}
+                        >
+                          {eq.nombre}
+                          {yaTiene && <span style={{ color: '#9ca3af', fontSize: 11, marginLeft: 6 }}>· ya tiene coordenada</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {equipoElegido && (
+                  <div style={{ borderTop: '1px solid #ececec', marginTop: 10, paddingTop: 10 }}>
+                    <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 8px' }}>{equipoElegido.nombre}</p>
+                    <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                      <input type="number" step="0.0001" placeholder="Latitud" value={latInput}
+                        onChange={e => setLatInput(e.target.value)} style={inputStyle} />
+                      <input type="number" step="0.0001" placeholder="Longitud" value={lonInput}
+                        onChange={e => setLonInput(e.target.value)} style={inputStyle} />
+                    </div>
+                    <button onClick={guardarCoordenada} style={saveBtnStyle}>Guardar coordenada</button>
+                  </div>
+                )}
+
+                {mensajeCoord && (
+                  <p style={{ fontSize: 12, marginTop: 8, color: mensajeCoord.tipo === 'ok' ? '#16a34a' : '#dc2626' }}>
+                    {mensajeCoord.texto}
+                  </p>
+                )}
               </div>
-            )}
-
-            {mensajeCoord && (
-              <p style={{ fontSize: 12, marginTop: 8, color: mensajeCoord.tipo === 'ok' ? '#16a34a' : '#dc2626' }}>
-                {mensajeCoord.texto}
-              </p>
-            )}
+            </div>
           </div>
+        )}
 
-          {/* Detalle del enlace */}
-          <div style={panelStyle}>
-            <p style={panelTitleStyle}>Detalle del enlace</p>
-            {!enlaceSeleccionado ? (
-              <p style={{ fontSize: 13, color: '#9ca3af' }}>Hacé clic en una línea del mapa.</p>
-            ) : (
-              <DetalleEnlace enlace={enlaceSeleccionado} />
-            )}
+        {/* Detalle del enlace -- flotante abajo a la derecha, solo cuando
+            hay algo seleccionado (no ocupa espacio en vano el resto del
+            tiempo). */}
+        {enlaceSeleccionado && (
+          <div style={{
+            position: 'absolute', bottom: 24, right: 24, zIndex: 500, width: 300,
+            maxHeight: 480, overflowY: 'auto',
+            ...panelStyle,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 4 }}>
+              <p style={panelTitleStyle}>Detalle del enlace</p>
+              <button onClick={() => setEnlaceSeleccionado(null)} style={{
+                border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', fontSize: 16, lineHeight: 1,
+              }}>×</button>
+            </div>
+            <DetalleEnlace enlace={enlaceSeleccionado} />
           </div>
-
-        </div>
+        )}
       </div>
 
       <style>{`.spin { animation: spin 0.8s linear infinite } @keyframes spin { to { transform: rotate(360deg) } }`}</style>
@@ -440,7 +589,7 @@ export default function BackboneMapa() {
 
 function DetalleEnlace({ enlace }) {
   const t = enlace.trafico
-  const usoPico = t && t.uso_pico_pct != null ? Number(t.uso_pico_pct) : null
+  const usoPico = usoPicoPct(t, enlace.capacidad_gbps)
   const barraColor = usoPico == null ? '#d1d5db' : enlace.saturado ? '#dc2626' : usoPico > 60 ? '#d97706' : '#16a34a'
 
   return (
