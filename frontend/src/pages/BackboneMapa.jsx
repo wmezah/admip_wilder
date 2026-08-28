@@ -562,19 +562,20 @@ export default function BackboneMapa() {
           </div>
         )}
 
-        {/* Detalle del enlace -- flotante abajo a la derecha, solo cuando
-            hay algo seleccionado (no ocupa espacio en vano el resto del
-            tiempo). */}
+        {/* Detalle del enlace -- franja ancha abajo del mapa (no columna
+            angosta a la derecha), solo cuando hay algo seleccionado. Las
+            graficas de delay/trafico necesitan ancho real para ser
+            legibles -- 300px de columna las dejaba ilegibles. */}
         {enlaceSeleccionado && (
           <div style={{
-            position: 'absolute', bottom: 24, right: 24, zIndex: 500, width: 300,
-            maxHeight: 480, overflowY: 'auto',
+            position: 'absolute', bottom: 24, left: 24, right: 24, zIndex: 500,
+            maxHeight: '55%', overflowY: 'auto',
             ...panelStyle,
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 4 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 8 }}>
               <p style={panelTitleStyle}>Detalle del enlace</p>
               <button onClick={() => setEnlaceSeleccionado(null)} style={{
-                border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', fontSize: 16, lineHeight: 1,
+                border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', fontSize: 18, lineHeight: 1,
               }}>×</button>
             </div>
             <DetalleEnlace enlace={enlaceSeleccionado} />
@@ -593,62 +594,66 @@ function DetalleEnlace({ enlace }) {
   const barraColor = usoPico == null ? '#d1d5db' : enlace.saturado ? '#dc2626' : usoPico > 60 ? '#d97706' : '#16a34a'
 
   return (
-    <div>
-      <p style={{ fontSize: 13, margin: '0 0 4px' }}>
-        {enlace.origen_nombre} → {enlace.destino_nombre}
-      </p>
-      <span style={{
-        display: 'inline-block', fontSize: 12, padding: '2px 10px', borderRadius: 6,
-        background: `${COLOR_ESTADO[enlace.estado]}20`, color: COLOR_ESTADO[enlace.estado],
-        fontWeight: 600, marginBottom: 12,
-      }}>
-        {LABEL_ESTADO[enlace.estado]}
-      </span>
+    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 20 }}>
+      {/* ── Columna info: nombre, estado, colas, capacidad/uso ── */}
+      <div>
+        <p style={{ fontSize: 13, margin: '0 0 4px' }}>
+          {enlace.origen_nombre} → {enlace.destino_nombre}
+        </p>
+        <span style={{
+          display: 'inline-block', fontSize: 12, padding: '2px 10px', borderRadius: 6,
+          background: `${COLOR_ESTADO[enlace.estado]}20`, color: COLOR_ESTADO[enlace.estado],
+          fontWeight: 600, marginBottom: 12,
+        }}>
+          {LABEL_ESTADO[enlace.estado]}
+        </span>
 
-      {enlace.saturado && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#d97706', marginBottom: 10 }}>
-          <AlertTriangle size={13} /> Saturado (uso ≥ umbral configurado)
-        </div>
-      )}
-
-      {enlace.colas.length > 0 && (
-        <div style={{ marginBottom: 12 }}>
-          <p style={{ fontSize: 12, color: '#65676b', margin: '0 0 4px' }}>Por cola</p>
-          {enlace.colas.map(c => (
-            <div key={c.cola} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0' }}>
-              <span>{c.cola}</span>
-              <span style={{ color: COLOR_ESTADO[c.estado], fontWeight: 600 }}>
-                {LABEL_ESTADO[c.estado]} · {c.delay_actual_ms != null ? `${c.delay_actual_ms} ms` : '—'}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div>
-          <p style={{ fontSize: 12, color: '#65676b', margin: 0 }}>Capacidad contratada</p>
-          <p style={{ fontSize: 14, margin: 0 }}>{enlace.capacidad_gbps != null ? `${enlace.capacidad_gbps} Gbps` : '—'}</p>
-        </div>
-
-        {t?.sin_iface_configurada ? (
-          <p style={{ fontSize: 12, color: '#9ca3af' }}>Falta configurar iface_origen para medir tráfico.</p>
-        ) : t?.sin_datos_de_trafico ? (
-          <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin datos de tráfico recientes.</p>
-        ) : (
-          <div>
-            <p style={{ fontSize: 12, color: '#65676b', margin: '0 0 3px' }}>Utilización (pico 24h)</p>
-            <div style={{ background: '#f3f4f6', borderRadius: 6, height: 7, overflow: 'hidden' }}>
-              <div style={{ width: `${Math.min(usoPico ?? 0, 100)}%`, height: '100%', background: barraColor, borderRadius: 6 }} />
-            </div>
-            <p style={{ fontSize: 12, margin: '4px 0 0' }}>
-              {usoPico != null ? `${usoPico}% de uso` : 'Sin dato'} · umbral {enlace.umbral_uso_pct != null ? `${enlace.umbral_uso_pct}%` : '—'}
-            </p>
+        {enlace.saturado && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#d97706', marginBottom: 10 }}>
+            <AlertTriangle size={13} /> Saturado (uso ≥ umbral configurado)
           </div>
         )}
+
+        {enlace.colas.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <p style={{ fontSize: 12, color: '#65676b', margin: '0 0 4px' }}>Por cola</p>
+            {enlace.colas.map(c => (
+              <div key={c.cola} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0' }}>
+                <span>{c.cola}</span>
+                <span style={{ color: COLOR_ESTADO[c.estado], fontWeight: 600 }}>
+                  {LABEL_ESTADO[c.estado]} · {c.delay_actual_ms != null ? `${c.delay_actual_ms} ms` : '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div>
+            <p style={{ fontSize: 12, color: '#65676b', margin: 0 }}>Capacidad contratada</p>
+            <p style={{ fontSize: 14, margin: 0 }}>{enlace.capacidad_gbps != null ? `${enlace.capacidad_gbps} Gbps` : '—'}</p>
+          </div>
+
+          {t?.sin_iface_configurada ? (
+            <p style={{ fontSize: 12, color: '#9ca3af' }}>Falta configurar iface_origen para medir tráfico.</p>
+          ) : t?.sin_datos_de_trafico ? (
+            <p style={{ fontSize: 12, color: '#9ca3af' }}>Sin datos de tráfico recientes.</p>
+          ) : (
+            <div>
+              <p style={{ fontSize: 12, color: '#65676b', margin: '0 0 3px' }}>Utilización (pico 24h)</p>
+              <div style={{ background: '#f3f4f6', borderRadius: 6, height: 7, overflow: 'hidden' }}>
+                <div style={{ width: `${Math.min(usoPico ?? 0, 100)}%`, height: '100%', background: barraColor, borderRadius: 6 }} />
+              </div>
+              <p style={{ fontSize: 12, margin: '4px 0 0' }}>
+                {usoPico != null ? `${usoPico}% de uso` : 'Sin dato'} · umbral {enlace.umbral_uso_pct != null ? `${enlace.umbral_uso_pct}%` : '—'}
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
-      <div style={{ borderTop: '1px solid #ececec', marginTop: 14, paddingTop: 12 }}>
+      {/* ── Columna gráficas: delay y tráfico lado a lado, con ancho real ── */}
+      <div style={{ borderLeft: '1px solid #ececec', paddingLeft: 20 }}>
         <EnlaceSerieChart enlaceId={enlace.id} />
       </div>
     </div>
@@ -711,49 +716,51 @@ function EnlaceSerieChart({ enlaceId }) {
   })).sort((a, b) => a._raw.localeCompare(b._raw))
 
   return (
-    <div>
-      <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px' }}>Histórico de delay por cola (24h)</p>
-      {delayData.length < 2 ? (
-        <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
-          Solo hay {delayData.length} muestra{delayData.length === 1 ? '' : 's'} en las últimas 24h.
-        </p>
-      ) : (
-        <ResponsiveContainer width="100%" height={180}>
-          <LineChart data={delayData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
-            <XAxis dataKey="time" fontSize={10} />
-            <YAxis fontSize={10} unit=" ms" />
-            <Tooltip />
-            <Legend wrapperStyle={{ fontSize: 10 }} />
-            {colas.map(c => (
-              <Line key={c} type="monotone" dataKey={c} stroke={COLA_COLORS[c] || '#999'}
-                    strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      )}
+    <div style={{ display: 'grid', gridTemplateColumns: serie.iface_origen ? '1fr 1fr' : '1fr', gap: 20 }}>
+      <div>
+        <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px' }}>Histórico de delay por cola (24h)</p>
+        {delayData.length < 2 ? (
+          <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
+            Solo hay {delayData.length} muestra{delayData.length === 1 ? '' : 's'} en las últimas 24h.
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={delayData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
+              <XAxis dataKey="time" fontSize={11} />
+              <YAxis fontSize={11} unit=" ms" />
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {colas.map(c => (
+                <Line key={c} type="monotone" dataKey={c} stroke={COLA_COLORS[c] || '#999'}
+                      strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
 
       {serie.iface_origen && (
-        <>
-          <p style={{ fontSize: 12, fontWeight: 600, margin: '14px 0 6px' }}>Histórico de tráfico in/out (24h)</p>
+        <div>
+          <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px' }}>Histórico de tráfico in/out (24h)</p>
           {traficoData.length < 2 ? (
             <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
               Solo hay {traficoData.length} muestra{traficoData.length === 1 ? '' : 's'} de tráfico en las últimas 24h.
             </p>
           ) : (
-            <ResponsiveContainer width="100%" height={180}>
+            <ResponsiveContainer width="100%" height={220}>
               <LineChart data={traficoData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
-                <XAxis dataKey="time" fontSize={10} />
-                <YAxis fontSize={10} unit=" Gbps" />
+                <XAxis dataKey="time" fontSize={11} />
+                <YAxis fontSize={11} unit=" Gbps" />
                 <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} Gbps`]} />
-                <Legend wrapperStyle={{ fontSize: 10 }} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="in" name="Entrada" stroke="#2563eb" strokeWidth={1.5} dot={{ r: 2 }} />
                 <Line type="monotone" dataKey="out" name="Salida" stroke="#16a34a" strokeWidth={1.5} dot={{ r: 2 }} />
               </LineChart>
             </ResponsiveContainer>
           )}
-        </>
+        </div>
       )}
     </div>
   )
