@@ -166,3 +166,16 @@ class BBEnlaceViewSet(viewsets.ModelViewSet):
         from .reporting import calcular_disponibilidad
         dias = int(request.query_params.get('dias', 7))
         return Response(calcular_disponibilidad(dias=dias))
+
+    @action(detail=True, methods=['get'], url_path='pico-historico')
+    def pico_historico(self, request, pk=None):
+        """
+        Pico maximo de trafico in/out de toda la historia de este enlace
+        (sin ventana de tiempo) -- distinto de in_peak_mbps/out_peak_mbps
+        de /trafico/, que esta acotado a las ultimas 24h.
+        """
+        from .reporting import obtener_pico_historico
+        data = obtener_pico_historico(int(pk))
+        if data is None:
+            return Response({'detail': 'Enlace no encontrado'}, status=404)
+        return Response(data)

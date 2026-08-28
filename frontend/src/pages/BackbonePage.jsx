@@ -93,7 +93,25 @@ function ColaRow({ cola }) {
   )
 }
 
-function TraficoBlock({ trafico, capacidadGbps }) {
+function TraficoBlock({ trafico, capacidadGbps, enlaceId }) {
+  const [picoHist, setPicoHist] = useState(null)
+  const [cargandoPicoHist, setCargandoPicoHist] = useState(true)
+
+  // Pico historico se pide bajo demanda, solo cuando el bloque se monta
+  // (o sea, solo cuando el usuario expande ESTE enlace puntual) -- mismo
+  // criterio ya usado por EnlaceSerieChart/obtener_serie_enlace: esta
+  // bien escanear el historico completo de un solo enlace, no de los 213.
+  useEffect(() => {
+    let activo = true
+    setCargandoPicoHist(true)
+    fetch(`${API}/enlaces/${enlaceId}/pico-historico/`, { headers: authH() })
+      .then(r => r.json())
+      .then(d => { if (activo) setPicoHist(d) })
+      .catch(() => { if (activo) setPicoHist(null) })
+      .finally(() => { if (activo) setCargandoPicoHist(false) })
+    return () => { activo = false }
+  }, [enlaceId])
+
   if (!trafico || trafico.sin_iface_configurada) {
     return (
       <p style={{ fontSize: 11.5, color: '#9ca3af', margin: '10px 10px 0' }}>
@@ -108,25 +126,52 @@ function TraficoBlock({ trafico, capacidadGbps }) {
       </p>
     )
   }
-  // Pico real = la muestra de 5 min mas alta del dia entre in/out (ver
-  // reporting.py::calcular_trafico_por_enlace) -- no un instantaneo, pero
-  // es el pico real disponible con esta fuente (max_rate/max_util_pct
+  // Pico real (24h) = la muestra de 5 min mas alta del dia entre in/out
+  // (ver reporting.py::calcular_trafico_por_enlace) -- no un instantaneo,
+  // pero es el pico real disponible con esta fuente (max_rate/max_util_pct
   // siempre vienen vacios, ver docstring de parser_ipinterface.py).
   const picoGbps = bwUtilizadoGbps({
     in_average_mbps: trafico.in_peak_mbps,
     out_average_mbps: trafico.out_peak_mbps,
   })
   const picoPct = pctUso(picoGbps, capacidadGbps)
+
+  // Actual = la lectura de 5 min mas reciente (ultimos 30 min), ya viene
+  // calculada por el backend -- no hace falta pedirla aparte.
+  const actualGbps = bwUtilizadoGbps({
+    in_average_mbps: trafico.in_latest_mbps,
+    out_average_mbps: trafico.out_latest_mbps,
+  })
+  const actualPct = pctUso(actualGbps, capacidadGbps)
+
+  // Pico historico (sin ventana de tiempo) -- fetch aparte, puede tardar
+  // un poco mas que el resto porque escanea todo el historico del enlace.
+  const picoHistGbps = picoHist && !picoHist.sin_iface_configurada
+    ? bwUtilizadoGbps({ in_average_mbps: picoHist.in_peak_historico_mbps, out_average_mbps: picoHist.out_peak_historico_mbps })
+    : null
+  const picoHistPct = pctUso(picoHistGbps, capacidadGbps)
+
   return (
-    <div style={{ display: 'flex', gap: 10, margin: '10px 10px 0' }}>
-      <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px', flex: 1 }}>
-        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>Average (in / out)</p>
+    <div style={{ display: 'flex', gap: 10, margin: '10px 10px 0', flexWrap: 'wrap' }}>
+      <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 140 }}>
+        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>
+          Actual (in / out) {trafico.ultima_lectura && <span style={{ fontSize: 10 }}>· {toLocalTime(trafico.ultima_lectura)}</span>}
+        </p>
+        <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
+          {fmtGbps(trafico.in_latest_mbps)} / {fmtGbps(trafico.out_latest_mbps)} Gbps
+          {actualPct != null && (
+            <span style={{ fontSize: 11.5, color: '#65676b', fontWeight: 400 }}> ({actualPct.toFixed(1)}% uso)</span>
+          )}
+        </p>
+      </div>
+      <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 140 }}>
+        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>Average 24h (in / out)</p>
         <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
           {fmtGbps(trafico.in_average_mbps)} / {fmtGbps(trafico.out_average_mbps)} Gbps
         </p>
       </div>
-      <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px', flex: 1 }}>
-        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>Pico (in / out)</p>
+      <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 140 }}>
+        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>Pico 24h (in / out)</p>
         <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
           {fmtGbps(trafico.in_peak_mbps)} / {fmtGbps(trafico.out_peak_mbps)} Gbps
           {picoPct != null && (
@@ -134,8 +179,25 @@ function TraficoBlock({ trafico, capacidadGbps }) {
           )}
         </p>
       </div>
+      <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px', flex: 1, minWidth: 140 }}>
+        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>
+          Pico histórico (in / out) {picoHist?.in_peak_historico_at && <span style={{ fontSize: 10 }}>· {toLocalTime(picoHist.in_peak_historico_at)}</span>}
+        </p>
+        {cargandoPicoHist ? (
+          <p style={{ fontSize: 12.5, color: '#9ca3af', margin: 0 }}>Cargando...</p>
+        ) : picoHistGbps == null ? (
+          <p style={{ fontSize: 12.5, color: '#9ca3af', margin: 0 }}>—</p>
+        ) : (
+          <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
+            {fmtGbps(picoHist.in_peak_historico_mbps)} / {fmtGbps(picoHist.out_peak_historico_mbps)} Gbps
+            {picoHistPct != null && (
+              <span style={{ fontSize: 11.5, color: '#65676b', fontWeight: 400 }}> ({picoHistPct.toFixed(1)}% uso)</span>
+            )}
+          </p>
+        )}
+      </div>
       <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 8, padding: '8px 14px' }}>
-        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>Muestras</p>
+        <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 2px' }}>Muestras (24h)</p>
         <p style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>{trafico.muestras}</p>
       </div>
     </div>
@@ -820,7 +882,7 @@ function EnlaceRow({ enlace, colas, trafico, expanded, onToggle, onEdit }) {
                 {colas.map(c => <ColaRow key={c.cola} cola={c} />)}
               </tbody>
             </table>
-            <TraficoBlock trafico={trafico} capacidadGbps={enlace.capacidad_gbps} />
+            <TraficoBlock trafico={trafico} capacidadGbps={enlace.capacidad_gbps} enlaceId={enlace.id} />
             <EnlaceSerieChart
               enlaceId={enlace.id}
               capacidadGbps={enlace.capacidad_gbps}

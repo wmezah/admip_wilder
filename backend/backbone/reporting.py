@@ -36,6 +36,26 @@ logger = logging.getLogger('backbone.reporting')
 # segun necesidad; no afectan el historico completo (obtener_serie_enlace).
 VENTANA_ESTADO_DELAY_HORAS = 2
 VENTANA_TRAFICO_ENLACE_HORAS = 24
+VENTANA_ULTIMA_LECTURA_MINUTOS = 30
+
+# Ultima muestra de trafico por resource (ROW_NUMBER particionado, mismo
+# patron que _SQL_ULTIMAS_MUESTRAS mas abajo para bb_delay). Ventana corta
+# a proposito: solo hace falta encontrar "la fila mas reciente", no
+# agregar sobre historico.
+_SQL_ULTIMA_LECTURA_TRAFICO = """
+    WITH ultimas AS (
+        SELECT
+            resource, collection_time, in_rate_avg, out_rate_avg,
+            ROW_NUMBER() OVER (
+                PARTITION BY resource ORDER BY collection_time DESC
+            ) AS rn
+        FROM bb_trafico
+        WHERE collection_time >= %s
+    )
+    SELECT resource, collection_time, in_rate_avg, out_rate_avg
+    FROM ultimas
+    WHERE rn = 1
+"""
 
 
 def obtener_candidatos() -> list[dict]:
@@ -200,6 +220,7 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
     que se tiene, no un instantaneo verdadero, pero es el pico real
     disponible con esta fuente.
     """
+    from django.db import connections
     from django.db.models import Avg, Max, Count
     from .models import BBEnlace, BBTrafico
 
@@ -230,6 +251,21 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
         for row in agregados:
             datos_por_resource[row['resource']] = row
 
+    # "Valor actual" = la lectura de 5 min mas reciente por resource, en
+    # una ventana corta (30 min) -- NO se pide "la ultima fila de bb_trafico
+    # completo" porque eso escanearia toda la tabla; con esta ventana corta
+    # y ROW_NUMBER() particionado por resource, el costo es acotado y
+    # constante sin importar cuantos millones de filas historicas existan.
+    # No se filtra por resource en el SQL (evita armar un IN dinamico) --
+    # bb_trafico ya viene pre-filtrada a dispositivos del core en el
+    # parser de origen, asi que el volumen en 30 min es chico de por si.
+    ultima_por_resource = {}
+    desde_actual = timezone.now() - timedelta(minutes=VENTANA_ULTIMA_LECTURA_MINUTOS)
+    with connections['backbone'].cursor() as cur:
+        cur.execute(_SQL_ULTIMA_LECTURA_TRAFICO, [desde_actual])
+        for resource, ct, in_r, out_r in cur.fetchall():
+            ultima_por_resource[resource] = {'collection_time': ct, 'in': in_r, 'out': out_r}
+
     resultado = []
     for e in enlaces:
         base = {
@@ -246,12 +282,16 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
                 'out_average_mbps': None,
                 'in_peak_mbps': None,
                 'out_peak_mbps': None,
+                'in_latest_mbps': None,
+                'out_latest_mbps': None,
+                'ultima_lectura': None,
                 'muestras': 0,
             })
             continue
 
         resource = f"{e.origen.nombre}/{e.iface_origen}"
         datos = datos_por_resource.get(resource)
+        ultima = ultima_por_resource.get(resource)
         if not datos:
             resultado.append({
                 **base,
@@ -261,6 +301,9 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
                 'out_average_mbps': None,
                 'in_peak_mbps': None,
                 'out_peak_mbps': None,
+                'in_latest_mbps': round(ultima['in'], 3) if ultima and ultima['in'] is not None else None,
+                'out_latest_mbps': round(ultima['out'], 3) if ultima and ultima['out'] is not None else None,
+                'ultima_lectura': ultima['collection_time'].isoformat() if ultima else None,
                 'muestras': 0,
             })
             continue
@@ -272,6 +315,9 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
             'out_average_mbps': round(datos['out_avg'], 3) if datos['out_avg'] is not None else None,
             'in_peak_mbps': round(datos['in_peak'], 3) if datos['in_peak'] is not None else None,
             'out_peak_mbps': round(datos['out_peak'], 3) if datos['out_peak'] is not None else None,
+            'in_latest_mbps': round(ultima['in'], 3) if ultima and ultima['in'] is not None else None,
+            'out_latest_mbps': round(ultima['out'], 3) if ultima and ultima['out'] is not None else None,
+            'ultima_lectura': ultima['collection_time'].isoformat() if ultima else None,
             'muestras': datos['muestras'],
         })
 
@@ -461,4 +507,68 @@ def calcular_disponibilidad(dias: int = VENTANA_DISPONIBILIDAD_DIAS) -> dict:
         # se desempata por sla_pct (para no dejar tirados los enlaces con
         # buena disponibilidad pero mal SLA de latencia).
         'por_enlace': sorted(por_enlace, key=lambda r: (r['disponibilidad_pct'], r['sla_pct'])),
+    }
+
+# ─── Pico historico (sin ventana de tiempo, un enlace a la vez) ─────────────
+def obtener_pico_historico(enlace_id: int) -> dict | None:
+    """
+    Pico maximo de trafico in/out de TODA la historia de un enlace, sin
+    ventana de tiempo -- a diferencia de in_peak_mbps/out_peak_mbps en
+    calcular_trafico_por_enlace() (acotado a VENTANA_TRAFICO_ENLACE_HORAS,
+    24h por defecto), esto busca el maximo de siempre.
+
+    Deliberadamente SIN filtro de fecha, mismo criterio ya aceptado en
+    obtener_serie_enlace(): es aceptable escanear el historico completo de
+    UN enlace porque esta funcion se llama una sola vez, al abrir el
+    detalle de ese enlace puntual -- no en cada carga del listado completo
+    de 213 enlaces (ahi si aplicaria la misma restriccion de rendimiento
+    documentada al inicio de este archivo).
+    """
+    from django.db.models import Max
+    from .models import BBEnlace, BBTrafico
+
+    try:
+        enlace = BBEnlace.objects.select_related('origen').get(id=enlace_id)
+    except BBEnlace.DoesNotExist:
+        return None
+
+    if not enlace.iface_origen:
+        return {
+            'enlace_id': enlace.id,
+            'sin_iface_configurada': True,
+            'in_peak_historico_mbps': None,
+            'in_peak_historico_at': None,
+            'out_peak_historico_mbps': None,
+            'out_peak_historico_at': None,
+        }
+
+    resource = f"{enlace.origen.nombre}/{enlace.iface_origen}"
+    agregado = (
+        BBTrafico.objects
+        .filter(resource=resource)
+        .aggregate(in_peak=Max('in_rate_avg'), out_peak=Max('out_rate_avg'))
+    )
+
+    in_peak_row = None
+    if agregado['in_peak'] is not None:
+        in_peak_row = (
+            BBTrafico.objects
+            .filter(resource=resource, in_rate_avg=agregado['in_peak'])
+            .order_by('collection_time').first()
+        )
+    out_peak_row = None
+    if agregado['out_peak'] is not None:
+        out_peak_row = (
+            BBTrafico.objects
+            .filter(resource=resource, out_rate_avg=agregado['out_peak'])
+            .order_by('collection_time').first()
+        )
+
+    return {
+        'enlace_id': enlace.id,
+        'sin_iface_configurada': False,
+        'in_peak_historico_mbps': round(agregado['in_peak'], 3) if agregado['in_peak'] is not None else None,
+        'in_peak_historico_at': in_peak_row.collection_time.isoformat() if in_peak_row else None,
+        'out_peak_historico_mbps': round(agregado['out_peak'], 3) if agregado['out_peak'] is not None else None,
+        'out_peak_historico_at': out_peak_row.collection_time.isoformat() if out_peak_row else None,
     }
