@@ -232,43 +232,57 @@ function EnlaceSerieChart({ enlaceId, capacidadGbps, origenNombre, destinoNombre
     return () => { activo = false }
   }, [enlaceId])
 
-  if (loading) {
-    return <p style={{ fontSize: 12, color: '#9ca3af', margin: '10px' }}>Cargando gráfico...</p>
-  }
-  if (!serie) {
-    return <p style={{ fontSize: 12, color: '#9ca3af', margin: '10px' }}>No se pudo cargar el histórico.</p>
-  }
+  // Procesamiento pesado (agrupar por timestamp, ordenar) memoizado por
+  // `serie` -- antes se recalculaba TODO el historico completo en cada
+  // render, incluyendo cada clic en 1D/3D/1S/1M, por eso tardaba. Ahora
+  // solo se reprocesa cuando llegan datos nuevos (enlace distinto); el
+  // cambio de rango de abajo es nada mas un .filter() sobre el resultado
+  // ya calculado. Estos hooks van ANTES de los return condicionales de
+  // loading/!serie -- React exige que los hooks se llamen siempre, en el
+  // mismo orden, sin importar el estado (Rules of Hooks).
+  const { delayDataCompleta, colas, traficoDataCompleta } = useMemo(() => {
+    if (!serie) return { delayDataCompleta: [], colas: [], traficoDataCompleta: [] }
 
-  const delayPorTiempo = {}
-  const colasVistas = new Set()
-  for (const p of serie.delay_series) {
-    const t = p.collection_time
-    colasVistas.add(p.cola)
-    if (!delayPorTiempo[t]) delayPorTiempo[t] = { time: toLocalTime(t), _raw: t }
-    delayPorTiempo[t][p.cola] = p.delay_ms
-  }
-  const delayData = filtrarPorRango(
-    Object.values(delayPorTiempo).sort((a, b) => a._raw.localeCompare(b._raw)),
-    rangeMode,
-  )
-  const colas = Array.from(colasVistas)
+    const delayPorTiempo = {}
+    const colasVistas = new Set()
+    for (const p of serie.delay_series) {
+      const t = p.collection_time
+      colasVistas.add(p.cola)
+      if (!delayPorTiempo[t]) delayPorTiempo[t] = { time: toLocalTime(t), _raw: t }
+      delayPorTiempo[t][p.cola] = p.delay_ms
+    }
+    const delayDataCompleta = Object.values(delayPorTiempo).sort((a, b) => a._raw.localeCompare(b._raw))
 
-  // Tráfico: cada muestra de 5 min convertida a % de la capacidad del
-  // enlace (no promedio ni pico -- la lectura individual, tal cual llega
-  // cada ciclo). Asi se ve visualmente cuando el enlace tocó el umbral,
-  // no solo un numero resumen que puede diluir un pico puntual.
-  const traficoData = filtrarPorRango(
-    serie.trafico_series.map(p => ({
+    // Tráfico: cada muestra de 5 min convertida a % de la capacidad del
+    // enlace (no promedio ni pico -- la lectura individual, tal cual llega
+    // cada ciclo). Asi se ve visualmente cuando el enlace tocó el umbral,
+    // no solo un numero resumen que puede diluir un pico puntual.
+    const traficoDataCompleta = serie.trafico_series.map(p => ({
       time: toLocalTime(p.collection_time),
       _raw: p.collection_time,
       inPct: pctUso(mbpsToGbps(p.in_rate_avg), capacidadGbps),
       outPct: pctUso(mbpsToGbps(p.out_rate_avg), capacidadGbps),
       inGbps: mbpsToGbps(p.in_rate_avg),
       outGbps: mbpsToGbps(p.out_rate_avg),
-    })).sort((a, b) => a._raw.localeCompare(b._raw)),
-    rangeMode,
+    })).sort((a, b) => a._raw.localeCompare(b._raw))
+
+    return { delayDataCompleta, colas: Array.from(colasVistas), traficoDataCompleta }
+  }, [serie, capacidadGbps])
+
+  // Filtro por rango: liviano, opera sobre datos ya procesados arriba.
+  const delayData = useMemo(() => filtrarPorRango(delayDataCompleta, rangeMode), [delayDataCompleta, rangeMode])
+  const traficoData = useMemo(() => filtrarPorRango(traficoDataCompleta, rangeMode), [traficoDataCompleta, rangeMode])
+  const maxPct = useMemo(
+    () => Math.max(100, ...traficoData.map(p => Math.max(p.inPct || 0, p.outPct || 0))),
+    [traficoData],
   )
-  const maxPct = Math.max(100, ...traficoData.map(p => Math.max(p.inPct || 0, p.outPct || 0)))
+
+  if (loading) {
+    return <p style={{ fontSize: 12, color: '#9ca3af', margin: '10px' }}>Cargando gráfico...</p>
+  }
+  if (!serie) {
+    return <p style={{ fontSize: 12, color: '#9ca3af', margin: '10px' }}>No se pudo cargar el histórico.</p>
+  }
 
   const RangeSelector = () => (
     <div style={{ display: 'flex', gap: 3, background: '#f3f4f6', padding: 3, borderRadius: 8, border: '0.5px solid #e5e7eb' }}>
