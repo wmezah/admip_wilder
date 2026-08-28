@@ -38,6 +38,33 @@ const COLA_COLORS = {
   AF31: '#16a34a', AF21: '#d97706', AF12: '#db2777', BE: '#65676b',
 }
 
+// Selector de rango (1D/3D/1S/1M) y formateo de eje X -- mismo criterio
+// que "Serie Temporal" de CGNAT (NCEPage.jsx), para que ambos graficos se
+// comporten igual en toda la app.
+const RANGE_DIAS = { '1D': 1, '3D': 3, '1S': 7, '1M': 30 }
+
+function filtrarPorRango(filas, rangeMode) {
+  if (!filas.length) return filas
+  const now = new Date()
+  const tz = 'America/Lima'
+  const today = new Date(now.toLocaleString('sv-SE', { timeZone: tz }).substring(0, 10) + 'T00:00:00')
+  const rangeMs = RANGE_DIAS[rangeMode] * 86400000
+  const from = new Date(today.getTime() - (rangeMs - 86400000))
+  return filas.filter(r => new Date(r._raw) >= from)
+}
+
+function xTickFormatter(val, rangeMode) {
+  if (!val) return ''
+  try {
+    const d = new Date(val)
+    const tz = 'America/Lima'
+    const hora = d.toLocaleString('es-PE', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false })
+    if (rangeMode === '1D') return hora
+    const fecha = d.toLocaleString('es-PE', { timeZone: tz, day: '2-digit', month: '2-digit' })
+    return `${fecha} ${hora}`
+  } catch { return String(val).substring(11, 16) }
+}
+
 const PEOR = { ok: 0, alerta: 1, caido: 2 }
 
 function peorEstado(colas) {
@@ -118,6 +145,9 @@ function TraficoBlock({ trafico, capacidadGbps }) {
 function EnlaceSerieChart({ enlaceId, capacidadGbps }) {
   const [serie, setSerie] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [rangeMode, setRangeMode] = useState('1D')
+  const [colasOcultas, setColasOcultas] = useState({})
+  const [traficoOculto, setTraficoOculto] = useState({}) // { in: bool, out: bool }
 
   useEffect(() => {
     let activo = true
@@ -145,41 +175,98 @@ function EnlaceSerieChart({ enlaceId, capacidadGbps }) {
     if (!delayPorTiempo[t]) delayPorTiempo[t] = { time: toLocalTime(t), _raw: t }
     delayPorTiempo[t][p.cola] = p.delay_ms
   }
-  const delayData = Object.values(delayPorTiempo).sort((a, b) => a._raw.localeCompare(b._raw))
+  const delayData = filtrarPorRango(
+    Object.values(delayPorTiempo).sort((a, b) => a._raw.localeCompare(b._raw)),
+    rangeMode,
+  )
   const colas = Array.from(colasVistas)
 
   // Tráfico: cada muestra de 5 min convertida a % de la capacidad del
   // enlace (no promedio ni pico -- la lectura individual, tal cual llega
   // cada ciclo). Asi se ve visualmente cuando el enlace tocó el umbral,
   // no solo un numero resumen que puede diluir un pico puntual.
-  const traficoData = serie.trafico_series.map(p => ({
-    time: toLocalTime(p.collection_time),
-    _raw: p.collection_time,
-    inPct: pctUso(mbpsToGbps(p.in_rate_avg), capacidadGbps),
-    outPct: pctUso(mbpsToGbps(p.out_rate_avg), capacidadGbps),
-    inGbps: mbpsToGbps(p.in_rate_avg),
-    outGbps: mbpsToGbps(p.out_rate_avg),
-  })).sort((a, b) => a._raw.localeCompare(b._raw))
+  const traficoData = filtrarPorRango(
+    serie.trafico_series.map(p => ({
+      time: toLocalTime(p.collection_time),
+      _raw: p.collection_time,
+      inPct: pctUso(mbpsToGbps(p.in_rate_avg), capacidadGbps),
+      outPct: pctUso(mbpsToGbps(p.out_rate_avg), capacidadGbps),
+      inGbps: mbpsToGbps(p.in_rate_avg),
+      outGbps: mbpsToGbps(p.out_rate_avg),
+    })).sort((a, b) => a._raw.localeCompare(b._raw)),
+    rangeMode,
+  )
   const maxPct = Math.max(100, ...traficoData.map(p => Math.max(p.inPct || 0, p.outPct || 0)))
+
+  const RangeSelector = () => (
+    <div style={{ display: 'flex', gap: 3, background: '#f3f4f6', padding: 3, borderRadius: 8, border: '0.5px solid #e5e7eb' }}>
+      {['1D', '3D', '1S', '1M'].map(r => (
+        <button key={r} onClick={() => setRangeMode(r)} style={{
+          padding: '4px 12px', fontSize: 11, borderRadius: 6, border: 'none', cursor: 'pointer',
+          fontWeight: rangeMode === r ? 700 : 400,
+          background: rangeMode === r ? '#1877f2' : 'transparent',
+          color: rangeMode === r ? '#fff' : '#6b7280', transition: 'all .15s',
+        }}>
+          {r}
+        </button>
+      ))}
+    </div>
+  )
 
   return (
     <div style={{ margin: '14px 10px 0' }}>
-      <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px' }}>Histórico de delay por cola</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+        <p style={{ fontSize: 12, fontWeight: 600, margin: 0 }}>Histórico de delay por cola</p>
+        <RangeSelector />
+      </div>
+
+      {/* Selector de colas: clic para ocultar/mostrar cada linea, igual
+          que el selector de equipos en CGNAT (NCEPage.jsx). */}
+      {colas.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+          {colas.map(c => {
+            const color = COLA_COLORS[c] || '#999'
+            const oculta = colasOcultas[c]
+            return (
+              <button key={c} onClick={() => setColasOcultas(s => ({ ...s, [c]: !s[c] }))}
+                title={oculta ? 'Mostrar' : 'Ocultar'}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 20,
+                  border: `1.5px solid ${color}`, background: oculta ? '#f3f4f6' : `${color}18`,
+                  cursor: 'pointer', fontSize: 10.5, fontWeight: 600,
+                  color: oculta ? '#9ca3af' : color, opacity: oculta ? 0.6 : 1,
+                }}>
+                <span style={{ width: 14, height: 2.5, borderRadius: 2, display: 'inline-block', background: oculta ? '#d1d5db' : color }} />
+                {c}
+              </button>
+            )
+          })}
+          {Object.values(colasOcultas).some(Boolean) && (
+            <button onClick={() => setColasOcultas({})} style={{
+              padding: '3px 9px', borderRadius: 20, border: '1px solid #dadde1',
+              background: '#f3f4f6', cursor: 'pointer', fontSize: 10.5, color: '#6b7280',
+            }}>
+              Mostrar todas
+            </button>
+          )}
+        </div>
+      )}
+
       {delayData.length < 2 ? (
         <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
-          Solo hay {delayData.length} muestra{delayData.length === 1 ? '' : 's'} — hace falta más historia para ver una curva.
+          Solo hay {delayData.length} muestra{delayData.length === 1 ? '' : 's'} en este rango — hace falta más historia para ver una curva.
         </p>
       ) : (
         <ResponsiveContainer width="100%" height={200}>
           <LineChart data={delayData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
-            <XAxis dataKey="time" fontSize={11} />
+            <XAxis dataKey="_raw" tickFormatter={v => xTickFormatter(v, rangeMode)} interval="preserveStartEnd" fontSize={11} />
             <YAxis fontSize={11} unit=" ms" />
-            <Tooltip />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
+            <Tooltip labelFormatter={v => xTickFormatter(v, '1M')} />
             {colas.map(c => (
               <Line key={c} type="monotone" dataKey={c} stroke={COLA_COLORS[c] || '#999'}
-                    strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
+                    strokeWidth={colasOcultas[c] ? 0 : 1.5} hide={!!colasOcultas[c]}
+                    dot={{ r: 2 }} connectNulls />
             ))}
           </LineChart>
         </ResponsiveContainer>
@@ -187,30 +274,59 @@ function EnlaceSerieChart({ enlaceId, capacidadGbps }) {
 
       {serie.iface_origen && (
         <>
-          <p style={{ fontSize: 12, fontWeight: 600, margin: '14px 0 6px' }}>
-            Histórico de % de uso (in/out, cada lectura de 5 min)
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, margin: '18px 0 4px' }}>
+            <p style={{ fontSize: 12, fontWeight: 600, margin: 0 }}>
+              Histórico de % de uso (in/out, cada lectura de 5 min)
+            </p>
+            <span style={{ fontSize: 11, color: '#65676b' }}>
+              Interfaz <strong>{serie.iface_origen}</strong>
+              {capacidadGbps != null && <> · Capacidad <strong>{capacidadGbps} Gbps</strong></>}
+            </span>
+          </div>
+
+          {/* Selector in/out: mismo patron de pills que las colas arriba. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            {[['in', 'Entrada', '#2563eb'], ['out', 'Salida', '#16a34a']].map(([key, label, color]) => {
+              const oculta = traficoOculto[key]
+              return (
+                <button key={key} onClick={() => setTraficoOculto(s => ({ ...s, [key]: !s[key] }))}
+                  title={oculta ? 'Mostrar' : 'Ocultar'}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 20,
+                    border: `1.5px solid ${color}`, background: oculta ? '#f3f4f6' : `${color}18`,
+                    cursor: 'pointer', fontSize: 10.5, fontWeight: 600,
+                    color: oculta ? '#9ca3af' : color, opacity: oculta ? 0.6 : 1,
+                  }}>
+                  <span style={{ width: 14, height: 2.5, borderRadius: 2, display: 'inline-block', background: oculta ? '#d1d5db' : color }} />
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
           {traficoData.length < 2 ? (
             <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
-              Solo hay {traficoData.length} muestra{traficoData.length === 1 ? '' : 's'} de tráfico — hace falta más historia para ver una curva.
+              Solo hay {traficoData.length} muestra{traficoData.length === 1 ? '' : 's'} de tráfico en este rango — hace falta más historia para ver una curva.
             </p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={traficoData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
-                <XAxis dataKey="time" fontSize={11} />
+                <XAxis dataKey="_raw" tickFormatter={v => xTickFormatter(v, rangeMode)} interval="preserveStartEnd" fontSize={11} />
                 <YAxis domain={[0, maxPct]} tickFormatter={v => `${v}%`} fontSize={11} />
                 <Tooltip
+                  labelFormatter={v => xTickFormatter(v, '1M')}
                   formatter={(value, name, { payload }) => {
                     const gbps = name === 'Entrada' ? payload.inGbps : payload.outGbps
                     return [`${value?.toFixed(1)}% (${gbps?.toFixed(2)} Gbps)`, name]
                   }}
                 />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
                 <ReferenceLine y={80} stroke="#dc2626" strokeDasharray="4 4"
                   label={{ value: '80%', fontSize: 10, fill: '#dc2626', position: 'right' }} />
-                <Line type="monotone" dataKey="inPct" name="Entrada" stroke="#2563eb" strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
-                <Line type="monotone" dataKey="outPct" name="Salida" stroke="#16a34a" strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
+                <Line type="monotone" dataKey="inPct" name="Entrada" stroke="#2563eb"
+                      strokeWidth={traficoOculto.in ? 0 : 1.5} hide={!!traficoOculto.in} dot={{ r: 2 }} connectNulls />
+                <Line type="monotone" dataKey="outPct" name="Salida" stroke="#16a34a"
+                      strokeWidth={traficoOculto.out ? 0 : 1.5} hide={!!traficoOculto.out} dot={{ r: 2 }} connectNulls />
               </LineChart>
             </ResponsiveContainer>
           )}
