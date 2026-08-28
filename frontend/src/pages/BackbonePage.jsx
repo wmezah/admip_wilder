@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  LineChart, Line, BarChart, Bar, Cell, ReferenceLine, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, ReferenceLine, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
 import {
@@ -594,6 +594,120 @@ function TopSaturadosCard({ ranking, metrica, onMetricaChange }) {
   )
 }
 
+// ─── Disponibilidad del backbone (panel ejecutivo) ─────────────────────────
+// Dos metricas separadas, no mezcladas en un solo numero (ver
+// reporting.py::calcular_disponibilidad para el porque):
+// - disponibilidad_pct: solo cuenta "caido" -- comparable al 99.99% de un
+//   SLA de uptime tradicional.
+// - sla_pct: cuenta "caido" + "delay por encima del umbral" -- cumplimiento
+//   completo. Siempre <= disponibilidad_pct.
+function DisponibilidadCard() {
+  const [dias, setDias] = useState(30)
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let activo = true
+    setLoading(true)
+    fetch(`${API}/enlaces/disponibilidad/?dias=${dias}`, { headers: authH() })
+      .then(r => r.json())
+      .then(d => { if (activo) setData(d) })
+      .catch(() => { if (activo) setData(null) })
+      .finally(() => { if (activo) setLoading(false) })
+    return () => { activo = false }
+  }, [dias])
+
+  const b = data?.backbone
+  const colorFor = v => v == null ? '#9ca3af' : v >= 99 ? '#16a34a' : v >= 95 ? '#d97706' : '#dc2626'
+  const peores = (data?.por_enlace || []).filter(e => e.disponibilidad_pct < 100).slice(0, 5)
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 16, marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <p style={{ fontWeight: 700, fontSize: 14, margin: 0 }}>Disponibilidad del backbone</p>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {[7, 30].map(d => (
+            <button key={d} onClick={() => setDias(d)} style={{
+              padding: '4px 12px', borderRadius: 7, fontSize: 12, cursor: 'pointer',
+              border: dias === d ? '1px solid #1877f2' : '1px solid #dadde1',
+              background: dias === d ? '#e7f3ff' : '#fff',
+              color: dias === d ? '#1877f2' : '#374151', fontWeight: dias === d ? 600 : 400,
+            }}>
+              {d}D
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <p style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', padding: 20 }}>Cargando...</p>
+      ) : !b || !b.muestras_totales ? (
+        <p style={{ fontSize: 13, color: '#9ca3af', textAlign: 'center', padding: 20 }}>Sin datos suficientes en este período.</p>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 32, marginBottom: 16, flexWrap: 'wrap' }}>
+            <MetricoDisponibilidad
+              label="Disponibilidad"
+              sub="solo cuenta caído — comparable a un SLA de uptime"
+              valor={b.disponibilidad_pct}
+              color={colorFor(b.disponibilidad_pct)}
+            />
+            <MetricoDisponibilidad
+              label="Cumplimiento SLA"
+              sub="caído + delay por encima del umbral"
+              valor={b.sla_pct}
+              color={colorFor(b.sla_pct)}
+            />
+          </div>
+
+          {peores.length > 0 && (
+            <div style={{ borderTop: '1px solid #f0f2f5', paddingTop: 12 }}>
+              <p style={{ fontSize: 11, color: '#65676b', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                Peor disponibilidad en el período
+              </p>
+              {peores.map((e, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '4px 0' }}>
+                  <span style={{ fontFamily: 'monospace', color: '#374151' }}>{e.origen} ↔ {e.destino}</span>
+                  <strong style={{ color: colorFor(e.disponibilidad_pct) }}>{e.disponibilidad_pct}%</strong>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+function MetricoDisponibilidad({ label, sub, valor, color }) {
+  const datosPie = [{ name: 'ok', value: valor }, { name: 'resto', value: 100 - valor }]
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+      <div style={{ position: 'relative', width: 76, height: 76, flexShrink: 0 }}>
+        <ResponsiveContainer width={76} height={76}>
+          <PieChart>
+            <Pie data={datosPie} dataKey="value" innerRadius={26} outerRadius={36}
+                 startAngle={90} endAngle={-270} stroke="none">
+              <Cell fill={color} />
+              <Cell fill="#f0f2f5" />
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', fontSize: 14, fontWeight: 700, color,
+        }}>
+          {valor.toFixed(1)}%
+        </div>
+      </div>
+      <div>
+        <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>{label}</p>
+        <p style={{ fontSize: 11, color: '#9ca3af', margin: '2px 0 0', maxWidth: 170 }}>{sub}</p>
+      </div>
+    </div>
+  )
+}
+
 function ResumenEstadoCard({ resumen, alertas }) {
   return (
     <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 16 }}>
@@ -842,6 +956,8 @@ export default function BackbonePage() {
           <RefreshCw size={14} className={loading ? 'spin' : ''} /> Actualizar
         </button>
       </div>
+
+      <DisponibilidadCard />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 300px', gap: 12, marginBottom: 20 }}>
         <TopSaturadosCard ranking={ranking} metrica={metricaTop} onMetricaChange={setMetricaTop} />
