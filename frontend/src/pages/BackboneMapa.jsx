@@ -53,9 +53,6 @@ const COLOR_ESTADO = {
 }
 const LABEL_ESTADO = { ok: 'Ok', alerta: 'Alerta', caido: 'Caído', sin_datos: 'Sin datos' }
 
-// Prioridad para reducir "estado por cola" -> un solo color de línea en el mapa.
-const PRIORIDAD_ESTADO = { caido: 3, alerta: 2, ok: 1, sin_datos: 0 }
-
 // Recuadro real de Peru (SO / NE), usado con fitBounds para que el pais
 // completo entre siempre en el contenedor -- mas robusto que un
 // center+zoom fijo. Con el mapa a ancho completo (paneles flotantes en
@@ -144,17 +141,25 @@ export default function BackboneMapa() {
     return () => clearTimeout(t)
   }, [busqueda])
 
-  // ── Estado por enlace (peor cola) ─────────────────────────────────────────
+  // ── Estado por enlace ──────────────────────────────────────────────────
+  // "Caido" a nivel de enlace debe significar que TODAS sus colas estan
+  // sin conexion -- una sola cola caida (con las demas ok) no puede tirar
+  // todo el enlace a caido. Mismo criterio que peorEstado() en
+  // BackbonePage.jsx y que reporting.py::calcular_disponibilidad.
   const estadoPorEnlace = useMemo(() => {
-    const mapa = new Map()
+    const colasPorId = new Map()
     for (const s of estadoLista) {
-      const actual = mapa.get(s.enlace_id)
-      if (!actual || PRIORIDAD_ESTADO[s.estado] > PRIORIDAD_ESTADO[actual.estado]) {
-        mapa.set(s.enlace_id, s)
-      }
-      const colas = mapa.get('_colas_' + s.enlace_id) || []
-      colas.push(s)
-      mapa.set('_colas_' + s.enlace_id, colas)
+      if (!colasPorId.has(s.enlace_id)) colasPorId.set(s.enlace_id, [])
+      colasPorId.get(s.enlace_id).push(s)
+    }
+    const mapa = new Map()
+    for (const [enlaceId, colas] of colasPorId) {
+      let estado
+      if (colas.every(c => c.estado === 'caido')) estado = 'caido'
+      else if (colas.some(c => c.estado === 'caido' || c.estado === 'alerta')) estado = 'alerta'
+      else estado = 'ok'
+      mapa.set(enlaceId, { estado })
+      mapa.set('_colas_' + enlaceId, colas)
     }
     return mapa
   }, [estadoLista])

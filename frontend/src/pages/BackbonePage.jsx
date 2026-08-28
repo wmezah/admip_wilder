@@ -67,8 +67,18 @@ function xTickFormatter(val, rangeMode) {
 
 const PEOR = { ok: 0, alerta: 1, caido: 2 }
 
+// "Caido" a nivel de enlace debe significar que TODAS sus colas estan sin
+// conexion -- una sola cola caida (con las demas ok) no puede tirar todo
+// el enlace a caido, el trafico sigue pasando por las colas activas.
+// Mismo criterio que se aplico en reporting.py::calcular_disponibilidad
+// para el KPI de disponibilidad (ver esa funcion para el porque). Si hay
+// mezcla (alguna caida/alerta pero no todas), el enlace queda 'alerta'
+// (degradado parcial), no 'caido' (caida total).
 function peorEstado(colas) {
-  return colas.reduce((peor, c) => (PEOR[c.estado] > PEOR[peor] ? c.estado : peor), 'ok')
+  if (colas.length === 0) return 'ok'
+  if (colas.every(c => c.estado === 'caido')) return 'caido'
+  if (colas.some(c => c.estado === 'caido' || c.estado === 'alerta')) return 'alerta'
+  return 'ok'
 }
 
 function ColaRow({ cola }) {
