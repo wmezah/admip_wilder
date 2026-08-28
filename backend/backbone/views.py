@@ -150,3 +150,19 @@ class BBEnlaceViewSet(viewsets.ModelViewSet):
     def sin_iface(self, request):
         from .reporting import enlaces_sin_iface
         return Response(enlaces_sin_iface())
+
+    @action(detail=False, methods=['get'], url_path='disponibilidad')
+    def disponibilidad(self, request):
+        """
+        Dos metricas por enlace y a nivel de todo el backbone, sobre una
+        ventana de N dias (default 7, ?dias=30 etc):
+        - disponibilidad_pct: solo cuenta 'caido' como no-disponible
+          (comparable al 99.99% de uptime de un SLA de telecom).
+        - sla_pct: cuenta 'caido' + 'alerta' (delay alto) como no-ok
+          (cumplimiento completo, arriba Y dentro del umbral de latencia).
+        A diferencia de /estado/ (estado "en vivo" ahora mismo), esto
+        mide que paso durante toda la ventana, no solo el momento actual.
+        """
+        from .reporting import calcular_disponibilidad
+        dias = int(request.query_params.get('dias', 7))
+        return Response(calcular_disponibilidad(dias=dias))

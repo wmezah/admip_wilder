@@ -189,6 +189,16 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
     defecto): es el promedio/pico "reciente" para el listado, no el
     historico completo. Evita agregar sobre bb_trafico entero (millones
     de filas y creciendo).
+
+    NOTA sobre el pico (fix aplicado): 'max_rate'/'max_util_pct' vienen
+    SIEMPRE vacios con la fuente activa hoy (PM_IGlogic_ni_data_IPInterface_5,
+    ver docstring de parser_ipinterface.py -- 0 de 87,049 filas con
+    'Maximum' poblado). Por eso el pico real NO se calcula con Max() sobre
+    esas columnas muertas, sino tomando el maximo entre las muestras de
+    5 minutos ya guardadas (in_rate_avg / out_rate_avg), que si siempre
+    tienen dato -- es la "muestra mas alta del dia" con la granularidad
+    que se tiene, no un instantaneo verdadero, pero es el pico real
+    disponible con esta fuente.
     """
     from django.db.models import Avg, Max, Count
     from .models import BBEnlace, BBTrafico
@@ -212,8 +222,8 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
             .annotate(
                 in_avg=Avg('in_rate_avg'),
                 out_avg=Avg('out_rate_avg'),
-                pico=Max('max_rate'),
-                util_pico=Max('max_util_pct'),
+                in_peak=Max('in_rate_avg'),
+                out_peak=Max('out_rate_avg'),
                 muestras=Count('id'),
             )
         )
@@ -234,8 +244,8 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
                 'sin_iface_configurada': True,
                 'in_average_mbps': None,
                 'out_average_mbps': None,
-                'pico_mbps': None,
-                'uso_pico_pct': None,
+                'in_peak_mbps': None,
+                'out_peak_mbps': None,
                 'muestras': 0,
             })
             continue
@@ -249,8 +259,8 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
                 'sin_datos_de_trafico': True,
                 'in_average_mbps': None,
                 'out_average_mbps': None,
-                'pico_mbps': None,
-                'uso_pico_pct': None,
+                'in_peak_mbps': None,
+                'out_peak_mbps': None,
                 'muestras': 0,
             })
             continue
@@ -260,8 +270,8 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
             'sin_iface_configurada': False,
             'in_average_mbps': round(datos['in_avg'], 3) if datos['in_avg'] is not None else None,
             'out_average_mbps': round(datos['out_avg'], 3) if datos['out_avg'] is not None else None,
-            'pico_mbps': round(datos['pico'], 3) if datos['pico'] is not None else None,
-            'uso_pico_pct': round(datos['util_pico'], 2) if datos['util_pico'] is not None else None,
+            'in_peak_mbps': round(datos['in_peak'], 3) if datos['in_peak'] is not None else None,
+            'out_peak_mbps': round(datos['out_peak'], 3) if datos['out_peak'] is not None else None,
             'muestras': datos['muestras'],
         })
 
@@ -327,4 +337,128 @@ def obtener_serie_enlace(enlace_id: int) -> dict | None:
         'iface_origen': enlace.iface_origen,
         'delay_series': delay_series,
         'trafico_series': trafico_series,
+    }
+
+
+# ─── Disponibilidad real (ventana multi-dia) ────────────────────────────────
+VENTANA_DISPONIBILIDAD_DIAS = 7
+
+# Colapsa todas las colas de cada muestra a un solo "peor camino" por
+# (par de equipos, collection_time) -- mismo criterio que peorEstado() en
+# el frontend, pero calculado en SQL para no traer fila por cola a Python
+# (7 dias x 5 min x N colas por enlace puede ser bastante volumen).
+_SQL_DISPONIBILIDAD = """
+    SELECT
+        LEAST(source_device, dest_device)    AS equipo_a,
+        GREATEST(source_device, dest_device) AS equipo_b,
+        collection_time,
+        MAX(delay_avg_ms)    AS peor_delay_ms,
+        MAX(packet_loss_pct) AS peor_perdida_pct
+    FROM bb_delay
+    WHERE collection_time >= %s
+    GROUP BY equipo_a, equipo_b, collection_time
+"""
+
+
+def calcular_disponibilidad(dias: int = VENTANA_DISPONIBILIDAD_DIAS) -> dict:
+    """
+    Dos metricas distintas por enlace y a nivel de todo el backbone, sobre
+    una ventana de `dias` dias -- a diferencia de calcular_estado_delay()
+    (que da el estado "en vivo" ahora mismo), esto cuenta que fraccion de
+    las muestras COLECTADAS en la ventana cayo en cada categoria.
+
+    - disponibilidad_pct: solo excluye 'caido' (100% perdida de paquetes).
+      Es la metrica comparable al "99.99%" de disponibilidad/uptime de un
+      SLA de telecom -- mide si el enlace estuvo ARRIBA, sin importar la
+      latencia.
+    - sla_pct: excluye 'caido' Y 'alerta' (delay por encima del umbral).
+      Mide cumplimiento COMPLETO -- arriba Y dentro del umbral de calidad.
+      Siempre <= disponibilidad_pct (alerta es un subconjunto de "no ok").
+
+    No se combinan en un solo numero porque miden cosas distintas: un
+    enlace puede estar 100% arriba (disponibilidad_pct=100) y aun asi
+    tener mal SLA de latencia (sla_pct bajo) -- son preguntas de negocio
+    diferentes ("¿se cayo?" vs "¿cumplio la calidad prometida?").
+
+    A proposito SIN la persistencia de N muestras consecutivas que usa
+    calcular_estado_delay() -- esa persistencia existe para que el badge
+    "en vivo" no parpadee con un pico aislado; aca el objetivo es lo
+    opuesto, contar cada muestra degradada tal cual paso (aislada o
+    sostenida), porque eso es justamente lo que estas metricas miden.
+
+    Retorna un dict con el resumen a nivel backbone (para el panel
+    ejecutivo) y el detalle por enlace (para poder listar los peores).
+    Enlaces sin ninguna muestra en la ventana quedan fuera de 'por_enlace'
+    (no hay dato = no se reporta, no se asume 100% ni 0%).
+    """
+    from django.db import connections
+    from .models import BBEnlace
+
+    desde = timezone.now() - timedelta(days=dias)
+
+    filas_por_par = {}
+    with connections['backbone'].cursor() as cur:
+        cur.execute(_SQL_DISPONIBILIDAD, [desde])
+        for a, b, _ct, delay, perdida in cur.fetchall():
+            filas_por_par.setdefault((a, b), []).append((delay, perdida))
+
+    enlaces = BBEnlace.objects.select_related('origen', 'destino').filter(activo=True)
+
+    por_enlace = []
+    total_caido = 0
+    total_alerta = 0
+    total_ok = 0
+    total_muestras = 0
+
+    for enlace in enlaces:
+        par = tuple(sorted([enlace.origen.nombre, enlace.destino.nombre]))
+        filas = filas_por_par.get(par)
+        if not filas:
+            continue
+
+        umbral = float(enlace.umbral_delay_ms)
+        caido = alerta = ok = 0
+        for delay, perdida in filas:
+            if perdida is not None and perdida >= 100:
+                caido += 1
+            elif delay is not None and delay > umbral:
+                alerta += 1
+            else:
+                ok += 1
+
+        total = len(filas)
+        total_caido += caido
+        total_alerta += alerta
+        total_ok += ok
+        total_muestras += total
+        por_enlace.append({
+            'enlace_id': enlace.id,
+            'origen': enlace.origen.nombre,
+            'destino': enlace.destino.nombre,
+            'disponibilidad_pct': round((total - caido) / total * 100, 2),
+            'sla_pct': round(ok / total * 100, 2),
+            'muestras_caido': caido,
+            'muestras_alerta': alerta,
+            'muestras_ok': ok,
+            'muestras_totales': total,
+        })
+
+    return {
+        'dias': dias,
+        'desde': desde.isoformat(),
+        'backbone': {
+            'disponibilidad_pct': round((total_muestras - total_caido) / total_muestras * 100, 2) if total_muestras else None,
+            'sla_pct': round(total_ok / total_muestras * 100, 2) if total_muestras else None,
+            'muestras_caido': total_caido,
+            'muestras_alerta': total_alerta,
+            'muestras_ok': total_ok,
+            'muestras_totales': total_muestras,
+            'enlaces_con_dato': len(por_enlace),
+            'enlaces_totales': enlaces.count(),
+        },
+        # Peor disponibilidad primero -- util para un ranking tipo
+        # "Top saturados" pero de disponibilidad en vez de trafico. Empate
+        # se desempata por sla_pct (para no dejar tirados los enlaces con
+        # buena disponibilidad pero mal SLA de latencia).
+        'por_enlace': sorted(por_enlace, key=lambda r: (r['disponibilidad_pct'], r['sla_pct'])),
     }
