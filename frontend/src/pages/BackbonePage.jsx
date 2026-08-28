@@ -142,7 +142,7 @@ function TraficoBlock({ trafico, capacidadGbps }) {
   )
 }
 
-function EnlaceSerieChart({ enlaceId, capacidadGbps }) {
+function EnlaceSerieChart({ enlaceId, capacidadGbps, origenNombre, destinoNombre }) {
   const [serie, setSerie] = useState(null)
   const [loading, setLoading] = useState(true)
   const [rangeMode, setRangeMode] = useState('1D')
@@ -215,6 +215,26 @@ function EnlaceSerieChart({ enlaceId, capacidadGbps }) {
 
   return (
     <div style={{ margin: '14px 10px 0' }}>
+      {/* Referencia fija de equipo/trunk -- visible siempre arriba de
+          ambos graficos, no solo pegada al de trafico como antes. */}
+      {(origenNombre || destinoNombre || serie.iface_origen) && (
+        <div style={{
+          display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, fontSize: 11.5,
+          color: '#65676b', background: '#f8f9fa', border: '1px solid #ececec', borderRadius: 6,
+          padding: '6px 10px', marginBottom: 10,
+        }}>
+          {(origenNombre || destinoNombre) && (
+            <span>Equipo <strong style={{ color: '#111827' }}>{origenNombre} → {destinoNombre}</strong></span>
+          )}
+          {serie.iface_origen && (
+            <span>Trunk <strong style={{ color: '#111827' }}>{serie.iface_origen}</strong></span>
+          )}
+          {capacidadGbps != null && (
+            <span>Capacidad <strong style={{ color: '#111827' }}>{capacidadGbps} Gbps</strong></span>
+          )}
+        </div>
+      )}
+
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
         <p style={{ fontSize: 12, fontWeight: 600, margin: 0 }}>Histórico de delay por cola</p>
         <RangeSelector />
@@ -278,10 +298,6 @@ function EnlaceSerieChart({ enlaceId, capacidadGbps }) {
             <p style={{ fontSize: 12, fontWeight: 600, margin: 0 }}>
               Histórico de % de uso (in/out, cada lectura de 5 min)
             </p>
-            <span style={{ fontSize: 11, color: '#65676b' }}>
-              Interfaz <strong>{serie.iface_origen}</strong>
-              {capacidadGbps != null && <> · Capacidad <strong>{capacidadGbps} Gbps</strong></>}
-            </span>
           </div>
 
           {/* Selector in/out: mismo patron de pills que las colas arriba. */}
@@ -691,7 +707,12 @@ function EnlaceRow({ enlace, colas, trafico, expanded, onToggle, onEdit }) {
               </tbody>
             </table>
             <TraficoBlock trafico={trafico} capacidadGbps={enlace.capacidad_gbps} />
-            <EnlaceSerieChart enlaceId={enlace.id} capacidadGbps={enlace.capacidad_gbps} />
+            <EnlaceSerieChart
+              enlaceId={enlace.id}
+              capacidadGbps={enlace.capacidad_gbps}
+              origenNombre={enlace.origen_nombre}
+              destinoNombre={enlace.destino_nombre}
+            />
           </td>
         </tr>
       )}
