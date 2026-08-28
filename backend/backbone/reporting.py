@@ -389,19 +389,36 @@ def obtener_serie_enlace(enlace_id: int) -> dict | None:
 # ─── Disponibilidad real (ventana multi-dia) ────────────────────────────────
 VENTANA_DISPONIBILIDAD_DIAS = 7
 
-# Colapsa todas las colas de cada muestra a un solo "peor camino" por
-# (par de equipos, collection_time) -- mismo criterio que peorEstado() en
-# el frontend, pero calculado en SQL para no traer fila por cola a Python
-# (7 dias x 5 min x N colas por enlace puede ser bastante volumen).
+# Dos niveles de agregacion (mismo patron de CTE que _SQL_ULTIMAS_MUESTRAS
+# mas arriba, para bb_delay):
+# 1. pair_cola_time: colapsa duplicados por (par, cola, collection_time)
+#    tomando el peor camino DENTRO de esa cola (si hay mas de un
+#    resource_id/ruta fisica para la misma cola).
+# 2. Afuera: agrega por (par, collection_time) SIN perder la cantidad de
+#    colas ni cuantas de ellas cayeron -- 'caido' debe significar que
+#    TODAS las colas de esa muestra estan sin conexion, no que la peor de
+#    ellas lo este (una sola cola mal configurada no puede tirar todo el
+#    enlace a caido). peor_delay_activo excluye colas caidas: su delay no
+#    es representativo de la calidad real del enlace que SI esta arriba.
 _SQL_DISPONIBILIDAD = """
+    WITH pair_cola_time AS (
+        SELECT
+            LEAST(source_device, dest_device)    AS equipo_a,
+            GREATEST(source_device, dest_device) AS equipo_b,
+            cola,
+            collection_time,
+            MAX(delay_avg_ms)    AS peor_delay_ms,
+            MAX(packet_loss_pct) AS peor_perdida_pct
+        FROM bb_delay
+        WHERE collection_time >= %s
+        GROUP BY equipo_a, equipo_b, cola, collection_time
+    )
     SELECT
-        LEAST(source_device, dest_device)    AS equipo_a,
-        GREATEST(source_device, dest_device) AS equipo_b,
-        collection_time,
-        MAX(delay_avg_ms)    AS peor_delay_ms,
-        MAX(packet_loss_pct) AS peor_perdida_pct
-    FROM bb_delay
-    WHERE collection_time >= %s
+        equipo_a, equipo_b, collection_time,
+        COUNT(*) AS num_colas,
+        SUM(CASE WHEN peor_perdida_pct >= 100 THEN 1 ELSE 0 END) AS colas_caidas,
+        MAX(CASE WHEN peor_perdida_pct < 100 THEN peor_delay_ms END) AS peor_delay_activo
+    FROM pair_cola_time
     GROUP BY equipo_a, equipo_b, collection_time
 """
 
@@ -413,13 +430,16 @@ def calcular_disponibilidad(dias: int = VENTANA_DISPONIBILIDAD_DIAS) -> dict:
     (que da el estado "en vivo" ahora mismo), esto cuenta que fraccion de
     las muestras COLECTADAS en la ventana cayo en cada categoria.
 
-    - disponibilidad_pct: solo excluye 'caido' (100% perdida de paquetes).
-      Es la metrica comparable al "99.99%" de disponibilidad/uptime de un
-      SLA de telecom -- mide si el enlace estuvo ARRIBA, sin importar la
-      latencia.
-    - sla_pct: excluye 'caido' Y 'alerta' (delay por encima del umbral).
-      Mide cumplimiento COMPLETO -- arriba Y dentro del umbral de calidad.
-      Siempre <= disponibilidad_pct (alerta es un subconjunto de "no ok").
+    - disponibilidad_pct: solo excluye 'caido' -- TODAS las colas de esa
+      muestra sin conexion (100% perdida de paquetes en cada una). Una
+      sola cola mal configurada, con las demas funcionando, NO cuenta
+      como caido -- el enlace sigue arriba, pasando trafico por las otras
+      colas. Es la metrica comparable al "99.99%" de disponibilidad/uptime
+      de un SLA de telecom -- mide si el enlace estuvo ARRIBA, sin
+      importar la latencia.
+    - sla_pct: excluye 'caido' Y 'alerta' (alguna cola activa con delay
+      por encima del umbral). Mide cumplimiento COMPLETO -- arriba Y
+      dentro del umbral de calidad. Siempre <= disponibilidad_pct.
 
     No se combinan en un solo numero porque miden cosas distintas: un
     enlace puede estar 100% arriba (disponibilidad_pct=100) y aun asi
@@ -445,8 +465,8 @@ def calcular_disponibilidad(dias: int = VENTANA_DISPONIBILIDAD_DIAS) -> dict:
     filas_por_par = {}
     with connections['backbone'].cursor() as cur:
         cur.execute(_SQL_DISPONIBILIDAD, [desde])
-        for a, b, _ct, delay, perdida in cur.fetchall():
-            filas_por_par.setdefault((a, b), []).append((delay, perdida))
+        for a, b, _ct, num_colas, colas_caidas, delay_activo in cur.fetchall():
+            filas_por_par.setdefault((a, b), []).append((num_colas, colas_caidas, delay_activo))
 
     enlaces = BBEnlace.objects.select_related('origen', 'destino').filter(activo=True)
 
@@ -464,11 +484,11 @@ def calcular_disponibilidad(dias: int = VENTANA_DISPONIBILIDAD_DIAS) -> dict:
 
         umbral = float(enlace.umbral_delay_ms)
         caido = alerta = ok = 0
-        for delay, perdida in filas:
-            if perdida is not None and perdida >= 100:
-                caido += 1
-            elif delay is not None and delay > umbral:
-                alerta += 1
+        for num_colas, colas_caidas, delay_activo in filas:
+            if num_colas and colas_caidas == num_colas:
+                caido += 1  # TODAS las colas de esta muestra, sin conexion
+            elif delay_activo is not None and delay_activo > umbral:
+                alerta += 1  # alguna cola activa por encima del umbral
             else:
                 ok += 1
 
