@@ -227,7 +227,7 @@ function EnlaceSerieChart({ enlaceId, capacidadGbps, origenNombre, destinoNombre
             <span>Equipo <strong style={{ color: '#111827' }}>{origenNombre} → {destinoNombre}</strong></span>
           )}
           {serie.iface_origen && (
-            <span>Trunk <strong style={{ color: '#111827' }}>{serie.iface_origen}</strong></span>
+            <span>Interfaz <strong style={{ color: '#111827' }}>{serie.iface_origen}</strong></span>
           )}
           {capacidadGbps != null && (
             <span>Capacidad <strong style={{ color: '#111827' }}>{capacidadGbps} Gbps</strong></span>
