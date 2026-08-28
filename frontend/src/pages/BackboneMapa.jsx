@@ -6,8 +6,8 @@ import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import { Radio, RefreshCw, AlertTriangle, Search, X, LocateFixed } from 'lucide-react'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line, ReferenceLine, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer,
 } from 'recharts'
 
 const API = '/api/backbone'
@@ -38,6 +38,40 @@ function usoPicoPct(trafico, capacidadGbps) {
   if (trafico.in_peak_mbps == null && trafico.out_peak_mbps == null) return null
   const picoGbps = mbpsToGbps(Math.max(trafico.in_peak_mbps || 0, trafico.out_peak_mbps || 0))
   return (picoGbps / cap) * 100
+}
+
+// Generico: bwGbps sobre capacidadGbps -> %. Mismo guard anti-Infinity que
+// usoPicoPct de arriba (capacidad_gbps llega como string del API).
+function pctUso(bwGbps, capacidadGbps) {
+  const cap = Number(capacidadGbps)
+  if (bwGbps == null || !Number.isFinite(cap) || cap <= 0) return null
+  return (bwGbps / cap) * 100
+}
+
+// Selector de rango (1D/3D/1S/1M) y formateo de eje X -- identico al de
+// BackbonePage.jsx, para que ambas vistas del historico se comporten igual.
+const RANGE_DIAS = { '1D': 1, '3D': 3, '1S': 7, '1M': 30 }
+
+function filtrarPorRango(filas, rangeMode) {
+  if (!filas.length) return filas
+  const now = new Date()
+  const tz = 'America/Lima'
+  const today = new Date(now.toLocaleString('sv-SE', { timeZone: tz }).substring(0, 10) + 'T00:00:00')
+  const rangeMs = RANGE_DIAS[rangeMode] * 86400000
+  const from = new Date(today.getTime() - (rangeMs - 86400000))
+  return filas.filter(r => new Date(r._raw) >= from)
+}
+
+function xTickFormatter(val, rangeMode) {
+  if (!val) return ''
+  try {
+    const d = new Date(val)
+    const tz = 'America/Lima'
+    const hora = d.toLocaleString('es-PE', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false })
+    if (rangeMode === '1D') return hora
+    const fecha = d.toLocaleString('es-PE', { timeZone: tz, day: '2-digit', month: '2-digit' })
+    return `${fecha} ${hora}`
+  } catch { return String(val).substring(11, 16) }
 }
 
 const COLA_COLORS = {
@@ -659,27 +693,23 @@ function DetalleEnlace({ enlace }) {
 
       {/* ── Columna gráficas: delay y tráfico lado a lado, con ancho real ── */}
       <div style={{ borderLeft: '1px solid #ececec', paddingLeft: 20 }}>
-        <EnlaceSerieChart enlaceId={enlace.id} />
+        <EnlaceSerieChart
+          enlaceId={enlace.id}
+          capacidadGbps={enlace.capacidad_gbps}
+          origenNombre={enlace.origen_nombre}
+          destinoNombre={enlace.destino_nombre}
+        />
       </div>
     </div>
   )
 }
 
-// Ventana de recorte para el historico (el backend / obtener_serie_enlace
-// trae todo sin filtro, a proposito, porque tambien alimenta el grafico
-// completo de BackbonePage.jsx). Acá lo acotamos a 24h para el panel del mapa.
-function ultimas24h(serie) {
-  const corte = Date.now() - 24 * 60 * 60 * 1000
-  return serie.filter(m => new Date(m.collection_time).getTime() >= corte)
-}
-
-// Mismo componente que EnlaceSerieChart en BackbonePage.jsx (recharts, con
-// ejes de fecha y leyenda por cola), para que el historial se vea IDENTICO
-// entre la pagina de Enlaces y el Mapa. Unica diferencia: acá se recorta a
-// las ultimas 24h antes de armar los datos del grafico.
-function EnlaceSerieChart({ enlaceId }) {
+function EnlaceSerieChart({ enlaceId, capacidadGbps, origenNombre, destinoNombre }) {
   const [serie, setSerie] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [rangeMode, setRangeMode] = useState('1D')
+  const [colasOcultas, setColasOcultas] = useState({})
+  const [traficoOculto, setTraficoOculto] = useState({})
 
   useEffect(() => {
     let activo = true
@@ -692,6 +722,43 @@ function EnlaceSerieChart({ enlaceId }) {
     return () => { activo = false }
   }, [enlaceId])
 
+  // Procesamiento pesado memoizado por `serie` (no por rangeMode) -- mismo
+  // fix de rendimiento aplicado en BackbonePage.jsx: cambiar de rango es
+  // solo un .filter() sobre datos ya procesados, no un reprocesamiento
+  // completo del historico. Hooks ANTES de los return condicionales de
+  // loading/!serie (Rules of Hooks).
+  const { delayDataCompleta, colas, traficoDataCompleta } = useMemo(() => {
+    if (!serie) return { delayDataCompleta: [], colas: [], traficoDataCompleta: [] }
+
+    const delayPorTiempo = {}
+    const colasVistas = new Set()
+    for (const p of serie.delay_series) {
+      const t = p.collection_time
+      colasVistas.add(p.cola)
+      if (!delayPorTiempo[t]) delayPorTiempo[t] = { time: toLocalTime(t), _raw: t }
+      delayPorTiempo[t][p.cola] = p.delay_ms
+    }
+    const delayDataCompleta = Object.values(delayPorTiempo).sort((a, b) => a._raw.localeCompare(b._raw))
+
+    const traficoDataCompleta = serie.trafico_series.map(p => ({
+      time: toLocalTime(p.collection_time),
+      _raw: p.collection_time,
+      inPct: pctUso(mbpsToGbps(p.in_rate_avg), capacidadGbps),
+      outPct: pctUso(mbpsToGbps(p.out_rate_avg), capacidadGbps),
+      inGbps: mbpsToGbps(p.in_rate_avg),
+      outGbps: mbpsToGbps(p.out_rate_avg),
+    })).sort((a, b) => a._raw.localeCompare(b._raw))
+
+    return { delayDataCompleta, colas: Array.from(colasVistas), traficoDataCompleta }
+  }, [serie, capacidadGbps])
+
+  const delayData = useMemo(() => filtrarPorRango(delayDataCompleta, rangeMode), [delayDataCompleta, rangeMode])
+  const traficoData = useMemo(() => filtrarPorRango(traficoDataCompleta, rangeMode), [traficoDataCompleta, rangeMode])
+  const maxPct = useMemo(
+    () => Math.max(100, ...traficoData.map(p => Math.max(p.inPct || 0, p.outPct || 0))),
+    [traficoData],
+  )
+
   if (loading) {
     return <p style={{ fontSize: 12, color: '#9ca3af' }}>Cargando gráfico...</p>
   }
@@ -699,74 +766,133 @@ function EnlaceSerieChart({ enlaceId }) {
     return <p style={{ fontSize: 12, color: '#9ca3af' }}>No se pudo cargar el histórico.</p>
   }
 
-  const delaySeries24h = ultimas24h(serie.delay_series)
-  const traficoSeries24h = ultimas24h(serie.trafico_series)
+  const RangeSelector = () => (
+    <div style={{ display: 'flex', gap: 3, background: '#f3f4f6', padding: 3, borderRadius: 8, border: '0.5px solid #e5e7eb' }}>
+      {['1D', '3D', '1S', '1M'].map(r => (
+        <button key={r} onClick={() => setRangeMode(r)} style={{
+          padding: '4px 12px', fontSize: 11, borderRadius: 6, border: 'none', cursor: 'pointer',
+          fontWeight: rangeMode === r ? 700 : 400,
+          background: rangeMode === r ? '#1877f2' : 'transparent',
+          color: rangeMode === r ? '#fff' : '#6b7280', transition: 'all .15s',
+        }}>
+          {r}
+        </button>
+      ))}
+    </div>
+  )
 
-  const delayPorTiempo = {}
-  const colasVistas = new Set()
-  for (const p of delaySeries24h) {
-    const t = p.collection_time
-    colasVistas.add(p.cola)
-    if (!delayPorTiempo[t]) delayPorTiempo[t] = { time: toLocalTime(t), _raw: t }
-    delayPorTiempo[t][p.cola] = p.delay_ms
-  }
-  const delayData = Object.values(delayPorTiempo).sort((a, b) => a._raw.localeCompare(b._raw))
-  const colas = Array.from(colasVistas)
-
-  const traficoData = traficoSeries24h.map(p => ({
-    time: toLocalTime(p.collection_time),
-    _raw: p.collection_time,
-    in: mbpsToGbps(p.in_rate_avg),
-    out: mbpsToGbps(p.out_rate_avg),
-  })).sort((a, b) => a._raw.localeCompare(b._raw))
+  const pillStyle = (oculta, color) => ({
+    display: 'flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 20,
+    border: `1.5px solid ${color}`, background: oculta ? '#f3f4f6' : `${color}18`,
+    cursor: 'pointer', fontSize: 10.5, fontWeight: 600,
+    color: oculta ? '#9ca3af' : color, opacity: oculta ? 0.6 : 1,
+  })
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: serie.iface_origen ? '1fr 1fr' : '1fr', gap: 20 }}>
-      <div>
-        <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px' }}>Histórico de delay por cola (24h)</p>
-        {delayData.length < 2 ? (
-          <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
-            Solo hay {delayData.length} muestra{delayData.length === 1 ? '' : 's'} en las últimas 24h.
-          </p>
-        ) : (
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={delayData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
-              <XAxis dataKey="time" fontSize={11} />
-              <YAxis fontSize={11} unit=" ms" />
-              <Tooltip />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {colas.map(c => (
-                <Line key={c} type="monotone" dataKey={c} stroke={COLA_COLORS[c] || '#999'}
-                      strokeWidth={1.5} dot={{ r: 2 }} connectNulls />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        )}
+    <div>
+      {/* Referencia fija de equipo/trunk -- visible arriba de ambos graficos. */}
+      {(origenNombre || destinoNombre || serie.iface_origen) && (
+        <div style={{
+          display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10, fontSize: 11.5,
+          color: '#65676b', background: '#f8f9fa', border: '1px solid #ececec', borderRadius: 6,
+          padding: '6px 10px', marginBottom: 10,
+        }}>
+          {(origenNombre || destinoNombre) && (
+            <span>Equipo <strong style={{ color: '#111827' }}>{origenNombre} → {destinoNombre}</strong></span>
+          )}
+          {serie.iface_origen && (
+            <span>Interfaz <strong style={{ color: '#111827' }}>{serie.iface_origen}</strong></span>
+          )}
+          {capacidadGbps != null && (
+            <span>Capacidad <strong style={{ color: '#111827' }}>{capacidadGbps} Gbps</strong></span>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <RangeSelector />
       </div>
 
-      {serie.iface_origen && (
+      <div style={{ display: 'grid', gridTemplateColumns: serie.iface_origen ? '1fr 1fr' : '1fr', gap: 20 }}>
         <div>
-          <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px' }}>Histórico de tráfico in/out (24h)</p>
-          {traficoData.length < 2 ? (
+          <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px' }}>Histórico de delay por cola</p>
+          {colas.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {colas.map(c => {
+                const color = COLA_COLORS[c] || '#999'
+                const oculta = colasOcultas[c]
+                return (
+                  <button key={c} onClick={() => setColasOcultas(s => ({ ...s, [c]: !s[c] }))}
+                    title={oculta ? 'Mostrar' : 'Ocultar'} style={pillStyle(oculta, color)}>
+                    <span style={{ width: 14, height: 2.5, borderRadius: 2, display: 'inline-block', background: oculta ? '#d1d5db' : color }} />
+                    {c}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {delayData.length < 2 ? (
             <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
-              Solo hay {traficoData.length} muestra{traficoData.length === 1 ? '' : 's'} de tráfico en las últimas 24h.
+              Solo hay {delayData.length} muestra{delayData.length === 1 ? '' : 's'} en este rango.
             </p>
           ) : (
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={traficoData}>
+              <LineChart data={delayData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
-                <XAxis dataKey="time" fontSize={11} />
-                <YAxis fontSize={11} unit=" Gbps" />
-                <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} Gbps`]} />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Line type="monotone" dataKey="in" name="Entrada" stroke="#2563eb" strokeWidth={1.5} dot={{ r: 2 }} />
-                <Line type="monotone" dataKey="out" name="Salida" stroke="#16a34a" strokeWidth={1.5} dot={{ r: 2 }} />
+                <XAxis dataKey="_raw" tickFormatter={v => xTickFormatter(v, rangeMode)} interval="preserveStartEnd" fontSize={11} />
+                <YAxis fontSize={11} unit=" ms" />
+                <Tooltip labelFormatter={v => xTickFormatter(v, '1M')} />
+                {colas.map(c => (
+                  <Line key={c} type="monotone" dataKey={c} stroke={COLA_COLORS[c] || '#999'}
+                        strokeWidth={colasOcultas[c] ? 0 : 1.5} hide={!!colasOcultas[c]}
+                        dot={{ r: 2 }} connectNulls />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           )}
         </div>
-      )}
+
+        {serie.iface_origen && (
+          <div>
+            <p style={{ fontSize: 12, fontWeight: 600, margin: '0 0 6px' }}>Histórico de % de uso (in/out)</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {[['in', 'Entrada', '#2563eb'], ['out', 'Salida', '#16a34a']].map(([key, label, color]) => (
+                <button key={key} onClick={() => setTraficoOculto(s => ({ ...s, [key]: !s[key] }))}
+                  title={traficoOculto[key] ? 'Mostrar' : 'Ocultar'} style={pillStyle(traficoOculto[key], color)}>
+                  <span style={{ width: 14, height: 2.5, borderRadius: 2, display: 'inline-block', background: traficoOculto[key] ? '#d1d5db' : color }} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            {traficoData.length < 2 ? (
+              <p style={{ fontSize: 11.5, color: '#9ca3af' }}>
+                Solo hay {traficoData.length} muestra{traficoData.length === 1 ? '' : 's'} de tráfico en este rango.
+              </p>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={traficoData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
+                  <XAxis dataKey="_raw" tickFormatter={v => xTickFormatter(v, rangeMode)} interval="preserveStartEnd" fontSize={11} />
+                  <YAxis domain={[0, maxPct]} tickFormatter={v => `${v}%`} fontSize={11} />
+                  <Tooltip
+                    labelFormatter={v => xTickFormatter(v, '1M')}
+                    formatter={(value, name, { payload }) => {
+                      const gbps = name === 'Entrada' ? payload.inGbps : payload.outGbps
+                      return [`${value?.toFixed(1)}% (${gbps?.toFixed(2)} Gbps)`, name]
+                    }}
+                  />
+                  <ReferenceLine y={80} stroke="#dc2626" strokeDasharray="4 4"
+                    label={{ value: '80%', fontSize: 10, fill: '#dc2626', position: 'right' }} />
+                  <Line type="monotone" dataKey="inPct" name="Entrada" stroke="#2563eb"
+                        strokeWidth={traficoOculto.in ? 0 : 1.5} hide={!!traficoOculto.in} dot={{ r: 2 }} connectNulls />
+                  <Line type="monotone" dataKey="outPct" name="Salida" stroke="#16a34a"
+                        strokeWidth={traficoOculto.out ? 0 : 1.5} hide={!!traficoOculto.out} dot={{ r: 2 }} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
