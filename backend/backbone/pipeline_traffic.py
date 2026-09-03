@@ -316,6 +316,21 @@ def run_collection_ipinterface(
         try:
             parsed = parse_ipinterface_csv(content, fname, BACKBONE_DEVICE_PREFIXES)
 
+            # Sincroniza netcore.Interface con TODAS las filas parseadas,
+            # ANTES del filtro por resources_ok de abajo -- a proposito:
+            # el filtro descarta filas cuya interfaz todavia no esta
+            # configurada en ningun BBEnlace, que es justo el caso que
+            # queremos descubrir (interfaz/trunk nueva). Filtrar primero
+            # haria esto circular (nunca veria nada nuevo). try/except
+            # para que un fallo aca no afecte la recoleccion real de
+            # BBTrafico, que sigue mas abajo sin cambios.
+            if not dry_run:
+                try:
+                    from netcore.pipeline import sync_interfaces_from_traffic
+                    sync_interfaces_from_traffic(parsed["rows"])
+                except Exception:
+                    logger.exception("netcore: fallo sincronizando interfaces desde telemetria (no afecta backbone)")
+
             filas_totales_parseadas = len(parsed["rows"])
             rows_filtradas = [
                 r for r in parsed["rows"]

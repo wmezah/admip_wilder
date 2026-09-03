@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Package, Users, ChevronDown, ChevronUp,
   Zap, BookOpen, FileText, Activity, ClipboardList,
-  PanelLeftClose, PanelLeftOpen, AlertTriangle, Radio, Map
+  PanelLeftClose, PanelLeftOpen, AlertTriangle, Radio, Map, Layers
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -25,6 +25,17 @@ const NAV_GROUPS = [
     items: [
       { label:'Enlaces', icon:Radio, to:'/backbone' },
       { label:'Mapa',    icon:Map,   to:'/backbone/mapa' },
+    ],
+  },
+  {
+    // Netcore = rediseño del esquema de backbone, todavia en construccion
+    // (ver Fases del rediseno). Seccion separada a proposito -- no es
+    // una pestaña mas de Backbone, es la app nueva que eventualmente lo
+    // reemplaza.
+    section: 'Netcore (v2)', collapsible: true,
+    items: [
+      { label:'Enlaces', icon:Radio, to:'/netcore/enlaces' },
+      { label:'Interfaces', icon:Layers, to:'/netcore/interfaces' },
     ],
   },
   {

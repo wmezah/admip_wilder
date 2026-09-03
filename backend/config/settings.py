@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     'spare',
     'nce',
     'backbone',
+    'netcore',
     'rest_framework_simplejwt',
     'users',
 ]

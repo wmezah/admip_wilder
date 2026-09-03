@@ -235,7 +235,7 @@ def _actualizar_iface_origen_desde_twamp(rows: list[dict]) -> int:
     pisar un valor que alguien pudo haber corregido manualmente tras
     revisar el trunk real.
     """
-    from .models import BBEnlace
+    from .models import BBEnlace, BBTrunkObservado
 
     # Ultimo valor visto por par (source_device, dest_device) en este lote.
     por_par = {}
@@ -244,6 +244,15 @@ def _actualizar_iface_origen_desde_twamp(rows: list[dict]) -> int:
         if not iface:
             continue
         por_par[(r['source_device'], r['dest_device'])] = iface
+
+    # Registro liviano de "que trunk se vio para este par" -- upsert, no
+    # crece con cada muestra (ver BBTrunkObservado.__doc__ en models.py).
+    # Necesario para que obtener_candidatos() pueda detectar un segundo
+    # trunk fisico nuevo entre un par que ya tiene BBEnlace confirmado.
+    for (source_device, dest_device), iface in por_par.items():
+        BBTrunkObservado.objects.update_or_create(
+            source_device=source_device, dest_device=dest_device, trunk=iface,
+        )
 
     actualizados = 0
     for (source_device, dest_device), iface in por_par.items():
@@ -341,6 +350,17 @@ def run_collection_twamptest(
             loaded = len(objs)
 
             ifaces_actualizadas = _actualizar_iface_origen_desde_twamp(rows)
+
+            # Sincroniza netcore.Interface (app nueva, no reemplaza nada de
+            # backbone todavia -- ver Fase 3 del rediseno). Con
+            # try/except a proposito: si esto falla, NUNCA debe tirar
+            # abajo la recoleccion real de BBDelay, que ya se guardo
+            # arriba. netcore es un canal secundario, no critico.
+            try:
+                from netcore.pipeline import sync_interfaces_from_twamp
+                sync_interfaces_from_twamp(rows)
+            except Exception:
+                logger.exception("netcore: fallo sincronizando interfaces desde TWAMP (no afecta backbone)")
 
             BBCollectionLog.objects.create(
                 pm_code=PM_CODE_TWAMPTEST, filename=fname,
