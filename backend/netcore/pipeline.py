@@ -281,6 +281,26 @@ def run_collection_twamptest(dry_run: bool = False, local_files: Optional[dict] 
 
             rows = [r for r in parsed["rows"] if r["collection_time"] is not None]
 
+            # Resolver el FK interface por (source_device, source_iface) --
+            # sync_interfaces_from_twamp (arriba) ya garantiza que estas
+            # Interface existen, asi que esto es una lectura, no creacion.
+            # ANTES este FK quedaba siempre null: DelaySample no tenia forma
+            # de decir que interfaz/trunk genero la muestra, lo que
+            # bloqueaba a netcore_confirm_links.py para trabajar sin un CSV
+            # (ver conversacion real sobre ese bloqueo).
+            from .models import Interface as _Interface
+            pares_iface = {
+                (r['source_device'], r['source_iface'])
+                for r in rows if r.get('source_iface')
+            }
+            iface_map = {}
+            if pares_iface:
+                device_names = {d for d, _ in pares_iface}
+                for iface in _Interface.objects.filter(device__name__in=device_names).select_related('device'):
+                    key = (iface.device.name, iface.name)
+                    if key in pares_iface:
+                        iface_map[key] = iface
+
             existing_keys = set(
                 DelaySample.objects.filter(
                     collected_at__in=[r["collection_time"] for r in rows],
@@ -292,6 +312,7 @@ def run_collection_twamptest(dry_run: bool = False, local_files: Optional[dict] 
                     dest_device=r["dest_device"],
                     queue=r["cola"],
                     resource_id=r["resource_id"],
+                    interface=iface_map.get((r["source_device"], r.get("source_iface"))),
                     collected_at=r["collection_time"],
                     delay_avg_ms=r["delay_avg_ms"],
                     delay_max_ms=r["delay_max_ms"],
@@ -528,3 +549,78 @@ def obtener_candidatos_links(rows: list[dict]) -> list[dict]:
         }
 
     return list(vistos.values())
+
+
+def obtener_candidatos_links_db(horas_ventana: int = 24) -> list[dict]:
+    """
+    Misma idea que obtener_candidatos_links() de arriba, pero sin
+    depender de un archivo CSV recien parseado -- lee DelaySample ya
+    acumulado por el scheduler automatico (run_collection_twamptest),
+    que desde este cambio resuelve el FK interface por muestra.
+
+    Existe porque el pipeline real (nce.collector) baja los archivos
+    directo a memoria y nunca los escribe a disco -- pedirle un
+    --archivo local a este comando rompia el flujo de produccion. Ver
+    conversacion real: bloqueo detectado al intentar desplegar
+    netcore_scheduler.py por primera vez en el servidor Linux.
+
+    Mejora de yapa sobre la version anterior: en vez de un solo valor
+    de delay_avg_ms (n=1, de un solo archivo), promedia sobre toda la
+    ventana de horas -- exactamente lo que el docstring original de
+    netcore_confirm_links.py marcaba como pendiente ("a mejorar cuando
+    netcore tenga varios dias de DelaySample real acumulados via el
+    scheduler automatico").
+
+    Devuelve dicts con source_device, dest_device, source_iface,
+    interface_id (para no tener que re-resolver el FK en el comando),
+    delay_avg_ms (promedio de la ventana, o None si no hay dato) y
+    n_muestras (para que el comando pueda descartar pares con muy poca
+    evidencia todavia).
+    """
+    from django.utils import timezone
+    import datetime
+    from .models import Link, DelaySample
+
+    existentes = set()
+    for link in Link.objects.select_related('interface_a__device', 'interface_b__device'):
+        a = link.interface_a.device.name
+        b = link.interface_b.device.name if link.interface_b else None
+        if b:
+            existentes.add(tuple(sorted([a, b])))
+
+    desde = timezone.now() - datetime.timedelta(hours=horas_ventana)
+    qs = (
+        DelaySample.objects
+        .filter(collected_at__gte=desde, interface__isnull=False)
+        .select_related('interface__device')
+        .order_by('-collected_at')
+    )
+
+    vistos = {}
+    for s in qs:
+        par = tuple(sorted([s.source_device, s.dest_device]))
+        if par in existentes:
+            continue
+        if par not in vistos:
+            vistos[par] = {
+                'source_device': s.source_device,
+                'dest_device': s.dest_device,
+                'source_iface': s.interface.name,
+                'interface_id': s.interface_id,
+                'delays': [],
+            }
+        vistos[par]['delays'].append(s.delay_avg_ms)
+
+    candidatos = []
+    for data in vistos.values():
+        delays_validos = [d for d in data['delays'] if d is not None]
+        promedio = round(sum(delays_validos) / len(delays_validos), 3) if delays_validos else None
+        candidatos.append({
+            'source_device': data['source_device'],
+            'dest_device': data['dest_device'],
+            'source_iface': data['source_iface'],
+            'interface_id': data['interface_id'],
+            'delay_avg_ms': promedio,
+            'n_muestras': len(data['delays']),
+        })
+    return candidatos
