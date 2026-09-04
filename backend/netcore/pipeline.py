@@ -576,17 +576,28 @@ def obtener_candidatos_links_db(horas_ventana: int = 24) -> list[dict]:
     delay_avg_ms (promedio de la ventana, o None si no hay dato) y
     n_muestras (para que el comando pueda descartar pares con muy poca
     evidencia todavia).
+
+    FIX (detectado en produccion, ver conversacion real -- caso
+    rMPLSHuancayo4 con dos trunks, Eth-Trunk1 y Eth-Trunk15, hacia el
+    mismo vecino): la version anterior agrupaba candidatos por PAR DE
+    EQUIPOS (source_device, dest_device), no por trunk especifico. En
+    cuanto CUALQUIER Link quedaba confirmado para ese par, el par
+    completo entraba a `existentes` y CUALQUIER otro trunk adicional
+    entre esos mismos dos equipos quedaba descartado en silencio para
+    siempre, aunque tuviera su propio DelaySample real con FK interface
+    resuelto. El modelo (Link.unique_together = interface_a+interface_b)
+    siempre soporto multiples trunks entre el mismo par -- este comando
+    era el que no lo aprovechaba. Ahora agrupa y filtra por
+    interface_id directo, que ya identifica un trunk especifico sin
+    ambiguedad -- no hace falta la logica de "par ordenado" en absoluto.
     """
     from django.utils import timezone
     import datetime
     from .models import Link, DelaySample
 
-    existentes = set()
-    for link in Link.objects.select_related('interface_a__device', 'interface_b__device'):
-        a = link.interface_a.device.name
-        b = link.interface_b.device.name if link.interface_b else None
-        if b:
-            existentes.add(tuple(sorted([a, b])))
+    interfaces_ya_confirmadas = set(
+        Link.objects.exclude(interface_a__isnull=True).values_list('interface_a_id', flat=True)
+    )
 
     desde = timezone.now() - datetime.timedelta(hours=horas_ventana)
     qs = (
@@ -598,18 +609,17 @@ def obtener_candidatos_links_db(horas_ventana: int = 24) -> list[dict]:
 
     vistos = {}
     for s in qs:
-        par = tuple(sorted([s.source_device, s.dest_device]))
-        if par in existentes:
+        if s.interface_id in interfaces_ya_confirmadas:
             continue
-        if par not in vistos:
-            vistos[par] = {
+        if s.interface_id not in vistos:
+            vistos[s.interface_id] = {
                 'source_device': s.source_device,
                 'dest_device': s.dest_device,
                 'source_iface': s.interface.name,
                 'interface_id': s.interface_id,
                 'delays': [],
             }
-        vistos[par]['delays'].append(s.delay_avg_ms)
+        vistos[s.interface_id]['delays'].append(s.delay_avg_ms)
 
     candidatos = []
     for data in vistos.values():
