@@ -8,6 +8,18 @@ siempre-vacias) -- adaptado al esquema nuevo: Link.device_b (agregado
 justo para esto, ver conversacion) reemplaza a BBEnlace.destino, y
 Link.interface_a reemplaza a iface_origen.
 """
+# Necesario para que `dict | None` (mas abajo, en obtener_serie_enlace)
+# no reviente en produccion: ese servidor Linux corre Python 3.9, y la
+# sintaxis "X | None" para tipos opcionales es de Python 3.10+ (PEP 604).
+# `from __future__ import annotations` difiere la evaluacion de TODAS las
+# anotaciones de este archivo (se guardan como texto, nunca se ejecutan
+# en runtime salvo que alguien llame typing.get_type_hints(), que este
+# archivo no usa) -- soluciona esta clase entera de error, no solo esta
+# linea puntual. `list[dict]` en el resto del archivo NO necesitaba esto
+# (esa sintaxis si es valida desde 3.9, PEP 585) -- el problema real era
+# solo el "| None".
+from __future__ import annotations
+
 from datetime import timedelta
 from django.utils import timezone
 
