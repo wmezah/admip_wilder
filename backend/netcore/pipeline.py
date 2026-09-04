@@ -573,9 +573,11 @@ def obtener_candidatos_links_db(horas_ventana: int = 24) -> list[dict]:
 
     Devuelve dicts con source_device, dest_device, source_iface,
     interface_id (para no tener que re-resolver el FK en el comando),
-    delay_avg_ms (promedio de la ventana, o None si no hay dato) y
-    n_muestras (para que el comando pueda descartar pares con muy poca
-    evidencia todavia).
+    delay_avg_ms (promedio de la ventana, o None si no hay dato),
+    delay_stddev_ms (desviacion estandar de la ventana, o None si hay
+    menos de 2 muestras validas -- usado para el umbral estadistico en
+    netcore_confirm_links.py, ver ese archivo) y n_muestras (para que el
+    comando pueda descartar pares con muy poca evidencia todavia).
 
     FIX (detectado en produccion, ver conversacion real -- caso
     rMPLSHuancayo4 con dos trunks, Eth-Trunk1 y Eth-Trunk15, hacia el
@@ -625,12 +627,17 @@ def obtener_candidatos_links_db(horas_ventana: int = 24) -> list[dict]:
     for data in vistos.values():
         delays_validos = [d for d in data['delays'] if d is not None]
         promedio = round(sum(delays_validos) / len(delays_validos), 3) if delays_validos else None
+        stddev = None
+        if len(delays_validos) >= 2:
+            import statistics
+            stddev = round(statistics.stdev(delays_validos), 3)
         candidatos.append({
             'source_device': data['source_device'],
             'dest_device': data['dest_device'],
             'source_iface': data['source_iface'],
             'interface_id': data['interface_id'],
             'delay_avg_ms': promedio,
+            'delay_stddev_ms': stddev,
             'n_muestras': len(data['delays']),
         })
     return candidatos

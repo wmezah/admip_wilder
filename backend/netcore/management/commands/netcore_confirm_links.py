@@ -20,10 +20,17 @@ source_device/source_iface contra Interface al guardar cada muestra
 (antes quedaba siempre null, y este comando no tenia de donde sacar la
 interfaz real sin un archivo).
 
-Mejora de yapa sobre la version anterior: el umbral ya no se calcula
-sobre n=1 muestra (un solo archivo), sino sobre el promedio de toda la
-ventana de --horas acumulada -- exactamente la mejora que el docstring
-original de este archivo marcaba como pendiente.
+Mejora de umbral (esta version): en vez de umbral = promedio x factor
+fijo (criterio heredado de backbone_confirm_candidatos.py, arbitrario --
+no tenia en cuenta que tan variable es el delay de CADA trunk), ahora es
+umbral = promedio + 3 x desviacion_estandar, con un piso de
+promedio x --factor-umbral (default 1.5) para no castigar a un trunk
+muy estable con un umbral demasiado ajustado. Es el mismo criterio de
+"3 sigma" que ya es estandar en deteccion de anomalias -- mas honesto
+estadisticamente que un multiplicador fijo, y ahora viable porque los
+candidatos ya traen decenas/cientos de muestras reales (ver
+obtener_candidatos_links_db en pipeline.py), no la unica muestra de un
+archivo como en la version original de este comando.
 
 Uso:
   python manage.py netcore_confirm_links
@@ -41,13 +48,30 @@ class Command(BaseCommand):
         parser.add_argument('--apply', action='store_true', help='Sin esta bandera es dry-run')
         parser.add_argument('--capacidad', type=float, default=10.0,
                              help='Capacidad en Gbps SOLO si la interfaz no trae speed_gbps (fallback, default 10)')
-        parser.add_argument('--factor-umbral', type=float, default=3.0,
-                             help='umbral_delay_ms = delay_avg_ms observado x este factor (default 3)')
+        parser.add_argument('--factor-umbral', type=float, default=1.5,
+                             help='Piso del umbral: umbral = max(promedio + 3*stddev, promedio * este factor). '
+                                  'Default 1.5 -- protege a trunks muy estables (stddev bajo) de un umbral '
+                                  'demasiado ajustado.')
         parser.add_argument('--umbral-default-ms', type=float, default=5.0,
                              help='umbral_delay_ms si no hay delay_avg_ms disponible (default 5)')
         parser.add_argument('--min-muestras', type=int, default=3,
                              help='Ignora candidatos con menos de N muestras en la ventana -- evita '
                                   'confirmar un link sobre una sola lectura ruidosa (default 3)')
+
+    def _calcular_umbral(self, candidato, factor_piso, umbral_default):
+        """
+        umbral = max(promedio + 3*stddev, promedio*factor_piso).
+        Si no hay delay_avg_ms (nunca deberia pasar si el candidato paso
+        el filtro de min_muestras, pero por las dudas), cae al default
+        fijo -- mismo comportamiento de siempre en ese caso borde.
+        """
+        promedio = candidato['delay_avg_ms']
+        if promedio is None:
+            return umbral_default
+        stddev = candidato.get('delay_stddev_ms') or 0
+        calculado = promedio + 3 * stddev
+        piso = promedio * factor_piso
+        return round(max(calculado, piso), 3)
 
     def handle(self, *args, **options):
         from netcore.pipeline import obtener_candidatos_links_db
@@ -75,12 +99,14 @@ class Command(BaseCommand):
                 )
                 continue
 
-            umbral = round(c['delay_avg_ms'] * factor, 3) if c['delay_avg_ms'] is not None else umbral_default
+            umbral = self._calcular_umbral(c, factor, umbral_default)
 
             if not apply:
+                stddev_txt = f"{c['delay_stddev_ms']}ms" if c.get('delay_stddev_ms') is not None else '—'
                 self.stdout.write(
                     f"  [DRY RUN] {c['source_device']} <-> {c['dest_device']} "
-                    f"trunk={c['source_iface']}  umbral={umbral}ms  n_muestras={c['n_muestras']}"
+                    f"trunk={c['source_iface']}  umbral={umbral}ms  "
+                    f"(prom={c['delay_avg_ms']}ms  stddev={stddev_txt})  n_muestras={c['n_muestras']}"
                 )
                 creados += 1
                 continue
