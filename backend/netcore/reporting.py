@@ -365,3 +365,68 @@ def calcular_delay_rafaga(horas_ventana: int = 24) -> dict:
             resultado[link.id] = datos
 
     return resultado
+
+
+# ─── Disponibilidad (SLA) ────────────────────────────────────────────────
+VENTANA_DISPONIBILIDAD_HORAS = 24 * 30  # 30 dias, estandar de SLA
+
+
+def calcular_disponibilidad(horas_ventana: int = VENTANA_DISPONIBILIDAD_HORAS) -> list[dict]:
+    """
+    % del tiempo SIN caida por link, sobre una ventana estandar de SLA
+    (30 dias por defecto). Mismo criterio de "caido" que ya usa
+    calcular_estado_delay() (packet_loss_pct >= 100), pero acumulado
+    sobre toda la ventana en vez de solo las ultimas N muestras -- son
+    preguntas distintas: calcular_estado_delay responde "¿esta caido
+    AHORA?", esto responde "¿que tan seguido estuvo caido en el mes?".
+
+    Calculado por proporcion de MUESTRAS, no por tiempo de pared real --
+    mismo supuesto de cadencia uniforme que el resto de este archivo
+    (5 min via TWAMP). Si el scheduler tuvo huecos largos sin recolectar
+    (scheduler caido, no el link), el numero puede no reflejar el tiempo
+    real, solo la proporcion de lo que SI se pudo medir -- limitacion
+    conocida, no seria correcto asumir "sin muestra = arriba" ni
+    "sin muestra = caido" sin mas informacion.
+
+    El agregado general (ej. para una tarjeta resumen "Disponibilidad
+    general: 99.94%") se calcula en el frontend como promedio simple
+    sobre los valores no-None de esta lista -- no hay un endpoint aparte
+    para eso, para no duplicar la logica de agregacion en dos lugares.
+    """
+    from django.db import connections
+    from .models import Link
+
+    desde = timezone.now() - timedelta(hours=horas_ventana)
+    sql = """
+        SELECT
+            LEAST(source_device, dest_device)    AS a,
+            GREATEST(source_device, dest_device) AS b,
+            COUNT(*) AS total,
+            SUM(CASE WHEN packet_loss_pct >= 100 THEN 1 ELSE 0 END) AS caidas
+        FROM nc_delay_sample
+        WHERE collected_at >= %s
+        GROUP BY a, b
+    """
+    datos_por_par = {}
+    with connections['backbone'].cursor() as cur:
+        cur.execute(sql, [desde])
+        for a, b, total, caidas in cur.fetchall():
+            datos_por_par[(a, b)] = {'total': total, 'caidas': caidas}
+
+    resultado = []
+    links = Link.objects.select_related('interface_a__device', 'device_b').filter(
+        active=True, device_b__isnull=False)
+    for link in links:
+        par = tuple(sorted([link.interface_a.device.name, link.device_b.name]))
+        datos = datos_por_par.get(par)
+        if not datos or datos['total'] == 0:
+            resultado.append({'link_id': link.id, 'disponibilidad_pct': None, 'muestras': 0})
+            continue
+        disponibilidad = round((1 - datos['caidas'] / datos['total']) * 100, 2)
+        resultado.append({
+            'link_id': link.id,
+            'disponibilidad_pct': disponibilidad,
+            'muestras': datos['total'],
+        })
+
+    return resultado

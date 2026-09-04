@@ -139,3 +139,17 @@ class LinkViewSet(viewsets.ModelViewSet):
         horas = request.query_params.get('horas')
         kwargs = {'horas_ventana': int(horas)} if horas else {}
         return Response(calcular_delay_rafaga(**kwargs))
+
+    @action(detail=False, methods=['get'], url_path='disponibilidad')
+    def disponibilidad(self, request):
+        """
+        % del tiempo sin caida por link, ventana estandar de SLA.
+        ?horas=N para override (default 720 = 30 dias). El agregado
+        general ("Disponibilidad general" en el frontend) se calcula ahi
+        mismo como promedio simple sobre esta lista, no hay un endpoint
+        aparte para el numero agregado.
+        """
+        from .reporting import calcular_disponibilidad
+        horas = request.query_params.get('horas')
+        kwargs = {'horas_ventana': int(horas)} if horas else {}
+        return Response(calcular_disponibilidad(**kwargs))

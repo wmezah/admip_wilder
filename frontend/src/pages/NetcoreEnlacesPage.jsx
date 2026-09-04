@@ -128,6 +128,7 @@ export default function NetcoreEnlacesPage() {
   const [traficoLista, setTraficoLista] = useState([])
   const [kpisLista, setKpisLista] = useState([])
   const [delayRafaga, setDelayRafaga] = useState({})
+  const [dispoLista, setDispoLista] = useState([])
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState('todos')
@@ -141,15 +142,17 @@ export default function NetcoreEnlacesPage() {
       fetch(`${API}/links/trafico/`, { headers: authH() }).then(r => r.json()),
       fetch(`${API}/links/kpis/`, { headers: authH() }).then(r => r.json()),
       fetch(`${API}/links/delay-rafaga/`, { headers: authH() }).then(r => r.json()),
+      fetch(`${API}/links/disponibilidad/`, { headers: authH() }).then(r => r.json()),
     ])
-      .then(([linksRes, estadoRes, traficoRes, kpisRes, rafagaRes]) => {
+      .then(([linksRes, estadoRes, traficoRes, kpisRes, rafagaRes, dispoRes]) => {
         setLinks(linksRes.results || [])
         setEstadoLista(estadoRes || [])
         setTraficoLista(traficoRes || [])
         setKpisLista(kpisRes || [])
         setDelayRafaga(rafagaRes || {})
+        setDispoLista(dispoRes || [])
       })
-      .catch(() => { setLinks([]); setEstadoLista([]); setTraficoLista([]); setKpisLista([]); setDelayRafaga({}) })
+      .catch(() => { setLinks([]); setEstadoLista([]); setTraficoLista([]); setKpisLista([]); setDelayRafaga({}); setDispoLista([]) })
       .finally(() => setLoading(false))
   }
 
@@ -166,6 +169,8 @@ export default function NetcoreEnlacesPage() {
     for (const t of traficoLista) traficoPorLink[t.link_id] = t
     const kpisPorLink = {}
     for (const k of kpisLista) kpisPorLink[k.link_id] = k
+    const dispoPorLink = {}
+    for (const d of dispoLista) dispoPorLink[d.link_id] = d
 
     return links.map(link => {
       const colas = colasPorLink[link.id] || []
@@ -178,14 +183,26 @@ export default function NetcoreEnlacesPage() {
         pctUso: pct,
         kpis: kpisPorLink[link.id] || null,
         rafaga: delayRafaga[link.id] || null,
+        dispo: dispoPorLink[link.id] || null,
       }
     })
-  }, [links, estadoLista, traficoLista, kpisLista, delayRafaga])
+  }, [links, estadoLista, traficoLista, kpisLista, delayRafaga, dispoLista])
 
   const resumen = useMemo(() => {
     const r = { ok: 0, alerta: 0, caido: 0 }
     for (const f of filas) r[f.estado]++
     return r
+  }, [filas])
+
+  // Promedio simple entre los links que SI tienen dato -- ver docstring
+  // de calcular_disponibilidad() en reporting.py sobre por que no hay un
+  // endpoint aparte para este numero agregado.
+  const disponibilidadGeneral = useMemo(() => {
+    const valores = filas
+      .map(f => f.dispo?.disponibilidad_pct)
+      .filter(v => v != null)
+    if (valores.length === 0) return null
+    return valores.reduce((a, b) => a + b, 0) / valores.length
   }, [filas])
 
   const destacados = useMemo(
@@ -224,13 +241,19 @@ export default function NetcoreEnlacesPage() {
       </div>
 
       {/* Resumen */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
         {[['ok', 'OK'], ['alerta', 'Alerta'], ['caido', 'Caído']].map(([key, label]) => (
           <div key={key} style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: '14px 18px' }}>
             <p style={{ fontSize: 12.5, color: '#65676b', margin: '0 0 4px' }}>{label}</p>
             <p style={{ fontSize: 24, fontWeight: 700, margin: 0, color: COLOR_ESTADO[key] }}>{resumen[key]}</p>
           </div>
         ))}
+        <div style={{ background: '#fff', border: '1px solid #2563eb', borderRadius: 10, padding: '14px 18px' }}>
+          <p style={{ fontSize: 12.5, color: '#2563eb', margin: '0 0 4px' }}>Disponibilidad general (30d)</p>
+          <p style={{ fontSize: 24, fontWeight: 700, margin: 0, color: '#2563eb' }}>
+            {disponibilidadGeneral != null ? `${disponibilidadGeneral.toFixed(2)}%` : '—'}
+          </p>
+        </div>
       </div>
 
       {/* Destacados */}
@@ -300,7 +323,7 @@ export default function NetcoreEnlacesPage() {
               <th style={{ padding: '10px 14px' }}>Uso</th>
               <th style={{ padding: '10px 14px' }}>Delay (prom. / ráfaga)</th>
               <th style={{ padding: '10px 14px' }}>Ampliación</th>
-              <th className="col-reportado" style={{ padding: '10px 14px' }}>Reportado</th>
+              <th className="col-dispo" style={{ padding: '10px 14px', textAlign: 'right' }}>Disponibilidad</th>
               <th style={{ padding: '10px 14px' }}>Estado</th>
             </tr>
           </thead>
@@ -328,8 +351,8 @@ export default function NetcoreEnlacesPage() {
         .spin { animation: spin 0.8s linear infinite }
         @keyframes spin { to { transform: rotate(360deg) } }
         @media (max-width: 900px) {
-          .col-reportado { display: none }
           .ampliacion-label { display: none }
+          .col-dispo { display: none }
         }
       `}</style>
     </div>
@@ -337,7 +360,7 @@ export default function NetcoreEnlacesPage() {
 }
 
 function EnlaceRow({ fila, expandido, onToggle, onGuardarPbi }) {
-  const { link, colas, estado, pctUso: pct, kpis, rafaga } = fila
+  const { link, colas, estado, pctUso: pct, kpis, rafaga, dispo } = fila
   return (
     <>
       <tr onClick={onToggle} style={{ borderTop: '1px solid #f0f2f5', cursor: 'pointer' }}>
@@ -371,8 +394,17 @@ function EnlaceRow({ fila, expandido, onToggle, onGuardarPbi }) {
         <td style={{ padding: '8px 14px' }} onClick={e => e.stopPropagation()}>
           <AmpliacionBadge kpis={kpis} />
         </td>
-        <td className="col-reportado" style={{ padding: '8px 14px' }} onClick={e => e.stopPropagation()}>
-          <PbiField link={link} onGuardado={onGuardarPbi} />
+        <td className="col-dispo" style={{ padding: '8px 14px', textAlign: 'right' }}>
+          {dispo?.disponibilidad_pct == null ? (
+            <span style={{ color: '#9ca3af' }}>—</span>
+          ) : (
+            <span style={{
+              fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+              color: dispo.disponibilidad_pct >= 99.9 ? '#16a34a' : dispo.disponibilidad_pct >= 99 ? '#d97706' : '#dc2626',
+            }}>
+              {dispo.disponibilidad_pct.toFixed(2)}%
+            </span>
+          )}
         </td>
         <td style={{ padding: '8px 14px' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: COLOR_ESTADO[estado] }}>
@@ -384,7 +416,7 @@ function EnlaceRow({ fila, expandido, onToggle, onGuardarPbi }) {
       {expandido && (
         <tr>
           <td colSpan={8} style={{ padding: '0 14px 16px', background: '#fafbfc' }}>
-            <DetalleLink link={link} colas={colas} kpis={kpis} rafaga={rafaga} />
+            <DetalleLink link={link} colas={colas} kpis={kpis} rafaga={rafaga} onGuardarPbi={onGuardarPbi} />
           </td>
         </tr>
       )}
@@ -432,18 +464,19 @@ function PbiField({ link, onGuardado }) {
   )
 }
 
-function DetalleLink({ link, colas, kpis, rafaga }) {
+function DetalleLink({ link, colas, kpis, rafaga, onGuardarPbi }) {
   return (
     <div style={{ paddingTop: 4 }}>
       <div style={{
         background: '#fff', border: '1px solid #ececec', borderRadius: 6, padding: '8px 12px',
-        margin: '10px 0', fontSize: 12, color: '#65676b', display: 'flex', gap: 14, flexWrap: 'wrap',
+        margin: '10px 0', fontSize: 12, color: '#65676b', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center',
       }}>
         <span>Equipo <strong style={{ color: '#111827' }}>{link.interface_a_device} → {link.device_b_name || '—'}</strong></span>
         <span>Interfaz <strong style={{ color: '#111827' }}>{link.interface_a_name}</strong></span>
         <span>Capacidad <strong style={{ color: '#111827' }}>{link.capacity_gbps} Gbps</strong></span>
         <span>Umbral delay <strong style={{ color: '#111827' }}>{link.delay_threshold_ms} ms</strong></span>
         <span>Umbral uso <strong style={{ color: '#111827' }}>{link.utilization_threshold_pct ?? '—'}%</strong></span>
+        <span onClick={e => e.stopPropagation()}>Ticket (PBI) <PbiField link={link} onGuardado={onGuardarPbi} /></span>
       </div>
 
       <EnlaceSerieChart
