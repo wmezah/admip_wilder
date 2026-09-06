@@ -275,12 +275,23 @@ export default function NetcoreEnlacesPage() {
 
       {/* Resumen */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
-        {[['ok', 'OK'], ['alerta', 'Alerta'], ['caido', 'Caído']].map(([key, label]) => (
-          <div key={key} style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: '14px 18px' }}>
-            <p style={{ fontSize: 12.5, color: '#65676b', margin: '0 0 4px' }}>{label}</p>
-            <p style={{ fontSize: 24, fontWeight: 700, margin: 0, color: COLOR_ESTADO[key] }}>{resumen[key]}</p>
-          </div>
-        ))}
+        {[['ok', 'OK'], ['alerta', 'Alerta'], ['caido', 'Caído']].map(([key, label]) => {
+          const activo = filtro === key
+          return (
+            <div
+              key={key}
+              onClick={() => setFiltro(activo ? 'todos' : key)}
+              style={{
+                cursor: 'pointer', background: '#fff', borderRadius: 10, padding: '14px 18px',
+                border: activo ? `1px solid ${COLOR_ESTADO[key]}` : '1px solid #dadde1',
+                boxShadow: activo ? `0 0 0 1px ${COLOR_ESTADO[key]}` : 'none',
+              }}
+            >
+              <p style={{ fontSize: 12.5, color: '#65676b', margin: '0 0 4px' }}>{label}</p>
+              <p style={{ fontSize: 24, fontWeight: 700, margin: 0, color: COLOR_ESTADO[key] }}>{resumen[key]}</p>
+            </div>
+          )
+        })}
         <div style={{ background: '#fff', border: '1px solid #2563eb', borderRadius: 10, padding: '14px 18px' }}>
           <p style={{ fontSize: 12.5, color: '#2563eb', margin: '0 0 4px' }}>Disponibilidad general (30d)</p>
           <p style={{ fontSize: 24, fontWeight: 700, margin: 0, color: '#2563eb' }}>
