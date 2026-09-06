@@ -132,6 +132,7 @@ export default function NetcoreEnlacesPage() {
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState('todos')
+  const [filtroAmp, setFiltroAmp] = useState('todos')
   const [expandido, setExpandido] = useState(null)
 
   const cargar = () => {
@@ -213,6 +214,12 @@ export default function NetcoreEnlacesPage() {
   const filasFiltradas = useMemo(() => {
     return filas.filter(f => {
       if (filtro !== 'todos' && f.estado !== filtro) return false
+      if (filtroAmp !== 'todos') {
+        const est = estadoAmpliacion(f.kpis)
+        if (filtroAmp === 'ok' && est !== 'ok') return false
+        if (filtroAmp === 'medio' && est !== 'alerta') return false
+        if (filtroAmp === 'alto' && est !== 'critico') return false
+      }
       if (busqueda) {
         const q = busqueda.toLowerCase()
         const nombre = `${f.link.interface_a_device} ${f.link.device_b_name || ''} ${f.link.interface_a_name}`.toLowerCase()
@@ -220,7 +227,7 @@ export default function NetcoreEnlacesPage() {
       }
       return true
     })
-  }, [filas, filtro, busqueda])
+  }, [filas, filtro, filtroAmp, busqueda])
 
   return (
     <div>
@@ -291,25 +298,28 @@ export default function NetcoreEnlacesPage() {
       )}
 
       {/* Buscador + filtros */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-          <Search size={15} style={{ position: 'absolute', left: 10, top: 10, color: '#9ca3af' }} />
-          <input
-            type="text" value={busqueda} onChange={e => setBusqueda(e.target.value)}
-            placeholder="Buscar por equipo o interfaz..."
-            style={{ width: '100%', padding: '7px 10px 7px 32px', border: '1px solid #dadde1', borderRadius: 8, fontSize: 13, boxSizing: 'border-box' }}
-          />
-        </div>
-        {[['todos', 'Todos'], ['ok', 'Ok'], ['alerta', 'Alerta'], ['caido', 'Caído']].map(([key, label]) => (
-          <button key={key} onClick={() => setFiltro(key)} style={{
-            padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer',
-            border: filtro === key ? '1px solid #1877f2' : '1px solid #dadde1',
-            background: filtro === key ? '#e7f3ff' : '#fff',
-            color: filtro === key ? '#1877f2' : '#374151', fontWeight: filtro === key ? 600 : 400,
-          }}>
-            {label}
-          </button>
-        ))}
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        <Search size={15} style={{ position: 'absolute', left: 10, top: 10, color: '#9ca3af' }} />
+        <input
+          type="text" value={busqueda} onChange={e => setBusqueda(e.target.value)}
+          placeholder="Buscar por equipo o interfaz..."
+          style={{ width: '100%', padding: '7px 10px 7px 32px', border: '1px solid #dadde1', borderRadius: 8, fontSize: 13, boxSizing: 'border-box' }}
+        />
+      </div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+        <SegmentedControl
+          value={filtro} onChange={setFiltro}
+          options={[['todos', 'Todos'], ['ok', 'Ok'], ['alerta', 'Alerta'], ['caido', 'Caído']]}
+        />
+        <SegmentedControl
+          value={filtroAmp} onChange={setFiltroAmp}
+          options={[
+            ['todos', 'Todos'],
+            ['ok', <><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block', marginRight: 5 }} />Dentro de umbral</>],
+            ['medio', <>⚠️ Riesgo medio</>],
+            ['alto', <>🔥 Riesgo alto</>],
+          ]}
+        />
       </div>
 
       {/* Tabla */}
@@ -505,6 +515,38 @@ function DetalleLink({ link, colas, kpis, rafaga, onGuardarPbi }) {
 
 // Tarjeta compacta para un KPI (P95, promedio/pico, % sobre umbral).
 // tono controla el color del valor: 'success' | 'danger' | undefined.
+// Control segmentado: reemplaza las pills sueltas de antes. El estado
+// activo se distingue por fondo blanco + sombra sutil (neutro), NO por
+// color -- así el color rojo/naranja de opciones como "Riesgo alto"
+// sigue significando SOLO severidad, nunca se mezcla con "seleccionado".
+// El contenedor gris + esquinas redondeadas ya comunica "esto es un
+// grupo de filtro" sin necesidad de un rótulo en mayúsculas arriba.
+function SegmentedControl({ value, onChange, options }) {
+  return (
+    <div style={{ display: 'inline-flex', background: '#f3f4f6', borderRadius: 8, padding: 3, gap: 2 }}>
+      {options.map(([key, label]) => {
+        const activo = value === key
+        return (
+          <button
+            key={key}
+            onClick={() => onChange(key)}
+            style={{
+              display: 'flex', alignItems: 'center', cursor: 'pointer', border: 'none',
+              background: activo ? '#fff' : 'none',
+              boxShadow: activo ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+              padding: '6px 14px', borderRadius: 6, fontSize: 12.5,
+              fontWeight: activo ? 600 : 400,
+              color: activo ? '#111827' : '#65676b',
+            }}
+          >
+            {label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function StatCard({ label, value, tono }) {
   const color = tono === 'danger' ? '#dc2626' : tono === 'success' ? '#16a34a' : '#111827'
   return (
