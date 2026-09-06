@@ -321,6 +321,7 @@ export default function NetcoreEnlacesPage() {
               <th className="col-enlace" style={{ padding: '10px 14px', position: 'sticky', left: 38, background: '#fff', zIndex: 2, boxShadow: '2px 0 4px -2px rgba(0,0,0,0.08)' }}>Enlace</th>
               <th style={{ padding: '10px 14px' }}>Capacidad</th>
               <th style={{ padding: '10px 14px' }}>Uso</th>
+              <th className="col-p95" style={{ padding: '10px 14px', textAlign: 'right' }}>P95 (7d)</th>
               <th style={{ padding: '10px 14px' }}>Delay (prom. / ráfaga)</th>
               <th style={{ padding: '10px 14px' }}>Ampliación</th>
               <th className="col-dispo" style={{ padding: '10px 14px', textAlign: 'right' }}>Disponibilidad</th>
@@ -353,6 +354,7 @@ export default function NetcoreEnlacesPage() {
         @media (max-width: 900px) {
           .ampliacion-label { display: none }
           .col-dispo { display: none }
+          .col-p95 { display: none }
         }
       `}</style>
     </div>
@@ -379,6 +381,15 @@ function EnlaceRow({ fila, expandido, onToggle, onGuardarPbi }) {
               </div>
               <span style={{ color: '#65676b', fontSize: 12 }}>{pct.toFixed(1)}%</span>
             </div>
+          )}
+        </td>
+        <td className="col-p95" style={{ padding: '8px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+          {kpis?.p95_gbps == null ? (
+            <span style={{ color: '#9ca3af' }}>—</span>
+          ) : (
+            <span style={{ color: kpis.p95_pct > 90 ? '#dc2626' : '#111827' }}>
+              {kpis.p95_gbps.toFixed(2)} Gbps <span style={{ color: '#9ca3af', fontSize: 11.5 }}>({kpis.p95_pct.toFixed(1)}%)</span>
+            </span>
           )}
         </td>
         <td style={{ padding: '8px 14px', fontSize: 12.5 }}>
