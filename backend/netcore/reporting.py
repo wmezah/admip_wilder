@@ -430,3 +430,120 @@ def calcular_disponibilidad(horas_ventana: int = VENTANA_DISPONIBILIDAD_HORAS) -
         })
 
     return resultado
+
+
+# ─── Reporte de caídos (bajo demanda) ────────────────────────────────────
+# Distinto de calcular_estado_delay: aquella responde "esta caido AHORA",
+# esto responde "para ESTOS links ya sabidos como caidos (el frontend ya
+# los identifico via /estado/), dame el detalle operativo: cuanto se
+# estaba usando, cuanto suele llegar de noche, y desde cuando esta caido".
+# Se pide por link_ids explicito en vez de recalcular "quien esta caido"
+# de nuevo aca -- esa logica ya existe en calcular_estado_delay y no
+# queremos que las dos definiciones de "caido" puedan desalinearse.
+VENTANA_PICO_NOCTURNO_HORAS = 24 * 7  # 7 dias
+HORA_INICIO_NOCTURNO = 18
+HORA_FIN_NOCTURNO = 23
+VENTANA_BUSQUEDA_INICIO_CAIDA_HORAS = 24  # no busca mas atras que esto
+
+
+def calcular_reporte_caidos(link_ids: list[int]) -> list[dict]:
+    """
+    Para cada link_id (se asume que el caller ya confirmo que esta
+    'caido' via /estado/ -- esta funcion no lo vuelve a chequear):
+
+    - uso_actual_gbps / uso_actual_ts: ultima TrafficSample conocida,
+      lo mas cercano a "cuanto se estaba usando en el momento".
+    - pico_nocturno_gbps / pico_nocturno_ts: el maximo real (no
+      prediccion) observado entre HORA_INICIO_NOCTURNO y
+      HORA_FIN_NOCTURNO en los ultimos 7 dias, con el timestamp exacto
+      en que ocurrio.
+    - caido_desde / duracion_minutos: caminando hacia atras en
+      DelaySample desde ahora, buscando donde empezo la racha actual de
+      packet_loss_pct>=100. Si aparece un hueco de mas de 20 minutos
+      entre muestras (falta de datos, no necesariamente recuperacion),
+      corta ahi -- no asume que el link se recupero solo por falta de
+      dato, pero tampoco inventa una duracion mas larga de la que se
+      puede confirmar con muestras reales.
+    """
+    from django.utils import timezone
+    from django.db.models import Q
+    import datetime
+    from .models import Link, TrafficSample, DelaySample
+
+    ahora = timezone.now()
+    resultado = []
+
+    links = Link.objects.select_related('interface_a__device', 'device_b').filter(id__in=link_ids)
+    for link in links:
+        device_name = link.interface_a.device.name
+        iface_name = link.interface_a.name
+        a = device_name
+        b = link.device_b.name if link.device_b else None
+
+        item = {
+            'link_id': link.id,
+            'uso_actual_gbps': None, 'uso_actual_ts': None,
+            'pico_nocturno_gbps': None, 'pico_nocturno_ts': None,
+            'caido_desde': None, 'duracion_minutos': None,
+        }
+
+        # -- uso actual/ultimo --
+        ultima = (
+            TrafficSample.objects
+            .filter(device_name=device_name, interface_name=iface_name)
+            .order_by('-collected_at')
+            .values('collected_at', 'in_rate_avg', 'out_rate_avg')
+            .first()
+        )
+        if ultima:
+            mbps = max(ultima['in_rate_avg'] or 0, ultima['out_rate_avg'] or 0)
+            item['uso_actual_gbps'] = round(mbps / 1000, 2)
+            item['uso_actual_ts'] = ultima['collected_at']
+
+        # -- pico nocturno habitual (7d, 18-23h) --
+        desde_pico = ahora - datetime.timedelta(hours=VENTANA_PICO_NOCTURNO_HORAS)
+        nocturnas = (
+            TrafficSample.objects
+            .filter(
+                device_name=device_name, interface_name=iface_name,
+                collected_at__gte=desde_pico,
+                collected_at__hour__gte=HORA_INICIO_NOCTURNO,
+                collected_at__hour__lt=HORA_FIN_NOCTURNO,
+            )
+            .values_list('collected_at', 'in_rate_avg', 'out_rate_avg')
+        )
+        mejor_mbps, mejor_ts = None, None
+        for ts, in_r, out_r in nocturnas:
+            mbps = max(in_r or 0, out_r or 0)
+            if mejor_mbps is None or mbps > mejor_mbps:
+                mejor_mbps, mejor_ts = mbps, ts
+        if mejor_mbps is not None:
+            item['pico_nocturno_gbps'] = round(mejor_mbps / 1000, 2)
+            item['pico_nocturno_ts'] = mejor_ts
+
+        # -- caido desde / duracion --
+        if b:
+            desde_busqueda = ahora - datetime.timedelta(hours=VENTANA_BUSQUEDA_INICIO_CAIDA_HORAS)
+            muestras = list(
+                DelaySample.objects
+                .filter(collected_at__gte=desde_busqueda)
+                .filter(Q(source_device=a, dest_device=b) | Q(source_device=b, dest_device=a))
+                .order_by('-collected_at')
+                .values_list('collected_at', 'packet_loss_pct')
+            )
+            inicio_racha = None
+            anterior_ts = None
+            for ts, perdida in muestras:
+                if perdida is None or perdida < 100:
+                    break
+                if anterior_ts is not None and (anterior_ts - ts) > datetime.timedelta(minutes=20):
+                    break
+                inicio_racha = ts
+                anterior_ts = ts
+            if inicio_racha is not None:
+                item['caido_desde'] = inicio_racha
+                item['duracion_minutos'] = round((ahora - inicio_racha).total_seconds() / 60)
+
+        resultado.append(item)
+
+    return resultado

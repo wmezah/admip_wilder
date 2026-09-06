@@ -153,3 +153,22 @@ class LinkViewSet(viewsets.ModelViewSet):
         horas = request.query_params.get('horas')
         kwargs = {'horas_ventana': int(horas)} if horas else {}
         return Response(calcular_disponibilidad(**kwargs))
+
+    @action(detail=False, methods=['get'], url_path='caidos')
+    def caidos(self, request):
+        """
+        Detalle operativo (uso actual, pico nocturno habitual 7d, desde
+        cuando esta caido) para links YA identificados como caidos por
+        el frontend via /estado/. Requiere ?ids=1,2,3 -- no vuelve a
+        calcular quien esta caido, solo trae el detalle de los que ya
+        se sabe que lo estan.
+        """
+        from .reporting import calcular_reporte_caidos
+        ids_raw = request.query_params.get('ids', '')
+        try:
+            link_ids = [int(i) for i in ids_raw.split(',') if i.strip()]
+        except ValueError:
+            return Response({'detail': 'ids debe ser una lista de enteros separados por coma'}, status=400)
+        if not link_ids:
+            return Response([])
+        return Response(calcular_reporte_caidos(link_ids))

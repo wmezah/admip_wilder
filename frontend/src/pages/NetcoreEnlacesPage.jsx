@@ -129,6 +129,7 @@ export default function NetcoreEnlacesPage() {
   const [kpisLista, setKpisLista] = useState([])
   const [delayRafaga, setDelayRafaga] = useState({})
   const [dispoLista, setDispoLista] = useState([])
+  const [caidosDetalle, setCaidosDetalle] = useState({})
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
   const [filtro, setFiltro] = useState('todos')
@@ -188,6 +189,31 @@ export default function NetcoreEnlacesPage() {
       }
     })
   }, [links, estadoLista, traficoLista, kpisLista, delayRafaga, dispoLista])
+
+  const idsCaidos = useMemo(
+    () => filas.filter(f => f.estado === 'caido').map(f => f.link.id).sort((a, b) => a - b),
+    [filas]
+  )
+
+  // Trae el detalle SOLO cuando cambia el conjunto de links caídos --
+  // no en cada render, y no para links que ya no lo estan. calcular_reporte_caidos()
+  // asume que quien llama ya sabe que estan caidos (via /estado/, que
+  // es lo que ya calcula 'filas' arriba) -- por eso se le pasan los ids
+  // en vez de que la funcion vuelva a decidir "quien esta caido".
+  useEffect(() => {
+    if (idsCaidos.length === 0) {
+      setCaidosDetalle({})
+      return
+    }
+    fetch(`${API}/links/caidos/?ids=${idsCaidos.join(',')}`, { headers: authH() })
+      .then(r => r.json())
+      .then(data => {
+        const mapa = {}
+        for (const d of (data || [])) mapa[d.link_id] = d
+        setCaidosDetalle(mapa)
+      })
+      .catch(() => setCaidosDetalle({}))
+  }, [idsCaidos.join(',')])
 
   const resumen = useMemo(() => {
     const r = { ok: 0, alerta: 0, caido: 0 }
@@ -321,6 +347,13 @@ export default function NetcoreEnlacesPage() {
           ]}
         />
       </div>
+
+      {filtro === 'caido' && idsCaidos.length > 0 && (
+        <PanelCaidos
+          filas={filas.filter(f => idsCaidos.includes(f.link.id))}
+          detalle={caidosDetalle}
+        />
+      )}
 
       {/* Tabla */}
       <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, overflow: 'auto' }}>
@@ -521,6 +554,74 @@ function DetalleLink({ link, colas, kpis, rafaga, onGuardarPbi }) {
 // sigue significando SOLO severidad, nunca se mezcla con "seleccionado".
 // El contenedor gris + esquinas redondeadas ya comunica "esto es un
 // grupo de filtro" sin necesidad de un rótulo en mayúsculas arriba.
+function fmtHora(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return d.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+function fmtDuracion(min) {
+  if (min == null) return '—'
+  if (min < 60) return `${min}min`
+  const h = Math.floor(min / 60), m = min % 60
+  return m > 0 ? `${h}h ${m}min` : `${h}h`
+}
+
+function PanelCaidos({ filas, detalle }) {
+  const capacidadTotal = filas.reduce((acc, f) => acc + Number(f.link.capacity_gbps), 0)
+  const usoTotal = filas.reduce((acc, f) => {
+    const g = detalle[f.link.id]?.uso_actual_gbps
+    return acc + (g || 0)
+  }, 0)
+
+  return (
+    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 18px', marginBottom: 16 }}>
+      <p style={{ fontSize: 12, color: '#991b1b', margin: '0 0 10px', fontWeight: 600 }}>
+        {filas.length} enlace{filas.length !== 1 ? 's' : ''} caído{filas.length !== 1 ? 's' : ''}
+      </p>
+      <div style={{ display: 'flex', gap: 32, alignItems: 'baseline', marginBottom: 12 }}>
+        <div><span style={{ fontSize: 20, fontWeight: 700, color: '#991b1b' }}>{capacidadTotal.toFixed(2)}</span><span style={{ fontSize: 11.5, color: '#991b1b', marginLeft: 4 }}>Gbps capacidad afectada</span></div>
+        <div><span style={{ fontSize: 20, fontWeight: 700, color: '#991b1b' }}>{usoTotal.toFixed(2)}</span><span style={{ fontSize: 11.5, color: '#991b1b', marginLeft: 4 }}>Gbps en uso al momento del corte</span></div>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+        <thead>
+          <tr style={{ textAlign: 'left', color: '#991b1b', fontSize: 10.5, opacity: 0.85 }}>
+            <th style={{ padding: '4px 8px' }}>Enlace</th>
+            <th style={{ padding: '4px 8px', textAlign: 'right' }}>Capacidad</th>
+            <th style={{ padding: '4px 8px', textAlign: 'right' }}>Uso actual/último</th>
+            <th style={{ padding: '4px 8px', textAlign: 'right' }}>Pico nocturno habitual (7d)</th>
+            <th style={{ padding: '4px 8px' }}>Caído desde</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filas.map(f => {
+            const d = detalle[f.link.id]
+            return (
+              <tr key={f.link.id}>
+                <td style={{ padding: '4px 8px', fontFamily: 'monospace' }}>
+                  {f.link.interface_a_device} ↔ {f.link.device_b_name || '—'}
+                </td>
+                <td style={{ padding: '4px 8px', textAlign: 'right' }}>{Number(f.link.capacity_gbps).toFixed(2)} Gbps</td>
+                <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>
+                  {d?.uso_actual_gbps != null ? `${d.uso_actual_gbps.toFixed(2)} Gbps` : '—'}
+                </td>
+                <td style={{ padding: '4px 8px', textAlign: 'right', fontWeight: 600 }}>
+                  {d?.pico_nocturno_gbps != null ? `${d.pico_nocturno_gbps.toFixed(2)} Gbps · ${fmtHora(d.pico_nocturno_ts)}` : '—'}
+                </td>
+                <td style={{ padding: '4px 8px', color: '#65676b' }}>
+                  {d?.caido_desde ? `${fmtHora(d.caido_desde)} (${fmtDuracion(d.duracion_minutos)})` : '—'}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      <p style={{ fontSize: 11, color: '#991b1b', margin: '8px 2px 0', opacity: 0.75 }}>
+        "Pico nocturno habitual" = valor y hora exacta del máximo real observado entre 18:00-23:00 en los últimos 7 días.
+      </p>
+    </div>
+  )
+}
+
 function SegmentedControl({ value, onChange, options }) {
   return (
     <div style={{ display: 'inline-flex', background: '#f3f4f6', borderRadius: 8, padding: 3, gap: 2 }}>
