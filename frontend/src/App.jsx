@@ -16,6 +16,7 @@ const BackbonePage    = lazy(() => import('./pages/BackbonePage'))
 const BackboneMapa    = lazy(() => import('./pages/BackboneMapa'))
 const NetcoreInterfacesPage = lazy(() => import('./pages/NetcoreInterfacesPage'))
 const NetcoreEnlacesPage = lazy(() => import('./pages/NetcoreEnlacesPage'))
+const NetcoreMapaPage = lazy(() => import('./pages/NetcoreMapaPage'))
 
 // Loading fallback
 function PageLoader() {
@@ -208,6 +209,7 @@ export default function App() {
               <Route path="/backbone/mapa" element={<BackboneMapa />}  />
               <Route path="/netcore/interfaces" element={<NetcoreInterfacesPage />} />
               <Route path="/netcore/enlaces" element={<NetcoreEnlacesPage />} />
+              <Route path="/netcore/mapa" element={<NetcoreMapaPage />} />
               <Route path="*"            element={<Navigate to="/" />} />
             </Routes>
           </Suspense>

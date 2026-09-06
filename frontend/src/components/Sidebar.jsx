@@ -36,6 +36,7 @@ const NAV_GROUPS = [
     items: [
       { label:'Enlaces', icon:Radio, to:'/netcore/enlaces' },
       { label:'Interfaces', icon:Layers, to:'/netcore/interfaces' },
+      { label:'Mapa', icon:Map, to:'/netcore/mapa' },
     ],
   },
   {

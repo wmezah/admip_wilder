@@ -40,6 +40,23 @@ class LinkSerializer(serializers.ModelSerializer):
     interface_b_device = serializers.CharField(source='interface_b.device.name', read_only=True, allow_null=True)
     device_b_name = serializers.CharField(source='device_b.name', read_only=True, allow_null=True)
 
+    # Coordenadas de origen/destino, para que NetcoreMapaPage pueda dibujar
+    # el enlace sin resolver cada Device por separado -- mismo patron y
+    # mismo naming que origen_latitud/destino_latitud en
+    # backbone/serializers.py (BBEnlaceSerializer), a proposito: permite
+    # reusar casi sin cambios la logica de BackboneMapa.jsx (puntoCurvado,
+    # agrupamiento por par, etc.). None si el equipo todavia no tiene
+    # latitude/longitude cargada, o si device_b es null (TWAMP no siempre
+    # resuelve el equipo del otro lado).
+    origen_latitud = serializers.DecimalField(source='interface_a.device.latitude', read_only=True,
+                                               max_digits=9, decimal_places=6)
+    origen_longitud = serializers.DecimalField(source='interface_a.device.longitude', read_only=True,
+                                                max_digits=9, decimal_places=6)
+    destino_latitud = serializers.DecimalField(source='device_b.latitude', read_only=True,
+                                                max_digits=9, decimal_places=6)
+    destino_longitud = serializers.DecimalField(source='device_b.longitude', read_only=True,
+                                                 max_digits=9, decimal_places=6)
+
     class Meta:
         model = Link
         fields = '__all__'
