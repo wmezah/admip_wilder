@@ -1,8 +1,8 @@
 from __future__ import annotations
 """
-backbone/parser_twamptest.py - Parsea el reporte de delay nuevo
+netcore/parser_twamptest.py - Parsea el reporte de delay nuevo
 (PM_IGlogic_ni_data_TwampTest_5), fuente de mas alta frecuencia que
-reemplaza a PM_IGTwamp_5 (parser_twamp.py).
+reemplaza al reporte legacy PM_IGTwamp_5 (ya no existe en el proyecto).
 
 Diferencias clave respecto al reporte viejo (documentadas y CROSS-VALIDADAS
 contra datos reales de produccion antes de escribir este parser, enlace
@@ -13,13 +13,12 @@ rMPLSCoreVillaSalvador5<->rMPLSTumbes2, cola AF12/etc):
 - El delay viene en MICROSEGUNDOS (no ms como podria asumirse por el
   nombre de columna). VALIDADO: 28763.7us / 1000 = 28.76ms, coincide
   exacto con el delay real ya conocido para VillaSalvador5<->Tumbes2 en
-  produccion. Mismo campo _MICRO_TO_MS_FIELDS que ya usa parser_twamp.py
-  para el reporte viejo (que TAMBIEN viene en microsegundos) -- no es
-  una rareza de esta fuente nueva, es consistente con el otro parser.
+  produccion. El reporte legacy que este reemplaza tambien traia el
+  delay en microsegundos -- no es una rareza de esta fuente nueva.
 - El timestamp del ARCHIVO trae sufijo 'Z' (UTC), a diferencia del
-  reporte viejo que viene en hora local de Peru. Se convierte
-  explicitamente UTC -> America/Lima aca (parsepenado como UTC-aware,
-  NO como naive-Lima como hace parser_twamp.py). Confirmado con el mismo
+  reporte viejo que venia en hora local de Peru. Se convierte
+  explicitamente UTC -> America/Lima aca (parseado como UTC-aware, NO
+  como naive-Lima como hacia el reporte legacy). Confirmado con el mismo
   cruce de arriba: el valor de delay coincidio solo asumiendo que el
   CollectionTime del archivo estaba en UTC.
 - 'Testcase Nick Name' mezcla las 8 colas estandar (BE/AF12/AF21/AF31/
@@ -47,7 +46,7 @@ import csv
 import logging
 from datetime import datetime, timezone
 
-logger = logging.getLogger('backbone.parser_twamptest')
+logger = logging.getLogger('netcore.parser_twamptest')
 
 REQUIRED = [
     'CollectionTime', 'GranularityPeriod',
@@ -58,17 +57,17 @@ REQUIRED = [
 # que no la traigan): interfaz de salida real usada por el Source NE para
 # esta sesion TWAMP -- en la practica ya viene como el Eth-Trunk agregado
 # (ej. "Eth-Trunk1"), no una fisica suelta, verificado en muestra real.
-# Se usa para autocompletar BBEnlace.iface_origen automaticamente (ver
-# _actualizar_iface_origen_desde_twamp() en pipeline.py). Solo el lado
-# Source viene poblado en este reporte; Sink Interface Name llega vacio
-# en el 100% de la muestra revisada.
+# Se usa para descubrir/registrar la Interface del lado Source (ver
+# sync_interfaces_from_twamp() en pipeline.py). Solo el lado Source viene
+# poblado en este reporte; Sink Interface Name llega vacio en el 100% de
+# la muestra revisada.
 SOURCE_IFACE_COL = 'Source Interface Name'
 
-# Solo estas 8 colas son validas para bb_delay -- el resto de valores de
-# 'Testcase Nick Name' son pruebas SLA de acceso, no colas (ver docstring).
+# Solo estas 8 colas son validas -- el resto de valores de 'Testcase Nick
+# Name' son pruebas SLA de acceso, no colas (ver docstring).
 COLAS_VALIDAS = {'BE', 'AF12', 'AF21', 'AF31', 'AF41', 'EF', 'CS6', 'CS7'}
 
-# columna CSV -> campo fijo del modelo BBDelay
+# columna CSV -> campo fijo del modelo DelaySample
 KPI_MAP = {
     'Average Two-way Delay':              'delay_avg_ms',
     'Maximum Two-way Delay':              'delay_max_ms',
@@ -106,10 +105,11 @@ def _to_float(value: str):
 
 def _parse_collection_time_utc(raw: str):
     """
-    A diferencia de parser_twamp.py (que asume hora LOCAL de Lima), este
-    reporte trae el timestamp en UTC (confirmado por el sufijo 'Z' del
-    nombre de archivo y cross-validado contra un delay real conocido).
-    Se parsea como UTC y se convierte a America/Lima explicitamente.
+    A diferencia del reporte legacy que este reemplaza (que asumia hora
+    LOCAL de Lima), este reporte trae el timestamp en UTC (confirmado
+    por el sufijo 'Z' del nombre de archivo y cross-validado contra un
+    delay real conocido). Se parsea como UTC y se convierte a
+    America/Lima explicitamente.
     """
     for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%Y%m%d%H%M%S'):
         try:
@@ -128,9 +128,8 @@ def parse_twamptest_csv(content: bytes, filename: str = '', allowed_prefixes=Non
               delay_avg_ms, delay_max_ms, delay_min_ms, jitter_ms,
               packet_loss_pct, extra (dict).
 
-    Filtra por DOS criterios (a diferencia de parser_twamp.py que solo
-    filtra por prefijo):
-      1. Prefijo backbone en AMBOS extremos (source y sink).
+    Filtra por DOS criterios:
+      1. Prefijo core en AMBOS extremos (source y sink).
       2. 'Testcase Nick Name' debe ser una de las 8 colas validas -- se
          descartan las pruebas SLA de acceso nombradas por sitio.
     """
@@ -178,7 +177,7 @@ def parse_twamptest_csv(content: bytes, filename: str = '', allowed_prefixes=Non
             'resource_id':     f"{src}_{dst}_{cola}_{session_id}",
             'collection_time': _parse_collection_time_utc(raw[idx['CollectionTime']].strip()),
             # Ver SOURCE_IFACE_COL arriba. Puede venir vacio; el pipeline
-            # decide que hacer en ese caso (no pisa iface_origen con '').
+            # decide que hacer en ese caso (no pisa el registro con '').
             'source_iface':    raw[idx[SOURCE_IFACE_COL]].strip() if SOURCE_IFACE_COL in idx else '',
         }
 

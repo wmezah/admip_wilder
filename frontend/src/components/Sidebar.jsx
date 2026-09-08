@@ -21,18 +21,7 @@ const NAV_GROUPS = [
     items: [{ label:'CPU Report', icon:Activity, to:'/nce' }],
   },
   {
-    section: 'Backbone / Core', collapsible: true,
-    items: [
-      { label:'Enlaces', icon:Radio, to:'/backbone' },
-      { label:'Mapa',    icon:Map,   to:'/backbone/mapa' },
-    ],
-  },
-  {
-    // Netcore = rediseño del esquema de backbone, todavia en construccion
-    // (ver Fases del rediseno). Seccion separada a proposito -- no es
-    // una pestaña mas de Backbone, es la app nueva que eventualmente lo
-    // reemplaza.
-    section: 'Netcore (v2)', collapsible: true,
+    section: 'Netcore', collapsible: true,
     items: [
       { label:'Enlaces', icon:Radio, to:'/netcore/enlaces' },
       { label:'Interfaces', icon:Layers, to:'/netcore/interfaces' },

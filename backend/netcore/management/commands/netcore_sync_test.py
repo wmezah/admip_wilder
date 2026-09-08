@@ -3,9 +3,9 @@ netcore/management/commands/netcore_sync_test.py
 
 Comando de prueba para netcore/pipeline.py -- corre las funciones de
 sincronizacion de Interface contra un archivo YA DESCARGADO localmente.
-NO toca NCE por SFTP, NO toca la produccion (backbone/pipeline.py sigue
-corriendo exactamente igual). Sirve para validar el puente antes de
-conectarlo al ciclo de recoleccion real (Fase 3).
+NO toca NCE por SFTP, NO escribe nada en produccion salvo con --apply.
+Sirve para validar el puente antes de conectarlo al ciclo de recoleccion
+real (Fase 3).
 
 Dry-run por defecto -- sin --apply, solo MUESTRA que interfaces
 detectaria, no escribe nada en la base.
@@ -27,7 +27,7 @@ class Command(BaseCommand):
                              help='Sin esta bandera es dry-run: solo muestra, no escribe nada')
 
     def handle(self, *args, **options):
-        from backbone.backbone_settings import BACKBONE_DEVICE_PREFIXES
+        from netcore.netcore_settings import DEVICE_PREFIXES
 
         ruta = options['archivo']
         try:
@@ -40,11 +40,11 @@ class Command(BaseCommand):
         tipo = options['tipo']
 
         if tipo == 'twamptest':
-            from backbone.parser_twamptest import parse_twamptest_csv
-            parsed = parse_twamptest_csv(content, fname, BACKBONE_DEVICE_PREFIXES)
+            from netcore.parser_twamptest import parse_twamptest_csv
+            parsed = parse_twamptest_csv(content, fname, DEVICE_PREFIXES)
         else:
-            from backbone.parser_ipinterface import parse_ipinterface_csv
-            parsed = parse_ipinterface_csv(content, fname, BACKBONE_DEVICE_PREFIXES)
+            from netcore.parser_ipinterface import parse_ipinterface_csv
+            parsed = parse_ipinterface_csv(content, fname, DEVICE_PREFIXES)
 
         rows = parsed['rows']
         self.stdout.write(f"Filas parseadas: {len(rows)} (de {parsed.get('rows_total', '?')} totales en el archivo)")

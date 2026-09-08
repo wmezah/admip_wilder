@@ -1,13 +1,12 @@
 from django.db import models
 
 # ─────────────────────────────────────────────────────────────────────────────
-# netcore -- reconstruccion limpia del dominio de "backbone" (app vieja, sigue
-# corriendo sin tocar). Misma conexion MySQL que 'backbone' (ver
-# config/routers.py, alias 'backbone' -> DB backbone_core), tablas nuevas con
-# prefijo nc_ para no chocar con las bb_* existentes.
+# netcore -- unica app de monitoreo de red del proyecto (la app "backbone"
+# que la precedio ya fue eliminada). Usa el alias de conexion 'core' (ver
+# config/routers.py), tablas con prefijo nc_.
 #
-# Diferencias clave respecto al modelo viejo (ver ADR / conversacion que
-# origino este diseno):
+# Diferencias clave respecto al modelo viejo de backbone (ver ADR / conversacion
+# que origino este diseno):
 #   1. INTERFACE es una entidad propia, no un string suelto (iface_origen) ni
 #      una tabla lateral solo-para-detectar-candidatos (BBTrunkObservado).
 #      Catalogo real de interfaces por equipo, poblado tanto por TWAMP como
@@ -64,7 +63,7 @@ class Interface(models.Model):
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='manual')
 
     # Velocidad real de la interfaz en Gbps -- viene de
-    # extra['interface_speed_gbps'] en backbone/parser_ipinterface.py
+    # extra['interface_speed_gbps'] en netcore/parser_ipinterface.py
     # (columna CSV 'Interface Speed'). Antes de este campo, ese dato se
     # parseaba pero se descartaba: netcore_confirm_links.py usaba un
     # --capacidad fijo (default 10.0) para TODOS los links de una corrida,

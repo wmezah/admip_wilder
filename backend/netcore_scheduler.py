@@ -2,22 +2,12 @@
 netcore_scheduler.py - Scheduler de recoleccion propia de netcore.
 
 Corre run_collection_twamptest + run_collection_ipinterface (de
-netcore/pipeline.py) cada 5 minutos, en loop infinito. Mismo patron y
-misma ubicacion que backbone_scheduler.py (raiz de backend/, junto a
-manage.py) -- por consistencia, no por casualidad.
+netcore/pipeline.py) cada 5 minutos, en loop infinito. Unico scheduler
+de recoleccion del proyecto (backbone y su scheduler fueron eliminados,
+Fase 8 completada).
 
 Uso:
   nohup python netcore_scheduler.py > netcore_scheduler.log 2>&1 &
-
-IMPORTANTE -- costo aceptado durante la transicion: mientras backbone
-siga en produccion (su frontend /backbone todavia depende de
-bb_delay/bb_trafico), este scheduler corre EN PARALELO a
-backbone_scheduler.py, y ambos descargan los MISMOS archivos de NCE por
-su cuenta -- duplica la carga de descarga contra el servidor NCE. Es un
-costo temporal, aceptado a cambio de que netcore tenga un pipeline 100%
-independiente desde ya (ver conversacion sobre el objetivo final de
-borrar backbone). Se deja de pagar este costo el dia que backbone se
-apague (Fase 8) y solo quede corriendo este scheduler.
 """
 import os
 import time

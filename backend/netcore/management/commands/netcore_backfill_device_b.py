@@ -19,7 +19,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         from netcore.netcore_settings import DEVICE_PREFIXES
-        from backbone.parser_twamptest import parse_twamptest_csv
+        from netcore.parser_twamptest import parse_twamptest_csv
         from netcore.models import Device, Link
 
         ruta = options['archivo']

@@ -1,12 +1,9 @@
 """
 netcore/reporting.py - Calculos de estado/trafico para el frontend de netcore.
 
-Mismo criterio de negocio que backbone/reporting.py (persistencia de N
-muestras, ventana de tiempo acotada para no escanear tablas completas,
-pico real via Max() sobre las muestras de 5 min en vez de columnas
-siempre-vacias) -- adaptado al esquema nuevo: Link.device_b (agregado
-justo para esto, ver conversacion) reemplaza a BBEnlace.destino, y
-Link.interface_a reemplaza a iface_origen.
+Criterio de negocio: persistencia de N muestras, ventana de tiempo
+acotada para no escanear tablas completas, pico real via Max() sobre
+las muestras de 5 min en vez de columnas siempre-vacias.
 """
 # Necesario para que `dict | None` (mas abajo, en obtener_serie_enlace)
 # no reviente en produccion: ese servidor Linux corre Python 3.9, y la
@@ -27,8 +24,7 @@ VENTANA_ESTADO_DELAY_HORAS = 2
 VENTANA_TRAFICO_ENLACE_HORAS = 24
 N_MUESTRAS_PERSISTENCIA = 3
 
-# Mismo patron de CTE que _SQL_ULTIMAS_MUESTRAS en backbone/reporting.py,
-# sobre nc_delay_sample en vez de bb_delay.
+# CTE sobre nc_delay_sample.
 _SQL_ULTIMAS_MUESTRAS = """
     WITH pair_cola_time AS (
         SELECT
@@ -62,7 +58,7 @@ def calcular_estado_delay(
     horas_ventana: int = VENTANA_ESTADO_DELAY_HORAS,
 ) -> list[dict]:
     """
-    Regla (identica a backbone): un link+cola entra en 'alerta' solo si
+    Regla: un link+cola entra en 'alerta' solo si
     las ultimas N muestras consecutivas estan TODAS por encima del
     delay_threshold_ms configurado. 100% de perdida en la ultima muestra
     = 'caido'. Solo Links con device_b conocido pueden evaluarse (sin
@@ -74,7 +70,7 @@ def calcular_estado_delay(
     desde = timezone.now() - timedelta(hours=horas_ventana)
 
     muestras = {}
-    with connections['backbone'].cursor() as cur:
+    with connections['core'].cursor() as cur:
         cur.execute(_SQL_ULTIMAS_MUESTRAS, [desde, n_muestras])
         for a, b, cola, rn, ct, delay, perdida in cur.fetchall():
             muestras.setdefault((a, b, cola), []).append({
@@ -128,11 +124,11 @@ def calcular_trafico_por_enlace(horas_ventana: int = VENTANA_TRAFICO_ENLACE_HORA
     """
     Trafico average/pico por link, cruzando con nc_traffic_sample via
     resource = "{interface_a.device.name}/{interface_a.name}" -- solo
-    ese lado se mide (mismo criterio que backbone: TWAMP/telemetria solo
+    ese lado se mide (TWAMP/telemetria solo
     identifican con certeza la interfaz del lado que reporta).
 
     Pico = Max(in_rate_avg)/Max(out_rate_avg) sobre las muestras de 5 min
-    ya guardadas -- mismo fix que backbone (las columnas "Maximum" del
+    ya guardadas -- las columnas "Maximum" del
     reporte de origen vienen siempre vacias).
     """
     from django.db.models import Avg, Max, Count
@@ -201,7 +197,7 @@ def obtener_serie_enlace(link_id: int) -> dict | None:
     """
     Serie de tiempo completa (sin filtro de ventana) de delay por cola y
     trafico in/out para UN link -- se llama una sola vez al abrir el
-    detalle, no en cada carga del listado (mismo criterio que backbone).
+    detalle, no en cada carga del listado.
     """
     from django.db.models import Q, Max
     from .models import Link, DelaySample, TrafficSample
@@ -347,7 +343,7 @@ def calcular_delay_rafaga(horas_ventana: int = 24) -> dict:
         GROUP BY a, b
     """
     datos_por_par = {}
-    with connections['backbone'].cursor() as cur:
+    with connections['core'].cursor() as cur:
         cur.execute(sql, [desde])
         for a, b, promedio, rafaga in cur.fetchall():
             datos_por_par[(a, b)] = {
@@ -408,7 +404,7 @@ def calcular_disponibilidad(horas_ventana: int = VENTANA_DISPONIBILIDAD_HORAS) -
         GROUP BY a, b
     """
     datos_por_par = {}
-    with connections['backbone'].cursor() as cur:
+    with connections['core'].cursor() as cur:
         cur.execute(sql, [desde])
         for a, b, total, caidas in cur.fetchall():
             datos_por_par[(a, b)] = {'total': total, 'caidas': caidas}

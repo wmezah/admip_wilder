@@ -12,7 +12,7 @@ Para cada Link:
   2. Si no, busca el TrafficSample mas reciente que matchee
      device_name=interface_a.device.name e interface_name=interface_a.name,
      y lee extra['interface_speed_gbps'] -- mismo campo que ya trae
-     backbone/parser_ipinterface.py. Si lo encuentra, ADEMAS puebla
+     netcore/parser_ipinterface.py. Si lo encuentra, ADEMAS puebla
      interface_a.speed_gbps (para no tener que repetir esta busqueda cada
      vez, y para que netcore_confirm_links.py lo use en runs futuros).
   3. Si ninguna de las dos tiene dato, se deja el link como esta y se

@@ -12,8 +12,6 @@ const SpareList       = lazy(() => import('./pages/SpareList'))
 const ImportPage      = lazy(() => import('./pages/ImportPage'))
 const CatalogPage     = lazy(() => import('./pages/CatalogPage'))
 const UsersPage       = lazy(() => import('./pages/UsersPage'))
-const BackbonePage    = lazy(() => import('./pages/BackbonePage'))
-const BackboneMapa    = lazy(() => import('./pages/BackboneMapa'))
 const NetcoreInterfacesPage = lazy(() => import('./pages/NetcoreInterfacesPage'))
 const NetcoreEnlacesPage = lazy(() => import('./pages/NetcoreEnlacesPage'))
 const NetcoreMapaPage = lazy(() => import('./pages/NetcoreMapaPage'))
@@ -205,8 +203,6 @@ export default function App() {
               <Route path="/import"      element={<ImportPage />}      />
               <Route path="/catalogo"    element={<CatalogPage />}     />
               <Route path="/usuarios"    element={<UsersPage />}       />
-              <Route path="/backbone"    element={<BackbonePage />}    />
-              <Route path="/backbone/mapa" element={<BackboneMapa />}  />
               <Route path="/netcore/interfaces" element={<NetcoreInterfacesPage />} />
               <Route path="/netcore/enlaces" element={<NetcoreEnlacesPage />} />
               <Route path="/netcore/mapa" element={<NetcoreMapaPage />} />

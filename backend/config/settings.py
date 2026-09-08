@@ -25,7 +25,6 @@ INSTALLED_APPS = [
     # Apps locales — agrega nuevos aplicativos aquí
     'spare',
     'nce',
-    'backbone',
     'netcore',
     'rest_framework_simplejwt',
     'users',
@@ -86,7 +85,7 @@ DATABASES = {
             'charset': 'utf8mb4',
         },
     },
-    'backbone': {
+    'core': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': os.getenv('BACKBONE_DB_NAME', 'backbone_core'),
         'USER': os.getenv('BACKBONE_DB_USER', 'backbone'),

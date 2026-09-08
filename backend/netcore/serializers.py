@@ -32,8 +32,7 @@ class InterfaceSerializer(serializers.ModelSerializer):
 
 class LinkSerializer(serializers.ModelSerializer):
     # Nombres resueltos de las interfaces/equipos -- para que el frontend
-    # no tenga que resolver cada FK por separado (mismo criterio que
-    # BBEnlaceSerializer en backbone/serializers.py).
+    # no tenga que resolver cada FK por separado.
     interface_a_name = serializers.CharField(source='interface_a.name', read_only=True)
     interface_a_device = serializers.CharField(source='interface_a.device.name', read_only=True)
     interface_b_name = serializers.CharField(source='interface_b.name', read_only=True, allow_null=True)

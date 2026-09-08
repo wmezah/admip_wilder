@@ -6,8 +6,7 @@ class NCERouter:
 
     ROUTE_MAP = {
         'nce': 'nce',
-        'backbone': 'backbone',
-        'netcore': 'backbone',
+        'netcore': 'core',
         # 'nueva_app': 'nueva_db',
     }
 

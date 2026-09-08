@@ -1,22 +1,22 @@
 from __future__ import annotations
 """
-backbone/parser_ipinterface.py - Parsea el reporte de trafico nuevo
+netcore/parser_ipinterface.py - Parsea el reporte de trafico nuevo
 (PM_IGlogic_ni_data_IPInterface_5), fuente de mas alta frecuencia que
-reemplaza a PM_IG27_15 (parser_traffic.py).
+reemplaza al reporte legacy PM_IG27_15 (ya no existe en el proyecto).
 
 Diferencias clave respecto al reporte viejo (documentadas y CROSS-VALIDADAS
 contra datos reales de produccion antes de escribir este parser, enlace
 rMPLSCoreVillaSalvador5<->rMPLSTumbes2, interfaz Eth-Trunk60):
 
 - Granularidad 5 min en vez de 15 min, ~5 min de retraso real en vez de ~1h.
-- Trae TODOS los equipos del NCE (no solo backbone), igual que TWAMP -> se
-  filtra por BACKBONE_DEVICE_PREFIXES en el parser (mismo criterio que
-  parser_traffic.py). El segundo filtro, por iface_origen ya configurado
-  (_resources_configurados()), se aplica despues en el pipeline, no aca
-  -- mismo orden que ya usa pipeline_traffic.py, para no duplicar logica.
+- Trae TODOS los equipos del NCE (no solo core), igual que TWAMP -> se
+  filtra por DEVICE_PREFIXES en el parser. El segundo filtro, por
+  iface_origen ya configurado (_resources_configurados()), se aplica
+  despues en el pipeline, no aca -- mismo orden que usa
+  run_collection_ipinterface() en pipeline.py, para no duplicar logica.
 - Trae 'Interface Speed' (bps) por fila: se usa para autocompletar
   capacidad_gbps del enlace. Se expone en extra['interface_speed_gbps']
-  para que el pipeline decida como/cuando actualizar BBEnlace (decision
+  para que el pipeline decida como/cuando actualizar el enlace (decision
   de producto: SIEMPRE se sobreescribe con el valor mas reciente).
 - Los campos 'Maximum ...' y 'Peak ...' de este reporte vienen SIEMPRE
   vacios o iguales al average (verificado en una muestra real completa:
@@ -31,26 +31,26 @@ rMPLSCoreVillaSalvador5<->rMPLSTumbes2, interfaz Eth-Trunk60):
 PENDIENTE DE VALIDAR ANTES DE ACTIVAR EN PRODUCCION (enabled=True):
 El CollectionTime de este reporte NO trae sufijo 'Z' en el nombre de
 archivo (a diferencia de TwampTest, que si lo trae), lo que sugiere que
-viene en hora local de Peru igual que PM_IG27_15 -- se asume ese mismo
-comportamiento aca (ver parser_traffic.py, mismo bug ya corregido una vez
-para TWAMP y trafico). PERO esto es una inferencia por convencion de
-nombre de archivo, no una confirmacion directa como la que si se hizo
-para TwampTest (microsegundos vs ms, validado contra delay real conocido).
-Antes de prender este parser en produccion, correr un ciclo real y
-comparar el timestamp resultante contra la hora de pared conocida del
-archivo, igual que se hizo para el otro caso.
+viene en hora local de Peru -- se asume ese mismo comportamiento aca
+(mismo tipo de bug de zona horaria ya corregido una vez para TWAMP, ver
+_listar_todos_utc_aware() en pipeline.py). PERO esto es una inferencia
+por convencion de nombre de archivo, no una confirmacion directa como la
+que si se hizo para TwampTest (microsegundos vs ms, validado contra
+delay real conocido). Antes de prender este parser en produccion, correr
+un ciclo real y comparar el timestamp resultante contra la hora de pared
+conocida del archivo, igual que se hizo para el otro caso.
 """
 import csv
 import logging
 from datetime import datetime
 
-logger = logging.getLogger('backbone.parser_ipinterface')
+logger = logging.getLogger('netcore.parser_ipinterface')
 
 REQUIRED = [
     'DeviceName', 'ResourceName', 'CollectionTime', 'GranularityPeriod',
 ]
 
-# columna CSV -> campo fijo del modelo BBTrafico
+# columna CSV -> campo fijo del modelo TrafficSample
 # NOTA: 'Maximum ...' deliberadamente NO esta mapeado (ver docstring).
 KPI_MAP = {
     'Average Inbound Rate':                    'in_rate_avg',
@@ -71,8 +71,8 @@ EXTRA_COLS = {
 }
 _BPS_TO_GBPS_EXTRA = {'interface_speed_gbps'}
 
-# Mismo criterio de zona horaria que parser_traffic.py -- ver docstring
-# de arriba sobre el pendiente de validacion para ESTE reporte especifico.
+# Ver docstring de arriba sobre el pendiente de validacion de zona
+# horaria para este reporte especifico.
 try:
     from zoneinfo import ZoneInfo
     _LIMA_TZ = ZoneInfo("America/Lima")
@@ -92,8 +92,8 @@ def _parse_collection_time(raw: str):
     for fmt in ('%Y-%m-%d %H:%M:%S', '%Y/%m/%d %H:%M:%S', '%Y%m%d%H%M%S'):
         try:
             naive = datetime.strptime(raw.strip(), fmt)
-            # naive se asume en hora de Lima (mismo criterio que
-            # parser_traffic.py) -- PENDIENTE DE VALIDAR, ver docstring.
+            # naive se asume en hora de Lima -- PENDIENTE DE VALIDAR, ver
+            # docstring del modulo.
             if hasattr(_LIMA_TZ, "localize"):
                 # pytz fallback
                 return _LIMA_TZ.localize(naive)
@@ -110,10 +110,10 @@ def parse_ipinterface_csv(content: bytes, filename: str = '', allowed_prefixes=N
               in_rate_avg, out_rate_avg, in_util_avg_pct, out_util_avg_pct,
               max_rate (siempre None, ver docstring), max_util_pct (idem),
               extra (dict, incluye interface_speed_gbps si vino en el CSV).
-    Solo conserva filas donde el equipo empieza con un prefijo backbone
-    (BACKBONE_DEVICE_PREFIXES). El filtro adicional por iface_origen
+    Solo conserva filas donde el equipo empieza con un prefijo core
+    (DEVICE_PREFIXES en netcore). El filtro adicional por iface_origen
     configurado se aplica despues, en el pipeline (run_collection_ipinterface),
-    no en este parser -- mismo orden que ya usa pipeline_traffic.py.
+    no en este parser.
     """
     allowed_prefixes = tuple(allowed_prefixes or ('rMPLS', 'rHUB', 'rCore'))
 
@@ -123,8 +123,7 @@ def parse_ipinterface_csv(content: bytes, filename: str = '', allowed_prefixes=N
         logger.warning("Archivo muy corto: %s", filename)
         return {'rows': [], 'rows_total': 0, 'rows_filtered': 0}
 
-    # Igual que parser_traffic.py: la primera linea es un titulo, la
-    # segunda es el header real.
+    # La primera linea del CSV es un titulo, la segunda es el header real.
     headers = [h.strip() for h in next(csv.reader([lines[1]]))]
     missing = [c for c in REQUIRED if c not in headers]
     if missing:
@@ -153,13 +152,14 @@ def parse_ipinterface_csv(content: bytes, filename: str = '', allowed_prefixes=N
             'device_name':     dname,
             # Compuesto "device_name/interfaz", NO solo la interfaz --
             # asi es como ya lo espera _resources_configurados() en
-            # pipeline_traffic.py (mismo formato que usa BBTrafico.resource
-            # en todo el sistema, ver calcular_trafico_por_enlace() en
-            # reporting.py). El ResourceName crudo de este reporte viene
-            # SOLO como nombre de interfaz (ej. "Eth-Trunk60"), a diferencia
-            # de PM_IG27_15 cuyo ResourceName aparentemente ya viene
-            # compuesto -- se normaliza aca para que ambas fuentes escriban
-            # el mismo formato en bb_trafico.resource.
+            # netcore/pipeline.py (mismo formato que usa
+            # TrafficSample.resource en todo el sistema, ver
+            # calcular_trafico_por_enlace() en reporting.py). El
+            # ResourceName crudo de este reporte viene SOLO como nombre
+            # de interfaz (ej. "Eth-Trunk60"), a diferencia de PM_IG27_15
+            # cuyo ResourceName aparentemente ya venia compuesto -- se
+            # normaliza aca para escribir siempre el mismo formato en
+            # TrafficSample.resource.
             'resource':        f"{dname}/{raw[idx['ResourceName']].strip()}",
             'collection_time': _parse_collection_time(raw[idx['CollectionTime']].strip()),
         }

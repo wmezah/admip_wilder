@@ -1,16 +1,15 @@
 """
 netcore/pipeline.py
 
-Puente entre los parsers YA EXISTENTES de la app 'backbone'
-(parser_twamptest.py, parser_ipinterface.py -- se siguen usando tal cual,
-sin reescribir la logica de parseo) y el esquema nuevo de netcore.
+Puente entre los parsers de netcore (parser_twamptest.py,
+parser_ipinterface.py) y el esquema de datos de netcore.
 
 Registra cada interfaz descubierta en Interface. A diferencia del modelo
-viejo (iface_origen en BBEnlace, con la permutacion origen/destino segun
-quien inicia la sesion TWAMP -- ver _actualizar_iface_origen_desde_twamp
-en backbone/pipeline.py), aca no hace falta ninguna permutacion: una
-interfaz simplemente pertenece a un Device. No existe el concepto de
-"origen de un enlace" a este nivel, asi que no hay nada que decidir.
+viejo de la app backbone (ya eliminada) -- iface_origen en BBEnlace, con
+la permutacion origen/destino segun quien inicia la sesion TWAMP -- aca
+no hace falta ninguna permutacion: una interfaz simplemente pertenece a
+un Device. No existe el concepto de "origen de un enlace" a este nivel,
+asi que no hay nada que decidir.
 
 Optimizado para correr en el ciclo de recoleccion real (cada 5 min, ver
 Fase 3): con ~17,000 interfaces conocidas, hacer una consulta+escritura
@@ -72,7 +71,7 @@ def _sincronizar(pares: set[tuple[str, str]], source: str) -> int:
 def sync_interfaces_from_twamp(rows: list[dict]) -> int:
     """
     A partir de las rows ya parseadas por parser_twamptest.py (mismo
-    formato que ya consume backbone/pipeline.py), registra en Interface
+    formato de fila que devuelven los parsers), registra en Interface
     el trunk que TWAMP reporto para el equipo que INICIA la sesion
     (source_device) -- TWAMP solo reporta la interfaz de ese lado, nunca
     la del Sink (ver docstring de parser_twamptest.py). Retorna cuantas
@@ -112,7 +111,7 @@ def sync_interfaces_from_traffic(rows: list[dict]) -> int:
 def sync_speed_from_traffic(rows: list[dict]) -> int:
     """
     Puebla/actualiza Interface.speed_gbps con 'Interface Speed' del CSV
-    (extra['interface_speed_gbps'], ver backbone/parser_ipinterface.py).
+    (extra['interface_speed_gbps'], ver parser_ipinterface.py).
 
     Corre sobre TODAS las rows del archivo, no solo las que ya pertenecen
     a un Link confirmado -- mismo razonamiento que sync_interfaces_from_traffic:
@@ -164,14 +163,10 @@ def sync_speed_from_traffic(rows: list[dict]) -> int:
 
 
 # ─── Recoleccion propia (Fase 6) ────────────────────────────────────────────
-# A partir de aca, netcore deja de depender del pipeline de 'backbone' para
-# tener datos frescos: se conecta a NCE por su cuenta, reutilizando los
-# parsers de 'backbone' (parser_twamptest.py, parser_ipinterface.py -- solo
-# la logica de parseo de CSV, sin dependencia de modelos/pipeline de
-# backbone) hasta que se migren a netcore antes de la Fase 8. El enganche
-# temporal que corre en backbone/pipeline.py (Fase 3) puede convivir con
-# esto sin problema -- ambos solo llaman a sync_interfaces_from_*(), que
-# es idempotente.
+# netcore se conecta a NCE por su cuenta (parser_twamptest.py,
+# parser_ipinterface.py, ambos ya viven en este mismo paquete) -- pipeline
+# 100% independiente, sin ninguna dependencia de la app backbone (Fase 8
+# completada: backbone fue eliminada del proyecto).
 
 import logging
 import posixpath
@@ -185,7 +180,7 @@ def _listar_todos_utc_aware(col, pm_code: str) -> list[str]:
     Lista TODOS los archivos del pm_code, revisando tanto la carpeta de
     "hoy" como la de "mañana" (calendario Lima) -- las fuentes nuevas
     organizan sus carpetas remotas por fecha UTC, no por fecha de Lima.
-    Mismo fix que ya se aplico en backbone/pipeline.py tras un bug real
+    Mismo fix aplicado tras un bug real
     en produccion (~4h de brecha en la recoleccion entre las 19:00 y las
     23:59 hora Lima). Ver ese archivo para el detalle completo.
     """
@@ -217,7 +212,7 @@ def _resources_configurados() -> set[str]:
     Devuelve "device_name/interface_name" para cada interfaz que ya forma
     parte de un Link activo (interface_a o interface_b) -- solo el
     trafico de esas interfaces se guarda en TrafficSample. Mismo criterio
-    de fondo que _resources_configurados() en backbone/pipeline_traffic.py:
+    de fondo: filtro por interfaz configurada --
     sin este filtro, TrafficSample crece sin control (17,000+ interfaces
     conocidas x ~288 muestras/dia cada una es insostenible) cuando en la
     practica solo interesan las que forman parte de un enlace confirmado.
@@ -236,18 +231,17 @@ def _resources_configurados() -> set[str]:
 
 def run_collection_twamptest(dry_run: bool = False, local_files: Optional[dict] = None) -> list[dict]:
     """
-    Recoleccion propia de TWAMP para netcore -- escribe DelaySample (no
-    BBDelay). Sin filtro por interfaz configurada: el delay se guarda
-    para todos los pares core-core, igual que ya hace backbone con
-    bb_delay (el problema de volumen sin control es especifico de
-    trafico/interfaces, ver _resources_configurados()).
+    Recoleccion propia de TWAMP para netcore -- escribe DelaySample.
+    Sin filtro por interfaz configurada: el delay se guarda para todos
+    los pares core-core (el problema de volumen sin control es
+    especifico de trafico/interfaces, ver _resources_configurados()).
     """
     from .netcore_settings import (
         NCE_HOST, NCE_USER, NCE_PASSWORD, NCE_BASE_DIR_TWAMP, NCE_PORT,
         DEVICE_PREFIXES, PM_CODE_TWAMPTEST,
     )
     from nce.collector import NCECollector
-    from backbone.parser_twamptest import parse_twamptest_csv
+    from .parser_twamptest import parse_twamptest_csv
     from .models import DelaySample, CollectionLog
 
     summary = []
@@ -256,8 +250,8 @@ def run_collection_twamptest(dry_run: bool = False, local_files: Optional[dict] 
         try:
             parsed = parse_twamptest_csv(content, fname, DEVICE_PREFIXES)
 
-            # Descubrimiento de interfaces -- idempotente, seguro correr
-            # aunque backbone/pipeline.py tambien lo llame en paralelo.
+            # Descubrimiento de interfaces -- idempotente, seguro de
+            # llamar en cada ciclo aunque la interfaz ya exista.
             if not dry_run and parsed["rows"]:
                 try:
                     sync_interfaces_from_twamp(parsed["rows"])
@@ -381,7 +375,7 @@ def run_collection_ipinterface(dry_run: bool = False, local_files: Optional[dict
     Recoleccion propia de telemetria IPInterface para netcore -- escribe
     TrafficSample. La sincronizacion de interfaces (sync_interfaces_from_traffic)
     corre ANTES del filtro de _resources_configurados(), a proposito --
-    ver el mismo razonamiento en backbone/pipeline_traffic.py: filtrar
+    mismo razonamiento: filtrar
     primero volveria circular el descubrimiento de interfaces nuevas.
     """
     from .netcore_settings import (
@@ -389,7 +383,7 @@ def run_collection_ipinterface(dry_run: bool = False, local_files: Optional[dict
         DEVICE_PREFIXES, PM_CODE_IPINTERFACE,
     )
     from nce.collector import NCECollector
-    from backbone.parser_ipinterface import parse_ipinterface_csv
+    from .parser_ipinterface import parse_ipinterface_csv
     from .models import TrafficSample, CollectionLog
 
     summary = []
@@ -518,7 +512,7 @@ def obtener_candidatos_links(rows: list[dict]) -> list[dict]:
     equipos conectados son el mismo enlace fisico sin importar quien
     inicio la sesion TWAMP).
 
-    A diferencia de obtener_candidatos() en backbone/reporting.py (que
+    A diferencia de un enfoque que
     escanea todo bb_delay historico), esto trabaja sobre las rows de UN
     archivo recien parseado -- mas simple, y suficiente porque el trunk
     (source_iface) solo esta disponible aca, nunca se persiste por

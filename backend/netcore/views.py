@@ -10,7 +10,7 @@ from .models import Device, Interface, Link
 from .serializers import DeviceSerializer, InterfaceSerializer, LinkSerializer
 
 
-# ─── Paginación flexible (mismo patrón que backbone/spare) ────────────────────
+# ─── Paginación flexible (mismo patrón que spare) ──────────────────────────────
 class FlexPagePagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = 'page_size'
