@@ -131,13 +131,15 @@ function EstadoVacio({ muestras, mensaje }) {
   )
 }
 
-function EnlaceSerieChart({ linkId, capacidadGbps, umbralDelay, umbralUso, colas: colasEstado, kpis, rafaga }) {
+function EnlaceSerieChart({ linkId, capacidadGbps, umbralDelay, umbralUso, colas: colasEstado, kpis, rafaga, dispo }) {
   const [serie, setSerie] = useState(null)
   const [loading, setLoading] = useState(true)
   const [rangeMode, setRangeMode] = useState('1M')
   const [tab, setTab] = useState('delay')
   const [colasOcultas, setColasOcultas] = useState({})
   const [traficoOculto, setTraficoOculto] = useState({})
+  const [dispoDiaria, setDispoDiaria] = useState(null)
+  const [dispoAnual, setDispoAnual] = useState(null)
   const umbralUsoNum = Number(umbralUso) || 80
 
   useEffect(() => {
@@ -150,6 +152,32 @@ function EnlaceSerieChart({ linkId, capacidadGbps, umbralDelay, umbralUso, colas
       .finally(() => { if (activo) setLoading(false) })
     return () => { activo = false }
   }, [linkId])
+
+  // Disponibilidad diaria/anual -- endpoints propios, ya precalculados por
+  // netcore_scheduler.py (no disparan ningun calculo pesado en vivo). Se
+  // piden aparte de /serie/ porque son datos de una naturaleza distinta
+  // (agregados por dia, no muestras crudas).
+  useEffect(() => {
+    let activo = true
+    fetch(`${API}/links/${linkId}/disponibilidad-diaria/?dias=30`, { headers: authH() })
+      .then(r => r.json())
+      .then(d => { if (activo) setDispoDiaria(d) })
+      .catch(() => { if (activo) setDispoDiaria([]) })
+    fetch(`${API}/links/${linkId}/disponibilidad-anual/`, { headers: authH() })
+      .then(r => r.json())
+      .then(d => { if (activo) setDispoAnual(d) })
+      .catch(() => { if (activo) setDispoAnual(null) })
+    return () => { activo = false }
+  }, [linkId])
+
+  const dispoChartData = useMemo(() => {
+    if (!dispoDiaria) return []
+    return dispoDiaria.map(d => ({
+      fecha: d.fecha,
+      diaLabel: new Date(d.fecha + 'T00:00:00').toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit' }),
+      pct: d.disponibilidad_pct,
+    }))
+  }, [dispoDiaria])
 
   const { delayDataCompleta, colas, traficoDataCompleta } = useMemo(() => {
     if (!serie) return { delayDataCompleta: [], colas: [], traficoDataCompleta: [] }
@@ -212,6 +240,7 @@ function EnlaceSerieChart({ linkId, capacidadGbps, umbralDelay, umbralUso, colas
         <div>
           <button onClick={() => setTab('delay')} style={tabStyle(tab === 'delay')}>Delay por cola</button>
           <button onClick={() => setTab('trafico')} style={tabStyle(tab === 'trafico')}>Tráfico in/out</button>
+          <button onClick={() => setTab('disponibilidad')} style={tabStyle(tab === 'disponibilidad')}>Disponibilidad</button>
         </div>
         <div style={{ display: 'flex', gap: 3, background: '#f3f4f6', padding: 3, borderRadius: 8, border: '0.5px solid #e5e7eb', marginBottom: 6 }}>
           {['1D', '3D', '1S', '1M'].map(r => (
@@ -295,7 +324,7 @@ function EnlaceSerieChart({ linkId, capacidadGbps, umbralDelay, umbralUso, colas
             </ResponsiveContainer>
           )}
         </>
-      ) : (
+      ) : tab === 'trafico' ? (
         <>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
             <StatCard
@@ -342,6 +371,36 @@ function EnlaceSerieChart({ linkId, capacidadGbps, umbralDelay, umbralUso, colas
             </ResponsiveContainer>
           )}
         </>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+            <StatCard
+              label="Disponibilidad (30d, en vivo)"
+              value={dispo?.disponibilidad_pct != null ? `${dispo.disponibilidad_pct.toFixed(2)}%` : '—'}
+              tono={dispo?.disponibilidad_pct != null ? (dispo.disponibilidad_pct >= 99.9 ? 'success' : dispo.disponibilidad_pct >= 99 ? undefined : 'danger') : undefined}
+            />
+            <StatCard
+              label={`Promedio anual (${new Date().getFullYear()})`}
+              value={dispoAnual != null ? `${dispoAnual}%` : '—'}
+            />
+          </div>
+          <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 10px' }}>
+            Curva diaria -- precalculada una vez al día, no distingue todavía caídas por mantenimiento planificado de caídas reales.
+          </p>
+          {!dispoChartData.length ? (
+            <EstadoVacio muestras={0} mensaje="Aún no hay suficiente histórico diario para graficar (se acumula 1 punto por día)." />
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={dispoChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
+                <XAxis dataKey="diaLabel" interval="preserveStartEnd" fontSize={11} />
+                <YAxis domain={[90, 100]} tickFormatter={v => `${v}%`} fontSize={11} />
+                <Tooltip formatter={(value) => [`${value}%`, 'Disponibilidad']} />
+                <Line type="monotone" dataKey="pct" stroke="#2563eb" strokeWidth={1.5} dot={{ r: 3 }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </>
       )}
     </div>
   )
@@ -354,7 +413,7 @@ function EnlaceSerieChart({ linkId, capacidadGbps, umbralDelay, umbralUso, colas
 // utilization_threshold_pct, id, pbi_reference). `colas` es el array por
 // cola de calcular_estado_delay para ESE link. `kpis`/`rafaga` son las
 // entradas correspondientes de /links/kpis/ y /links/delay-rafaga/.
-export default function LinkDetailPanel({ link, colas, kpis, rafaga, onGuardarPbi }) {
+export default function LinkDetailPanel({ link, colas, kpis, rafaga, dispo, onGuardarPbi }) {
   return (
     <div style={{ paddingTop: 4 }}>
       <div style={{
@@ -377,6 +436,7 @@ export default function LinkDetailPanel({ link, colas, kpis, rafaga, onGuardarPb
         colas={colas}
         kpis={kpis}
         rafaga={rafaga}
+        dispo={dispo}
       />
     </div>
   )
