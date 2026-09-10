@@ -564,6 +564,36 @@ def obtener_disponibilidad_diaria(link_id: int, dias: int = 30) -> list[dict]:
     )
 
 
+def obtener_disponibilidad_diaria_todos(dias: int = 7) -> dict:
+    """
+    Resumen diario de TODOS los links en UNA sola consulta -- para el
+    sparkline de la tabla principal. NO llamar a obtener_disponibilidad_diaria()
+    (la version por-link) en un loop desde aca: mismo problema de N+1 que
+    ya se corrigio en calcular_kpis_capacidad() (ver conversacion de
+    performance), con 252 consultas contra una base remota.
+
+    Retorna {link_id: [{'fecha', 'disponibilidad_pct'}, ...]}, ordenado
+    por fecha ascendente, listo para dibujar de izquierda a derecha.
+    """
+    import datetime
+    from django.utils import timezone
+    from .models import AvailabilityDaily
+
+    desde = timezone.localdate() - datetime.timedelta(days=dias)
+    filas = (
+        AvailabilityDaily.objects
+        .filter(fecha__gte=desde)
+        .order_by('fecha')
+        .values('link_id', 'fecha', 'disponibilidad_pct')
+    )
+    resultado = {}
+    for f in filas:
+        resultado.setdefault(f['link_id'], []).append({
+            'fecha': f['fecha'], 'disponibilidad_pct': f['disponibilidad_pct'],
+        })
+    return resultado
+
+
 def obtener_disponibilidad_anual(link_id: int, year: int | None = None) -> float | None:
     """
     Promedio simple sobre AvailabilityMonthly del año -- sin tabla propia,

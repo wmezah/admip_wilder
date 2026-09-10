@@ -154,6 +154,19 @@ class LinkViewSet(viewsets.ModelViewSet):
         kwargs = {'horas_ventana': int(horas)} if horas else {}
         return Response(calcular_disponibilidad(**kwargs))
 
+    @action(detail=False, methods=['get'], url_path='disponibilidad-diaria-resumen')
+    def disponibilidad_diaria_resumen(self, request):
+        """
+        Resumen diario de TODOS los links (ultimos N dias, default 7) en
+        una sola consulta -- alimenta el sparkline de la tabla principal.
+        No confundir con /links/{id}/disponibilidad-diaria/ (esa es la
+        curva completa de UN link, para el panel de detalle).
+        """
+        from .reporting import obtener_disponibilidad_diaria_todos
+        dias = request.query_params.get('dias')
+        kwargs = {'dias': int(dias)} if dias else {}
+        return Response(obtener_disponibilidad_diaria_todos(**kwargs))
+
     @action(detail=True, methods=['get'], url_path='disponibilidad-diaria')
     def disponibilidad_diaria(self, request, pk=None):
         """

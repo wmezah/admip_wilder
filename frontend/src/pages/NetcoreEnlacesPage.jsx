@@ -67,6 +67,30 @@ function AmpliacionBadge({ kpis }) {
   )
 }
 
+// Sparkline chiquito (SVG plano, sin librería) para la columna
+// Disponibilidad -- con 252 filas en la tabla, usar Recharts por fila
+// sería demasiado overhead solo para un mini-gráfico de tendencia; SVG
+// a mano es mucho más liviano acá. El color sigue el mismo criterio de
+// semáforo que ya usa el número al lado (99.9 / 99 como cortes).
+function Sparkline({ valores, width = 56, height = 18 }) {
+  const vals = (valores || []).filter(v => v != null)
+  if (vals.length < 2) return null
+  const min = Math.min(...vals)
+  const max = Math.max(...vals)
+  const rango = max - min || 1
+  const paso = width / (vals.length - 1)
+  const puntos = vals
+    .map((v, i) => `${(i * paso).toFixed(1)},${(height - ((v - min) / rango) * height).toFixed(1)}`)
+    .join(' ')
+  const ultimo = vals[vals.length - 1]
+  const color = ultimo >= 99.9 ? '#16a34a' : ultimo >= 99 ? '#d97706' : '#dc2626'
+  return (
+    <svg width={width} height={height} style={{ display: 'block', flexShrink: 0 }}>
+      <polyline points={puntos} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export default function NetcoreEnlacesPage() {
   const [links, setLinks] = useState([])
   const [estadoLista, setEstadoLista] = useState([])
@@ -74,6 +98,7 @@ export default function NetcoreEnlacesPage() {
   const [kpisLista, setKpisLista] = useState([])
   const [delayRafaga, setDelayRafaga] = useState({})
   const [dispoLista, setDispoLista] = useState([])
+  const [dispoDiariaLista, setDispoDiariaLista] = useState({})
   const [caidosDetalle, setCaidosDetalle] = useState({})
   const [loading, setLoading] = useState(true)
   const [busqueda, setBusqueda] = useState('')
@@ -90,16 +115,18 @@ export default function NetcoreEnlacesPage() {
       fetch(`${API}/links/kpis/`, { headers: authH() }).then(r => r.json()),
       fetch(`${API}/links/delay-rafaga/`, { headers: authH() }).then(r => r.json()),
       fetch(`${API}/links/disponibilidad/`, { headers: authH() }).then(r => r.json()),
+      fetch(`${API}/links/disponibilidad-diaria-resumen/`, { headers: authH() }).then(r => r.json()),
     ])
-      .then(([linksRes, estadoRes, traficoRes, kpisRes, rafagaRes, dispoRes]) => {
+      .then(([linksRes, estadoRes, traficoRes, kpisRes, rafagaRes, dispoRes, dispoDiariaRes]) => {
         setLinks(linksRes.results || [])
         setEstadoLista(estadoRes || [])
         setTraficoLista(traficoRes || [])
         setKpisLista(kpisRes || [])
         setDelayRafaga(rafagaRes || {})
         setDispoLista(dispoRes || [])
+        setDispoDiariaLista(dispoDiariaRes || {})
       })
-      .catch(() => { setLinks([]); setEstadoLista([]); setTraficoLista([]); setKpisLista([]); setDelayRafaga({}); setDispoLista([]) })
+      .catch(() => { setLinks([]); setEstadoLista([]); setTraficoLista([]); setKpisLista([]); setDelayRafaga({}); setDispoLista([]); setDispoDiariaLista({}) })
       .finally(() => setLoading(false))
   }
 
@@ -131,9 +158,10 @@ export default function NetcoreEnlacesPage() {
         kpis: kpisPorLink[link.id] || null,
         rafaga: delayRafaga[link.id] || null,
         dispo: dispoPorLink[link.id] || null,
+        dispoDiaria: dispoDiariaLista[link.id] || [],
       }
     })
-  }, [links, estadoLista, traficoLista, kpisLista, delayRafaga, dispoLista])
+  }, [links, estadoLista, traficoLista, kpisLista, delayRafaga, dispoLista, dispoDiariaLista])
 
   const idsCaidos = useMemo(
     () => filas.filter(f => f.estado === 'caido').map(f => f.link.id).sort((a, b) => a - b),
@@ -361,7 +389,7 @@ export default function NetcoreEnlacesPage() {
 }
 
 function EnlaceRow({ fila, expandido, onToggle, onGuardarPbi }) {
-  const { link, colas, estado, pctUso: pct, kpis, rafaga, dispo } = fila
+  const { link, colas, estado, pctUso: pct, kpis, rafaga, dispo, dispoDiaria } = fila
   return (
     <>
       <tr onClick={onToggle} style={{ borderTop: '1px solid #f0f2f5', cursor: 'pointer' }}>
@@ -408,12 +436,15 @@ function EnlaceRow({ fila, expandido, onToggle, onGuardarPbi }) {
           {dispo?.disponibilidad_pct == null ? (
             <span style={{ color: '#9ca3af' }}>—</span>
           ) : (
-            <span style={{
-              fontWeight: 600, fontVariantNumeric: 'tabular-nums',
-              color: dispo.disponibilidad_pct >= 99.9 ? '#16a34a' : dispo.disponibilidad_pct >= 99 ? '#d97706' : '#dc2626',
-            }}>
-              {dispo.disponibilidad_pct.toFixed(2)}%
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+              <Sparkline valores={dispoDiaria.map(d => d.disponibilidad_pct)} />
+              <span style={{
+                fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                color: dispo.disponibilidad_pct >= 99.9 ? '#16a34a' : dispo.disponibilidad_pct >= 99 ? '#d97706' : '#dc2626',
+              }}>
+                {dispo.disponibilidad_pct.toFixed(2)}%
+              </span>
+            </div>
           )}
         </td>
         <td style={{ padding: '8px 14px' }}>
@@ -426,7 +457,7 @@ function EnlaceRow({ fila, expandido, onToggle, onGuardarPbi }) {
       {expandido && (
         <tr>
           <td colSpan={8} style={{ padding: '0 14px 16px', background: '#fafbfc' }}>
-            <LinkDetailPanel link={link} colas={colas} kpis={kpis} rafaga={rafaga} onGuardarPbi={onGuardarPbi} />
+            <LinkDetailPanel link={link} colas={colas} kpis={kpis} rafaga={rafaga} dispo={dispo} onGuardarPbi={onGuardarPbi} />
           </td>
         </tr>
       )}
