@@ -154,6 +154,31 @@ class LinkViewSet(viewsets.ModelViewSet):
         kwargs = {'horas_ventana': int(horas)} if horas else {}
         return Response(calcular_disponibilidad(**kwargs))
 
+    @action(detail=True, methods=['get'], url_path='disponibilidad-diaria')
+    def disponibilidad_diaria(self, request, pk=None):
+        """
+        Curva diaria de disponibilidad para UN link (para el panel de
+        detalle). Lee de AvailabilityDaily, ya precalculada por
+        netcore_scheduler.py -- no dispara ningun calculo pesado en vivo.
+        ?dias=N para override (default 30).
+        """
+        from .reporting import obtener_disponibilidad_diaria
+        dias = request.query_params.get('dias')
+        kwargs = {'dias': int(dias)} if dias else {}
+        return Response(obtener_disponibilidad_diaria(int(pk), **kwargs))
+
+    @action(detail=True, methods=['get'], url_path='disponibilidad-anual')
+    def disponibilidad_anual(self, request, pk=None):
+        """
+        Promedio anual de disponibilidad para UN link, sobre
+        AvailabilityMonthly. ?year=YYYY para override (default: año actual).
+        """
+        from .reporting import obtener_disponibilidad_anual
+        year = request.query_params.get('year')
+        kwargs = {'year': int(year)} if year else {}
+        promedio = obtener_disponibilidad_anual(int(pk), **kwargs)
+        return Response({'link_id': int(pk), 'disponibilidad_pct': promedio})
+
     @action(detail=False, methods=['get'], url_path='caidos')
     def caidos(self, request):
         """

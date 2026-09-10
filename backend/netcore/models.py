@@ -192,6 +192,75 @@ class TrafficSample(models.Model):
         return f"{self.device_name} / {self.interface_name} @ {self.collected_at}"
 
 
+# ─── Disponibilidad precalculada (daily/monthly) ────────────────────────────
+# Motivo: calcular_disponibilidad() en reporting.py agrega sobre nc_delay_sample
+# completo (millones de filas) en cada carga de pagina -- con varios endpoints
+# pesados corriendo en simultaneo, esto se vuelve el cuello de botella real del
+# dashboard (ver conversacion de performance). Estas dos tablas se llenan una
+# vez al dia desde netcore_scheduler.py, agregando SIEMPRE desde la capa de
+# abajo (nunca re-escaneando nc_delay_sample mas de una vez por dia):
+#
+#   nc_delay_sample (cruda) -> nc_availability_daily -> nc_availability_monthly -> AVG() anual
+#
+# El promedio anual NO tiene tabla propia: es un AVG(disponibilidad_pct) sobre
+# nc_availability_monthly agrupado por link+year, calculado al vuelo (barato,
+# como mucho 12 filas por link).
+#
+# Pendiente, no resuelto aca: ventanas de mantenimiento planificado no se
+# excluyen del calculo -- toda caida pesa igual, sin distinguir planificada de
+# real (ver spec de disponibilidad, seccion "Pendientes").
+
+class AvailabilityDaily(models.Model):
+    link = models.ForeignKey(Link, related_name='disponibilidad_diaria', on_delete=models.CASCADE)
+    fecha = models.DateField(db_index=True)
+
+    # Mismo criterio que calcular_disponibilidad(): packet_loss_pct >= 100
+    # cuenta como "caido". null si ese dia no hubo ninguna muestra (no
+    # confundir con 0% de disponibilidad).
+    disponibilidad_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    muestras_total = models.IntegerField(default=0)
+    muestras_caidas = models.IntegerField(default=0)
+
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'nc_availability_daily'
+        unique_together = [('link', 'fecha')]
+        ordering = ['-fecha']
+        indexes = [
+            models.Index(fields=['link', 'fecha']),
+        ]
+        verbose_name = 'Disponibilidad diaria'
+        verbose_name_plural = 'Disponibilidad diaria'
+
+    def __str__(self):
+        return f"{self.link_id} @ {self.fecha}: {self.disponibilidad_pct}%"
+
+
+class AvailabilityMonthly(models.Model):
+    link = models.ForeignKey(Link, related_name='disponibilidad_mensual', on_delete=models.CASCADE)
+    year = models.IntegerField()
+    month = models.IntegerField()  # 1-12
+
+    # Se arma agregando AvailabilityDaily de ese mes -- NO re-consulta
+    # nc_delay_sample (ver comentario de arriba).
+    disponibilidad_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    muestras_total = models.IntegerField(default=0)
+    muestras_caidas = models.IntegerField(default=0)
+
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'nc_availability_monthly'
+        unique_together = [('link', 'year', 'month')]
+        ordering = ['-year', '-month']
+        verbose_name = 'Disponibilidad mensual'
+        verbose_name_plural = 'Disponibilidad mensual'
+
+    def __str__(self):
+        return f"{self.link_id} {self.year}-{self.month:02d}: {self.disponibilidad_pct}%"
+
+
 class CollectionLog(models.Model):
     STATUS_CHOICES = [
         ('ok', 'OK'),

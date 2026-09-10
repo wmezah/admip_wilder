@@ -439,6 +439,154 @@ def calcular_disponibilidad(horas_ventana: int = VENTANA_DISPONIBILIDAD_HORAS) -
     return resultado
 
 
+# ─── Disponibilidad precalculada (daily/monthly) ─────────────────────────
+# Motivo: calcular_disponibilidad() de arriba agrega sobre nc_delay_sample
+# completo en cada carga de pagina -- con varios endpoints pesados corriendo
+# en simultaneo esto se vuelve el cuello de botella real del dashboard (ver
+# conversacion de performance). Estas funciones alimentan AvailabilityDaily/
+# AvailabilityMonthly (ver models.py) desde netcore_scheduler.py, una vez al
+# dia -- el dashboard en vivo (calcular_disponibilidad(), arriba) NO cambia,
+# sigue siendo la ventana rodante de 30 dias calculada al vuelo. Estas tablas
+# nuevas son para la curva de tendencia diaria y el resumen mensual/anual,
+# que son preguntas distintas ("como vengo en el tiempo", no "como estoy AHORA").
+#
+# Mismo criterio de "caido" en las tres (packet_loss_pct >= 100), para que
+# los tres numeros (ventana rodante, dia, mes) sean comparables entre si.
+
+def calcular_disponibilidad_diaria(fecha=None) -> int:
+    """
+    Calcula y GUARDA (upsert) la disponibilidad de UN dia calendario para
+    todos los links con device_b conocido, en AvailabilityDaily. Pensada
+    para correr una vez al dia desde netcore_scheduler.py.
+
+    Si fecha es None, usa el dia de HOY -- permite recalcular el dia en
+    curso a medida que entran mas muestras (el ultimo dia siempre esta
+    "incompleto" hasta que termina), sin duplicar filas (update_or_create).
+    """
+    import datetime
+    from django.db import connections
+    from django.utils import timezone
+    from .models import Link, AvailabilityDaily
+
+    if fecha is None:
+        fecha = timezone.localdate()
+
+    desde = timezone.make_aware(datetime.datetime.combine(fecha, datetime.time.min))
+    hasta = desde + datetime.timedelta(days=1)
+
+    sql = """
+        SELECT
+            LEAST(source_device, dest_device)    AS a,
+            GREATEST(source_device, dest_device) AS b,
+            COUNT(*) AS total,
+            SUM(CASE WHEN packet_loss_pct >= 100 THEN 1 ELSE 0 END) AS caidas
+        FROM nc_delay_sample
+        WHERE collected_at >= %s AND collected_at < %s
+        GROUP BY a, b
+    """
+    datos_por_par = {}
+    with connections['core'].cursor() as cur:
+        cur.execute(sql, [desde, hasta])
+        for a, b, total, caidas in cur.fetchall():
+            datos_por_par[(a, b)] = {'total': total, 'caidas': caidas}
+
+    links = Link.objects.select_related('interface_a__device', 'device_b').filter(
+        active=True, device_b__isnull=False)
+
+    actualizados = 0
+    for link in links:
+        par = tuple(sorted([link.interface_a.device.name, link.device_b.name]))
+        datos = datos_por_par.get(par)
+        if not datos or datos['total'] == 0:
+            continue
+        disponibilidad = round((1 - datos['caidas'] / datos['total']) * 100, 2)
+        AvailabilityDaily.objects.update_or_create(
+            link=link, fecha=fecha,
+            defaults={
+                'disponibilidad_pct': disponibilidad,
+                'muestras_total': datos['total'],
+                'muestras_caidas': datos['caidas'],
+            },
+        )
+        actualizados += 1
+
+    return actualizados
+
+
+def calcular_disponibilidad_mensual(year: int, month: int) -> int:
+    """
+    Agrega AvailabilityDaily (YA calculado por calcular_disponibilidad_diaria)
+    del mes indicado en AvailabilityMonthly, por link -- NO vuelve a tocar
+    nc_delay_sample. Pensada para correr despues de calcular_disponibilidad_diaria
+    en el mismo ciclo del scheduler.
+    """
+    from django.db.models import Avg, Sum
+    from .models import AvailabilityDaily, AvailabilityMonthly
+
+    agregados = (
+        AvailabilityDaily.objects
+        .filter(fecha__year=year, fecha__month=month, disponibilidad_pct__isnull=False)
+        .values('link_id')
+        .annotate(
+            disponibilidad_pct=Avg('disponibilidad_pct'),
+            muestras_total=Sum('muestras_total'),
+            muestras_caidas=Sum('muestras_caidas'),
+        )
+    )
+
+    actualizados = 0
+    for row in agregados:
+        AvailabilityMonthly.objects.update_or_create(
+            link_id=row['link_id'], year=year, month=month,
+            defaults={
+                'disponibilidad_pct': round(row['disponibilidad_pct'], 2),
+                'muestras_total': row['muestras_total'],
+                'muestras_caidas': row['muestras_caidas'],
+            },
+        )
+        actualizados += 1
+
+    return actualizados
+
+
+def obtener_disponibilidad_diaria(link_id: int, dias: int = 30) -> list[dict]:
+    """Serie de los ultimos N dias para el frontend (curva diaria del detalle)."""
+    import datetime
+    from django.utils import timezone
+    from .models import AvailabilityDaily
+
+    desde = timezone.localdate() - datetime.timedelta(days=dias)
+    return list(
+        AvailabilityDaily.objects
+        .filter(link_id=link_id, fecha__gte=desde)
+        .order_by('fecha')
+        .values('fecha', 'disponibilidad_pct', 'muestras_total')
+    )
+
+
+def obtener_disponibilidad_anual(link_id: int, year: int | None = None) -> float | None:
+    """
+    Promedio simple sobre AvailabilityMonthly del año -- sin tabla propia,
+    a proposito (ver docstring de arriba: evitar duplicar logica de
+    agregacion en dos lugares, mismo criterio que ya se aplico para la
+    tarjeta "Disponibilidad general" en calcular_disponibilidad()).
+    """
+    from django.db.models import Avg
+    from django.utils import timezone
+    from .models import AvailabilityMonthly
+
+    if year is None:
+        year = timezone.localdate().year
+
+    agregado = (
+        AvailabilityMonthly.objects
+        .filter(link_id=link_id, year=year, disponibilidad_pct__isnull=False)
+        .aggregate(promedio=Avg('disponibilidad_pct'))
+    )
+    promedio = agregado['promedio']
+    return round(promedio, 2) if promedio is not None else None
+
+
 # ─── Reporte de caídos (bajo demanda) ────────────────────────────────────
 # Distinto de calcular_estado_delay: aquella responde "esta caido AHORA",
 # esto responde "para ESTOS links ya sabidos como caidos (el frontend ya
