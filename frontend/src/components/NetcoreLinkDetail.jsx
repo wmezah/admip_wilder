@@ -165,7 +165,7 @@ function EnlaceSerieChart({ linkId, capacidadGbps, umbralDelay, umbralUso, colas
       .catch(() => { if (activo) setDispoDiaria([]) })
     fetch(`${API}/links/${linkId}/disponibilidad-anual/`, { headers: authH() })
       .then(r => r.json())
-      .then(d => { if (activo) setDispoAnual(d) })
+      .then(d => { if (activo) setDispoAnual(d?.disponibilidad_pct ?? null) })
       .catch(() => { if (activo) setDispoAnual(null) })
     return () => { activo = false }
   }, [linkId])
