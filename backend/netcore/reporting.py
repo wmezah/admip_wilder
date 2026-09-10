@@ -260,25 +260,36 @@ def calcular_kpis_capacidad(horas_ventana: int = 24 * 7) -> list[dict]:
 
     Calculado en Python, no en SQL: MySQL solo tiene PERCENTILE_CONT nativo
     desde 8.0.2+, y la capacidad (para convertir Mbps a %) vive en Link,
-    no en TrafficSample -- mas simple resolverlo aca. Con la escala actual
-    (213 links, ventana acotada) el costo es aceptable; si el volumen
-    crece, este es el primer lugar a optimizar con SQL agregado.
+    no en TrafficSample -- mas simple resolverlo aca.
+
+    El trafico de TODOS los links se trae en UNA sola consulta (antes:
+    una consulta por link -- con 252 links y la base en un host remoto,
+    la latencia de red acumulada de 252 idas y vueltas era el costo real,
+    no la consulta en si). Mismo patron que ya usa
+    calcular_trafico_por_enlace() mas arriba en este archivo.
     """
+    from collections import defaultdict
     from .models import Link, TrafficSample
 
     desde = timezone.now() - timedelta(hours=horas_ventana)
-    links = Link.objects.select_related('interface_a__device').filter(active=True)
+    links = list(Link.objects.select_related('interface_a__device').filter(active=True))
+
+    muestras_por_resource = defaultdict(list)
+    filas = (
+        TrafficSample.objects
+        .filter(collected_at__gte=desde)
+        .values_list('device_name', 'interface_name', 'in_rate_avg', 'out_rate_avg')
+    )
+    for device_name, interface_name, in_r, out_r in filas:
+        muestras_por_resource[(device_name, interface_name)].append((in_r, out_r))
 
     resultado = []
     for link in links:
         cap = float(link.capacity_gbps)
         umbral = float(link.utilization_threshold_pct) if link.utilization_threshold_pct is not None else 80.0
 
-        muestras = TrafficSample.objects.filter(
-            device_name=link.interface_a.device.name,
-            interface_name=link.interface_a.name,
-            collected_at__gte=desde,
-        ).values_list('in_rate_avg', 'out_rate_avg')
+        key = (link.interface_a.device.name, link.interface_a.name)
+        muestras = muestras_por_resource.get(key, [])
 
         pcts = []
         for in_r, out_r in muestras:
