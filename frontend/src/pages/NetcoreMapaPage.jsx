@@ -79,6 +79,7 @@ export default function NetcoreMapaPage() {
   const [traficoLista, setTraficoLista] = useState([])
   const [kpisLista, setKpisLista] = useState([])
   const [rafagaData, setRafagaData] = useState({})
+  const [dispoLista, setDispoLista] = useState([])
   const [loading, setLoading] = useState(true)
   const [enlaceSeleccionado, setEnlaceSeleccionado] = useState(null)
   // NUEVO: grupo de enlaces del mismo site seleccionado desde el badge.
@@ -109,13 +110,15 @@ export default function NetcoreMapaPage() {
       fetch(`${API}/links/trafico/`, { headers: authH() }).then(r => r.json()),
       fetch(`${API}/links/kpis/`, { headers: authH() }).then(r => r.json()),
       fetch(`${API}/links/delay-rafaga/`, { headers: authH() }).then(r => r.json()),
+      fetch(`${API}/links/disponibilidad/`, { headers: authH() }).then(r => r.json()),
     ])
-      .then(([linksData, estadoData, traficoData, kpisData, rafagaResp]) => {
+      .then(([linksData, estadoData, traficoData, kpisData, rafagaResp, dispoData]) => {
         setLinks(linksData.results || linksData)
         setEstadoLista(Array.isArray(estadoData) ? estadoData : [])
         setTraficoLista(Array.isArray(traficoData) ? traficoData : [])
         setKpisLista(Array.isArray(kpisData) ? kpisData : [])
         setRafagaData(rafagaResp || {})
+        setDispoLista(Array.isArray(dispoData) ? dispoData : [])
       })
       .catch(e => console.error(e))
       .finally(() => setLoading(false))
@@ -168,6 +171,12 @@ export default function NetcoreMapaPage() {
     return mapa
   }, [kpisLista])
 
+  const dispoPorLink = useMemo(() => {
+    const mapa = new Map()
+    for (const d of dispoLista) mapa.set(d.link_id, d)
+    return mapa
+  }, [dispoLista])
+
   // Puntos: un equipo por cada extremo de link que tenga coordenada,
   // deduplicados por nombre.
   const puntos = useMemo(() => {
@@ -205,9 +214,10 @@ export default function NetcoreMapaPage() {
           ...l, estado: peorEstado ? peorEstado.estado : 'sin_datos', colas, trafico, saturado,
           kpis: kpisPorLink.get(l.id) || null,
           rafaga: rafagaData[l.id] || null,
+          dispo: dispoPorLink.get(l.id) || null,
         }
       })
-  }, [links, estadoPorLink, traficoPorLink, kpisPorLink, rafagaData])
+  }, [links, estadoPorLink, traficoPorLink, kpisPorLink, rafagaData, dispoPorLink])
 
   const seleccionarEnlace = (enlace) => { setGrupoSiteSeleccionado(null); setEnlaceSeleccionado(enlace) }
   seleccionarEnlaceRef.current = seleccionarEnlace
@@ -595,6 +605,7 @@ export default function NetcoreMapaPage() {
               colas={enlaceSeleccionado.colas}
               kpis={enlaceSeleccionado.kpis}
               rafaga={enlaceSeleccionado.rafaga}
+              dispo={enlaceSeleccionado.dispo}
               onGuardarPbi={cargar}
             />
           </div>
