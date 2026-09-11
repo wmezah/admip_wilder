@@ -302,6 +302,15 @@ export default function NetcoreMapaPage() {
     }
   }, [])
 
+  // El panel lateral de detalle achica el ancho real del mapa -- Leaflet
+  // no detecta esto solo (mide el contenedor una sola vez al montar),
+  // asi que hay que avisarle explicitamente cada vez que el panel
+  // aparece/desaparece, despues de que el navegador termine el reflow.
+  useEffect(() => {
+    const t = setTimeout(() => mapRef.current?.invalidateSize(), 50)
+    return () => clearTimeout(t)
+  }, [enlaceSeleccionado, grupoSiteSeleccionado])
+
   useEffect(() => {
     const clusterGroup = clusterGroupRef.current
     if (!clusterGroup) return
@@ -455,7 +464,8 @@ export default function NetcoreMapaPage() {
         </div>
       </div>
 
-      <div style={{ position: 'relative', background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 12 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ position: 'relative', background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: 12, flex: 1, minWidth: 0 }}>
         <div ref={mapDivRef} style={{ width: '100%', height: 'calc(100vh - 230px)', minHeight: 420, borderRadius: 6 }} />
 
         <div style={{
@@ -587,11 +597,11 @@ export default function NetcoreMapaPage() {
             </div>
           </div>
         )}
+      </div>
 
         {enlaceSeleccionado && (
           <div style={{
-            position: 'absolute', bottom: 24, left: 24, right: 24, zIndex: 500,
-            maxHeight: '55%', overflowY: 'auto',
+            width: 420, flexShrink: 0, height: 'calc(100vh - 230px)', minHeight: 420, overflowY: 'auto',
             ...panelStyle,
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 8 }}>
@@ -616,8 +626,7 @@ export default function NetcoreMapaPage() {
             clickear, en vez de duplicar las graficas para cada uno a la vez. */}
         {grupoSiteSeleccionado && (
           <div style={{
-            position: 'absolute', bottom: 24, left: 24, right: 24, zIndex: 500,
-            maxHeight: '55%', overflowY: 'auto',
+            width: 420, flexShrink: 0, height: 'calc(100vh - 230px)', minHeight: 420, overflowY: 'auto',
             ...panelStyle,
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 8 }}>
