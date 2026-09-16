@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Radio, RefreshCw, Search, Flame } from 'lucide-react'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts'
 import LinkDetailPanel, { COLOR_ESTADO, LABEL_ESTADO, MUESTRAS_MINIMAS_KPI } from '../components/NetcoreLinkDetail'
 
 const API = '/api/netcore'
@@ -125,6 +128,13 @@ export default function NetcoreEnlacesPage() {
   const [expandido, setExpandido] = useState(null)
   // orden: { col: 'uso' | 'p95' | null, dir: 'desc' | 'asc' }
   const [orden, setOrden] = useState({ col: null, dir: 'desc' })
+  // NUEVO: curva de disponibilidad general (30d, agregada) -- se carga
+  // solo la primera vez que se abre, con su propio fetch (?dias=30),
+  // porque disponibilidad-diaria-resumen sin parametro trae solo 7 dias
+  // (lo que ya alimenta el sparkline de la tabla).
+  const [mostrarDispoGeneral, setMostrarDispoGeneral] = useState(false)
+  const [dispoGeneralDiaria, setDispoGeneralDiaria] = useState(null)
+  const [cargandoDispoGeneral, setCargandoDispoGeneral] = useState(false)
 
   const cargar = () => {
     setLoading(true)
@@ -292,6 +302,42 @@ export default function NetcoreEnlacesPage() {
     })
   }
 
+  // NUEVO: click en la tarjeta "Disponibilidad general (30d)" -- carga
+  // (solo la primera vez) el resumen diario de TODOS los links en UNA
+  // consulta (mismo endpoint que usa el sparkline, pero con ?dias=30) y
+  // promedia por dia entre los links que SI tienen dato ese dia. Mismo
+  // patron de "una sola consulta, no un loop por link" que ya se usa en
+  // el resto de reporting.py.
+  function alternarDispoGeneral() {
+    const abriendo = !mostrarDispoGeneral
+    setMostrarDispoGeneral(abriendo)
+    if (abriendo && dispoGeneralDiaria === null) {
+      setCargandoDispoGeneral(true)
+      fetch(`${API}/links/disponibilidad-diaria-resumen/?dias=30`, { headers: authH() })
+        .then(r => r.json())
+        .then(data => {
+          const porFecha = new Map() // fecha -> [pct, pct, ...]
+          for (const lista of Object.values(data || {})) {
+            for (const punto of lista) {
+              if (punto.disponibilidad_pct == null) continue
+              if (!porFecha.has(punto.fecha)) porFecha.set(punto.fecha, [])
+              porFecha.get(punto.fecha).push(punto.disponibilidad_pct)
+            }
+          }
+          const curva = [...porFecha.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([fecha, valores]) => ({
+              fecha,
+              diaLabel: fecha.slice(5), // MM-DD, mismo criterio que NetcoreLinkDetail
+              pct: valores.reduce((a, b) => a + b, 0) / valores.length,
+            }))
+          setDispoGeneralDiaria(curva)
+        })
+        .catch(() => setDispoGeneralDiaria([]))
+        .finally(() => setCargandoDispoGeneral(false))
+    }
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -329,13 +375,45 @@ export default function NetcoreEnlacesPage() {
             </div>
           )
         })}
-        <div style={{ background: '#fff', border: '1px solid #2563eb', borderRadius: 10, padding: '14px 18px' }}>
+        <div
+          onClick={alternarDispoGeneral}
+          title="Ver curva de disponibilidad general (30d)"
+          style={{
+            background: '#fff', borderRadius: 10, padding: '14px 18px', cursor: 'pointer',
+            border: '1px solid #2563eb',
+            boxShadow: mostrarDispoGeneral ? '0 0 0 1px #2563eb' : 'none',
+          }}
+        >
           <p style={{ fontSize: 12.5, color: '#2563eb', margin: '0 0 4px' }}>Disponibilidad general (30d)</p>
           <p style={{ fontSize: 24, fontWeight: 700, margin: 0, color: '#2563eb' }}>
             {disponibilidadGeneral != null ? `${disponibilidadGeneral.toFixed(2)}%` : '—'}
           </p>
         </div>
       </div>
+
+      {mostrarDispoGeneral && (
+        <div style={{ background: '#fff', border: '1px solid #dadde1', borderRadius: 10, padding: '14px 18px', marginBottom: 20 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, margin: '0 0 4px' }}>Disponibilidad general -- curva diaria (30d)</p>
+          <p style={{ fontSize: 11, color: '#9ca3af', margin: '0 0 10px' }}>
+            Promedio simple entre los links con dato ese día -- no distingue todavía caídas por mantenimiento planificado de caídas reales.
+          </p>
+          {cargandoDispoGeneral ? (
+            <p style={{ fontSize: 12.5, color: '#65676b', margin: 0 }}>Cargando…</p>
+          ) : !dispoGeneralDiaria?.length ? (
+            <p style={{ fontSize: 12.5, color: '#9ca3af', margin: 0 }}>Aún no hay suficiente histórico diario para graficar.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={dispoGeneralDiaria}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f2f5" />
+                <XAxis dataKey="diaLabel" interval="preserveStartEnd" fontSize={11} />
+                <YAxis domain={[90, 100]} tickFormatter={v => `${v}%`} fontSize={11} />
+                <Tooltip formatter={(value) => [`${value.toFixed(2)}%`, 'Disponibilidad general']} />
+                <Line type="monotone" dataKey="pct" stroke="#2563eb" strokeWidth={1.5} dot={{ r: 3 }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      )}
 
       {/* Destacados */}
       {destacados.length > 0 && (
