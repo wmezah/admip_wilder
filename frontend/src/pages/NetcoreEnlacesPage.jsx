@@ -15,6 +15,24 @@ function pctUso(bwGbps, capacidadGbps) {
   return (bwGbps / cap) * 100
 }
 
+// Umbral por defecto cuando el link no tiene utilization_threshold_pct
+// configurado (el campo es nullable en el modelo).
+const UMBRAL_USO_DEFECTO_PCT = 80
+
+// Colores para la barra de fondo (Uso, P95): usa el umbral propio del
+// link si esta configurado; si no, cae al fijo de 80% (con la zona de
+// alerta en 75% del umbral que corresponda). Devuelve tokens claros de
+// fondo + oscuros de texto, pensados para pintar la celda entera.
+function colorPorUmbral(pct, umbralPct) {
+  if (pct == null) return null
+  const umbral = Number(umbralPct)
+  const t = Number.isFinite(umbral) && umbral > 0 ? umbral : UMBRAL_USO_DEFECTO_PCT
+  const alerta = t * 0.75
+  if (pct >= t) return { bg: '#fde8e8', text: '#991b1b' }
+  if (pct >= alerta) return { bg: '#fef3d6', text: '#92650c' }
+  return { bg: '#e6f4ea', text: '#166534' }
+}
+
 // "Caido" a nivel de link solo si TODAS sus colas estan sin conexion --
 // una sola cola caida no puede tirar todo el link a caido (mismo
 // criterio ya corregido en backbone, ver conversacion).
@@ -398,26 +416,35 @@ function EnlaceRow({ fila, expandido, onToggle, onGuardarPbi }) {
           {link.interface_a_device} ↔ {link.device_b_name || '—'}
         </td>
         <td style={{ padding: '8px 14px' }}>{link.capacity_gbps} Gbps</td>
-        <td style={{ padding: '8px 14px' }}>
+        <td style={{ padding: 0, position: 'relative' }}>
           {pct == null ? (
-            <span style={{ color: '#9ca3af' }}>—</span>
-          ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ width: 50, height: 5, background: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ width: `${Math.min(pct, 100)}%`, height: '100%', background: pct >= 80 ? '#dc2626' : pct >= 60 ? '#d97706' : '#16a34a' }} />
-              </div>
-              <span style={{ color: '#65676b', fontSize: 12 }}>{pct.toFixed(1)}%</span>
-            </div>
-          )}
+            <div style={{ padding: '8px 14px' }}><span style={{ color: '#9ca3af' }}>—</span></div>
+          ) : (() => {
+            const c = colorPorUmbral(pct, link.utilization_threshold_pct)
+            return (
+              <>
+                <div style={{ position: 'absolute', inset: 0, width: `${Math.min(pct, 100)}%`, background: c.bg }} />
+                <div style={{ position: 'relative', padding: '8px 14px', fontWeight: 500, color: c.text }}>
+                  {pct.toFixed(1)}%
+                </div>
+              </>
+            )
+          })()}
         </td>
-        <td className="col-p95" style={{ padding: '8px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        <td className="col-p95" style={{ padding: 0, position: 'relative', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
           {kpis?.p95_gbps == null ? (
-            <span style={{ color: '#9ca3af' }}>—</span>
-          ) : (
-            <span style={{ color: kpis.p95_pct > 90 ? '#dc2626' : '#111827' }}>
-              {kpis.p95_gbps.toFixed(2)} Gbps <span style={{ color: '#9ca3af', fontSize: 11.5 }}>({kpis.p95_pct.toFixed(1)}%)</span>
-            </span>
-          )}
+            <div style={{ padding: '8px 14px' }}><span style={{ color: '#9ca3af' }}>—</span></div>
+          ) : (() => {
+            const c = colorPorUmbral(kpis.p95_pct, link.utilization_threshold_pct)
+            return (
+              <>
+                <div style={{ position: 'absolute', inset: 0, width: `${Math.min(kpis.p95_pct, 100)}%`, background: c.bg }} />
+                <div style={{ position: 'relative', padding: '8px 14px', fontWeight: 500, color: c.text }}>
+                  {kpis.p95_gbps.toFixed(2)} Gbps <span style={{ opacity: 0.75, fontSize: 11.5 }}>({kpis.p95_pct.toFixed(1)}%)</span>
+                </div>
+              </>
+            )
+          })()}
         </td>
         <td style={{ padding: '8px 14px', fontSize: 12.5 }}>
           {rafaga ? (

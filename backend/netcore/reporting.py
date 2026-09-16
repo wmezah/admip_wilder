@@ -672,41 +672,10 @@ def calcular_reporte_caidos(link_ids: list[int]) -> list[dict]:
             'caido_desde': None, 'duracion_minutos': None,
         }
 
-        # -- uso actual/ultimo --
-        ultima = (
-            TrafficSample.objects
-            .filter(device_name=device_name, interface_name=iface_name)
-            .order_by('-collected_at')
-            .values('collected_at', 'in_rate_avg', 'out_rate_avg')
-            .first()
-        )
-        if ultima:
-            mbps = max(ultima['in_rate_avg'] or 0, ultima['out_rate_avg'] or 0)
-            item['uso_actual_gbps'] = round(mbps / 1000, 2)
-            item['uso_actual_ts'] = ultima['collected_at']
-
-        # -- pico nocturno habitual (7d, 18-23h) --
-        desde_pico = ahora - datetime.timedelta(hours=VENTANA_PICO_NOCTURNO_HORAS)
-        nocturnas = (
-            TrafficSample.objects
-            .filter(
-                device_name=device_name, interface_name=iface_name,
-                collected_at__gte=desde_pico,
-                collected_at__hour__gte=HORA_INICIO_NOCTURNO,
-                collected_at__hour__lt=HORA_FIN_NOCTURNO,
-            )
-            .values_list('collected_at', 'in_rate_avg', 'out_rate_avg')
-        )
-        mejor_mbps, mejor_ts = None, None
-        for ts, in_r, out_r in nocturnas:
-            mbps = max(in_r or 0, out_r or 0)
-            if mejor_mbps is None or mbps > mejor_mbps:
-                mejor_mbps, mejor_ts = mbps, ts
-        if mejor_mbps is not None:
-            item['pico_nocturno_gbps'] = round(mejor_mbps / 1000, 2)
-            item['pico_nocturno_ts'] = mejor_ts
-
         # -- caido desde / duracion --
+        # Se calcula ANTES de "uso actual/ultimo" porque ese calculo lo
+        # necesita como limite superior (ver mas abajo).
+        caido_desde = None
         if b:
             desde_busqueda = ahora - datetime.timedelta(hours=VENTANA_BUSQUEDA_INICIO_CAIDA_HORAS)
             muestras = list(
@@ -726,8 +695,58 @@ def calcular_reporte_caidos(link_ids: list[int]) -> list[dict]:
                 inicio_racha = ts
                 anterior_ts = ts
             if inicio_racha is not None:
+                caido_desde = inicio_racha
                 item['caido_desde'] = inicio_racha
                 item['duracion_minutos'] = round((ahora - inicio_racha).total_seconds() / 60)
+
+        # -- uso actual/ultimo --
+        # Si el link esta caido (caido_desde definido), se busca la ultima
+        # muestra de trafico ANTES de que empezara la caida -- no la mas
+        # reciente en general, que durante una caida suele ser un 0 Gbps
+        # sin valor informativo. Si no hay ninguna muestra anterior a la
+        # caida, se deja en blanco (None) en vez de mostrar un dato que
+        # corresponde a "durante" la caida.
+        ultima_qs = TrafficSample.objects.filter(device_name=device_name, interface_name=iface_name)
+        if caido_desde is not None:
+            ultima_qs = ultima_qs.filter(collected_at__lt=caido_desde)
+        ultima = (
+            ultima_qs
+            .order_by('-collected_at')
+            .values('collected_at', 'in_rate_avg', 'out_rate_avg')
+            .first()
+        )
+        if ultima:
+            mbps = max(ultima['in_rate_avg'] or 0, ultima['out_rate_avg'] or 0)
+            item['uso_actual_gbps'] = round(mbps / 1000, 2)
+            item['uso_actual_ts'] = ultima['collected_at']
+
+        # -- pico nocturno habitual (7d, 18-23h) --
+        # NOTA: se filtra el rango horario en Python (timezone.localtime),
+        # no con collected_at__hour__gte/lt en el queryset. Ese lookup le
+        # pide a MySQL un CONVERT_TZ() de UTC a America/Lima, que falla
+        # silenciosamente (devuelve NULL, cero filas) si el servidor MySQL
+        # no tiene cargadas sus tablas de zona horaria (mysql_tzinfo_to_sql).
+        # Filtrando aqui evitamos depender de esa configuracion del server.
+        desde_pico = ahora - datetime.timedelta(hours=VENTANA_PICO_NOCTURNO_HORAS)
+        candidatas = (
+            TrafficSample.objects
+            .filter(
+                device_name=device_name, interface_name=iface_name,
+                collected_at__gte=desde_pico,
+            )
+            .values_list('collected_at', 'in_rate_avg', 'out_rate_avg')
+        )
+        mejor_mbps, mejor_ts = None, None
+        for ts, in_r, out_r in candidatas:
+            hora_local = timezone.localtime(ts).hour
+            if not (HORA_INICIO_NOCTURNO <= hora_local < HORA_FIN_NOCTURNO):
+                continue
+            mbps = max(in_r or 0, out_r or 0)
+            if mejor_mbps is None or mbps > mejor_mbps:
+                mejor_mbps, mejor_ts = mbps, ts
+        if mejor_mbps is not None:
+            item['pico_nocturno_gbps'] = round(mejor_mbps / 1000, 2)
+            item['pico_nocturno_ts'] = mejor_ts
 
         resultado.append(item)
 
