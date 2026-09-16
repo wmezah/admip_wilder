@@ -123,6 +123,8 @@ export default function NetcoreEnlacesPage() {
   const [filtro, setFiltro] = useState('todos')
   const [filtroAmp, setFiltroAmp] = useState('todos')
   const [expandido, setExpandido] = useState(null)
+  // orden: { col: 'uso' | 'p95' | null, dir: 'desc' | 'asc' }
+  const [orden, setOrden] = useState({ col: null, dir: 'desc' })
 
   const cargar = () => {
     setLoading(true)
@@ -169,10 +171,18 @@ export default function NetcoreEnlacesPage() {
       const trafico = traficoPorLink[link.id]
       const bwGbps = trafico ? mbpsToGbps(Math.max(trafico.in_average_mbps || 0, trafico.out_average_mbps || 0)) : null
       const pct = trafico && !trafico.sin_datos_de_trafico ? pctUso(bwGbps, link.capacity_gbps) : null
+      // "Saturado ahora": uso actual (no la tendencia de 7 dias que usa
+      // requiere_ampliacion) ya esta en o sobre el umbral del link, con
+      // el mismo fallback de 80% que usa colorPorUmbral() para pintar
+      // la barra -- mismo criterio en filtro y en color, a proposito.
+      const umbralPct = Number(link.utilization_threshold_pct)
+      const umbralEfectivo = Number.isFinite(umbralPct) && umbralPct > 0 ? umbralPct : UMBRAL_USO_DEFECTO_PCT
+      const saturado = pct != null && pct >= umbralEfectivo
       return {
         link, colas, trafico,
         estado: peorEstado(colas),
         pctUso: pct,
+        saturado,
         kpis: kpisPorLink[link.id] || null,
         rafaga: delayRafaga[link.id] || null,
         dispo: dispoPorLink[link.id] || null,
@@ -229,13 +239,21 @@ export default function NetcoreEnlacesPage() {
   )
 
   const filasFiltradas = useMemo(() => {
-    return filas.filter(f => {
+    const filtradas = filas.filter(f => {
       if (filtro !== 'todos' && f.estado !== filtro) return false
       if (filtroAmp !== 'todos') {
         const est = estadoAmpliacion(f.kpis)
         if (filtroAmp === 'ok' && est !== 'ok') return false
         if (filtroAmp === 'medio' && est !== 'alerta') return false
         if (filtroAmp === 'alto' && est !== 'critico') return false
+        // NUEVO: 'requiere' junta medio + alto en un solo filtro -- son
+        // los dos niveles que ya tenian requiere_ampliacion=true en el
+        // backend, antes solo se podian ver por separado.
+        if (filtroAmp === 'requiere' && est !== 'alerta' && est !== 'critico') return false
+        // NUEVO: 'saturado' es un filtro distinto de los de arriba --
+        // mira el uso ACTUAL (ver calculo de f.saturado mas arriba), no
+        // la tendencia de 7 dias que usa estadoAmpliacion().
+        if (filtroAmp === 'saturado' && !f.saturado) return false
       }
       if (busqueda) {
         const q = busqueda.toLowerCase()
@@ -244,7 +262,35 @@ export default function NetcoreEnlacesPage() {
       }
       return true
     })
-  }, [filas, filtro, filtroAmp, busqueda])
+
+    // NUEVO: orden por columna (Uso / P95), activado con click en el
+    // encabezado (ver <th> mas abajo). Sin orden.col, se deja el orden
+    // natural que ya trae 'filas' (orden del API). Los valores null van
+    // siempre al final, sin importar la direccion -- un link "sin dato"
+    // no es ni el mas alto ni el mas bajo, es un caso aparte.
+    if (!orden.col) return filtradas
+
+    const valor = (f) => orden.col === 'uso' ? f.pctUso : f.kpis?.p95_pct
+    const signo = orden.dir === 'asc' ? 1 : -1
+    return [...filtradas].sort((a, b) => {
+      const va = valor(a)
+      const vb = valor(b)
+      if (va == null && vb == null) return 0
+      if (va == null) return 1
+      if (vb == null) return -1
+      return (va - vb) * signo
+    })
+  }, [filas, filtro, filtroAmp, busqueda, orden])
+
+  // Alterna la columna de orden: click nuevo = desc, segundo click en la
+  // misma columna = asc, tercer click = vuelve a sin-orden.
+  function alternarOrden(col) {
+    setOrden(prev => {
+      if (prev.col !== col) return { col, dir: 'desc' }
+      if (prev.dir === 'desc') return { col, dir: 'asc' }
+      return { col: null, dir: 'desc' }
+    })
+  }
 
   return (
     <div>
@@ -346,6 +392,8 @@ export default function NetcoreEnlacesPage() {
             ['ok', <><span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block', marginRight: 5 }} />Dentro de umbral</>],
             ['medio', <>⚠️ Riesgo medio</>],
             ['alto', <>🔥 Riesgo alto</>],
+            ['requiere', <>📈 Requiere ampliación</>],
+            ['saturado', <>🌡️ Saturados ahora</>],
           ]}
         />
       </div>
@@ -365,8 +413,21 @@ export default function NetcoreEnlacesPage() {
               <th className="col-toggle" style={{ padding: '10px 14px', width: 24, position: 'sticky', left: 0, background: '#fff', zIndex: 2 }}></th>
               <th className="col-enlace" style={{ padding: '10px 14px', position: 'sticky', left: 38, background: '#fff', zIndex: 2, boxShadow: '2px 0 4px -2px rgba(0,0,0,0.08)' }}>Enlace</th>
               <th style={{ padding: '10px 14px' }}>Capacidad</th>
-              <th style={{ padding: '10px 14px' }}>Uso</th>
-              <th className="col-p95" style={{ padding: '10px 14px', textAlign: 'right' }}>P95 (7d)</th>
+              <th
+                onClick={() => alternarOrden('uso')}
+                style={{ padding: '10px 14px', cursor: 'pointer', userSelect: 'none' }}
+                title="Ordenar por uso actual"
+              >
+                Uso{orden.col === 'uso' ? (orden.dir === 'desc' ? ' ▾' : ' ▴') : ''}
+              </th>
+              <th
+                className="col-p95"
+                onClick={() => alternarOrden('p95')}
+                style={{ padding: '10px 14px', textAlign: 'right', cursor: 'pointer', userSelect: 'none' }}
+                title="Ordenar por P95 (7d)"
+              >
+                P95 (7d){orden.col === 'p95' ? (orden.dir === 'desc' ? ' ▾' : ' ▴') : ''}
+              </th>
               <th style={{ padding: '10px 14px' }}>Delay (prom. / ráfaga)</th>
               <th style={{ padding: '10px 14px' }}>Ampliación</th>
               <th className="col-dispo" style={{ padding: '10px 14px', textAlign: 'right' }}>Disponibilidad</th>
