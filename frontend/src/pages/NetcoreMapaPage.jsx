@@ -361,9 +361,23 @@ export default function NetcoreMapaPage() {
 
     // -- Lineas normales, con curvas para multi-trunk (identico a
     //    BackboneMapa.jsx) --
+    // NUEVO: agrupar por COORDENADAS (no por nombre de equipo). Dos
+    // enlaces entre PARES DE EQUIPOS DISTINTOS que comparten el mismo
+    // sitio fisico en cada extremo (ej. 2 PE en Madre de Dios <-> 2 PE
+    // en Huisonroque, mismo lat/lon de ciudad en ambos) antes caian en
+    // grupos separados de 1 solo elemento -- nunca se curvaban, y como
+    // sus coordenadas son identicas, las lineas se dibujaban una encima
+    // de la otra (se veian como una sola, y el click solo agarraba la
+    // de arriba). Agrupando por coordenada (redondeada a 5 decimales,
+    // ~1m de precision) se detectan como "multi-trunk visual" igual que
+    // un trunk real entre el mismo par de equipos, y la curva existente
+    // los separa correctamente.
     const grupos = new Map()
     for (const e of normales) {
-      const key = [e.interface_a_device, e.device_b_name].sort().join('|')
+      const key = [
+        `${Number(e.origen_latitud).toFixed(5)},${Number(e.origen_longitud).toFixed(5)}`,
+        `${Number(e.destino_latitud).toFixed(5)},${Number(e.destino_longitud).toFixed(5)}`,
+      ].sort().join('|')
       if (!grupos.has(key)) grupos.set(key, [])
       grupos.get(key).push(e)
     }
