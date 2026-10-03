@@ -27,6 +27,12 @@ logger = logging.getLogger("netcore_scheduler")
 
 INTERVAL_SECONDS = int(os.environ.get("NETCORE_INTERVAL_MIN", 5)) * 60
 
+# Dias de muestras crudas a conservar (ver netcore/retencion.py). 0 = no
+# limpiar nunca. Se ejecuta una vez al dia, la primera vuelta despues de
+# medianoche (y una vez al arrancar el scheduler).
+RETENCION_DIAS = int(os.environ.get("NETCORE_RETENCION_DIAS", 8))
+_ultimo_dia_limpieza = None
+
 # Dia calendario procesado la ultima vez -- para detectar cuando cambia el
 # dia y disparar el cierre del dia anterior + el agregado mensual, sin
 # necesitar un segundo scheduler ni un cron aparte. Se recalcula el dia de
@@ -66,6 +72,23 @@ def actualizar_disponibilidad():
         logger.exception("Error calculando disponibilidad diaria/mensual (continua en el proximo ciclo)")
 
 
+def limpiar_retencion():
+    """Una vez por dia calendario: borra muestras crudas > RETENCION_DIAS."""
+    global _ultimo_dia_limpieza
+    from django.utils import timezone
+    from netcore.retencion import limpiar_muestras
+
+    hoy = timezone.localdate()
+    if RETENCION_DIAS <= 0 or _ultimo_dia_limpieza == hoy:
+        return
+    try:
+        res = limpiar_muestras(dias=RETENCION_DIAS, aplicar=True)
+        logger.info("Retencion (%s dias): %s", RETENCION_DIAS, res)
+        _ultimo_dia_limpieza = hoy
+    except Exception:
+        logger.exception("Error en limpieza de retencion (se reintenta en el proximo ciclo)")
+
+
 def main():
     logger.info("=== netcore scheduler iniciado (intervalo: %ss) ===", INTERVAL_SECONDS)
     while True:
@@ -83,6 +106,7 @@ def main():
             logger.exception("Error en ciclo de recoleccion (continua en el proximo)")
 
         actualizar_disponibilidad()
+        limpiar_retencion()
 
         transcurrido = time.time() - inicio
         espera = max(INTERVAL_SECONDS - transcurrido, 10)

@@ -400,38 +400,40 @@ def calcular_disponibilidad(horas_ventana: int = VENTANA_DISPONIBILIDAD_HORAS) -
     sobre los valores no-None de esta lista -- no hay un endpoint aparte
     para eso, para no duplicar la logica de agregacion en dos lugares.
     """
-    from django.db import connections
-    from .models import Link
+    # CAMBIO 10/2026: ya NO recorre nc_delay_sample crudo (15,9 M filas el
+    # 30/09 -> >30 s -> WORKER TIMEOUT en Gunicorn). Suma los contadores ya
+    # guardados por dia en AvailabilityDaily (muestras_total / caidas), que
+    # el scheduler actualiza en cada ciclo (incluido HOY). Mismo criterio de
+    # caida (packet_loss >= 100) y mismo formato de salida que antes; el
+    # resultado es el mismo % ponderado por muestras, pero leyendo ~30 filas
+    # por link en vez de millones. Ademas sigue funcionando aunque la
+    # retencion borre las muestras crudas de mas de 8 dias.
+    import math
+    from django.db.models import Sum
+    from .models import Link, AvailabilityDaily
 
-    desde = timezone.now() - timedelta(hours=horas_ventana)
-    sql = """
-        SELECT
-            LEAST(source_device, dest_device)    AS a,
-            GREATEST(source_device, dest_device) AS b,
-            COUNT(*) AS total,
-            SUM(CASE WHEN packet_loss_pct >= 100 THEN 1 ELSE 0 END) AS caidas
-        FROM nc_delay_sample
-        WHERE collected_at >= %s
-        GROUP BY a, b
-    """
-    datos_por_par = {}
-    with connections['core'].cursor() as cur:
-        cur.execute(sql, [desde])
-        for a, b, total, caidas in cur.fetchall():
-            datos_por_par[(a, b)] = {'total': total, 'caidas': caidas}
+    dias = max(1, math.ceil(horas_ventana / 24))
+    desde = timezone.localdate() - timedelta(days=dias - 1)
+
+    agregados = {
+        r['link_id']: r for r in (
+            AvailabilityDaily.objects
+            .filter(fecha__gte=desde)
+            .values('link_id')
+            .annotate(total=Sum('muestras_total'), caidas=Sum('muestras_caidas'))
+        )
+    }
 
     resultado = []
-    links = Link.objects.select_related('interface_a__device', 'device_b').filter(
-        active=True, device_b__isnull=False)
-    for link in links:
-        par = tuple(sorted([link.interface_a.device.name, link.device_b.name]))
-        datos = datos_por_par.get(par)
-        if not datos or datos['total'] == 0:
-            resultado.append({'link_id': link.id, 'disponibilidad_pct': None, 'muestras': 0})
+    links = Link.objects.filter(active=True, device_b__isnull=False).values_list('id', flat=True)
+    for link_id in links:
+        datos = agregados.get(link_id)
+        if not datos or not datos['total']:
+            resultado.append({'link_id': link_id, 'disponibilidad_pct': None, 'muestras': 0})
             continue
         disponibilidad = round((1 - datos['caidas'] / datos['total']) * 100, 2)
         resultado.append({
-            'link_id': link.id,
+            'link_id': link_id,
             'disponibilidad_pct': disponibilidad,
             'muestras': datos['total'],
         })
