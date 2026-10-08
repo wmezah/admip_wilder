@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'nce',
     'netcore',
     'rest_framework_simplejwt',
+    'inventario',
     'users',
 ]
 
@@ -96,7 +97,17 @@ DATABASES = {
             'charset': 'utf8mb4',
         },
     },
-    
+        'inventario': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.getenv('INV_DB_NAME', 'inventario_nce'),
+        'USER': os.getenv('INV_DB_USER', ''),
+        'PASSWORD': os.getenv('INV_DB_PASSWORD', ''),
+        'HOST': os.getenv('INV_DB_HOST', 'localhost'),
+        'PORT': os.getenv('INV_DB_PORT', '3306'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+        },
+    }, 
 }
 
 # La app 'nce' usa la base 'nce', todo lo demás usa 'default'

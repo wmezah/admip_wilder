@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Package, Users, ChevronDown, ChevronUp,
   Zap, BookOpen, FileText, Activity, ClipboardList,
-  PanelLeftClose, PanelLeftOpen, AlertTriangle, Radio, Map, Layers
+  PanelLeftClose, PanelLeftOpen, AlertTriangle, Radio, Map, Layers, Server
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -26,6 +26,12 @@ const NAV_GROUPS = [
       { label:'Enlaces', icon:Radio, to:'/netcore/enlaces' },
       { label:'Interfaces', icon:Layers, to:'/netcore/interfaces' },
       { label:'Mapa', icon:Map, to:'/netcore/mapa' },
+    ],
+  },
+  {
+    section: 'Planta instalada', collapsible: true,
+    items: [
+      { label:'Huawei', icon:Server, to:'/planta/huawei' },
     ],
   },
   {

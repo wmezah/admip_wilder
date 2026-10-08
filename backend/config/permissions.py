@@ -43,3 +43,17 @@ class ReadOnlyForViewer(BasePermission):
             return True
         # Métodos de escritura: bloqueados para viewer
         return get_role(request.user) in ('admin', 'operator')
+
+class AdminOnlyWrite(BasePermission):
+    """
+    Lectura para todos los autenticados.
+    Escritura solo para admin (catálogos de referencia: EOS, targets, alias).
+    """
+    message = 'Solo un administrador puede modificar este catálogo.'
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        return get_role(request.user) == 'admin'

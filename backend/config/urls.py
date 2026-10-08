@@ -14,4 +14,5 @@ urlpatterns = [
     path('api/nce/',    include('nce.urls')),
     path('api/users/',  include('users.urls')),   # ← NUEVO
     path('api/netcore/', include('netcore.urls')),
+    path('api/inventario/', include('inventario.urls')),
 ]

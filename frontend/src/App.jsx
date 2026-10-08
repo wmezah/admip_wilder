@@ -15,6 +15,7 @@ const UsersPage       = lazy(() => import('./pages/UsersPage'))
 const NetcoreInterfacesPage = lazy(() => import('./pages/NetcoreInterfacesPage'))
 const NetcoreEnlacesPage = lazy(() => import('./pages/NetcoreEnlacesPage'))
 const NetcoreMapaPage = lazy(() => import('./pages/NetcoreMapaPage'))
+const PlantaHuaweiPage = lazy(() => import('./pages/PlantaHuaweiPage'))
 
 // Loading fallback
 function PageLoader() {
@@ -206,6 +207,7 @@ export default function App() {
               <Route path="/netcore/interfaces" element={<NetcoreInterfacesPage />} />
               <Route path="/netcore/enlaces" element={<NetcoreEnlacesPage />} />
               <Route path="/netcore/mapa" element={<NetcoreMapaPage />} />
+              <Route path="/planta/huawei" element={<PlantaHuaweiPage />} />
               <Route path="*"            element={<Navigate to="/" />} />
             </Routes>
           </Suspense>
