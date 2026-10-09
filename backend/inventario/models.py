@@ -116,8 +116,10 @@ class SoftwareTarget(Auditado):
 class NceCarga(models.Model):
     """Una carga de reportes del NCE (una por fecha de reporte)."""
     ESTADOS = [('procesando', 'Procesando'), ('ok', 'OK'), ('error', 'Error')]
+    ORIGENES = [('manual', 'Manual'), ('automatica', 'Automática'), ('base_v75', 'Base Excel V7.5')]
 
     fecha_reporte = models.DateTimeField(unique=True, help_text='"Save Time" del reporte (UTC)')
+    origen = models.CharField(max_length=20, choices=ORIGENES, default='manual')
     estado = models.CharField(max_length=20, choices=ESTADOS, default='procesando')
     inicio = models.DateTimeField(auto_now_add=True)
     fin = models.DateTimeField(null=True, blank=True)
@@ -186,6 +188,143 @@ class NceNeSnapshot(models.Model):
         ]
         indexes = [
             models.Index(fields=['carga', 'ne_type'], name='ix_snapshot_carga_tipo'),
+        ]
+
+
+# ─── Catálogos del inventario (antes hojas BOMCODE y SERIAL de la V7.5) ─────
+
+class ReglaRedSubnet(Auditado):
+    """
+    RED sugerida para un NE nuevo según el primer segmento de su Subnet Path
+    después de ROOT/ADM_TRANSPORTE_IP (ej. 'CSR' → Acceso).
+    """
+    segmento = models.CharField(max_length=100, unique=True)
+    red = models.ForeignKey(Red, on_delete=models.PROTECT, related_name='reglas_subnet')
+
+    class Meta:
+        db_table = 'cat_regla_red_subnet'
+        ordering = ['segmento']
+
+    def __str__(self):
+        return f'{self.segmento} → {self.red.codigo}'
+
+
+class PartNumber(Auditado):
+    """Catálogo de Part Numbers (hoja BOMCODE): descripción y si se inventaría."""
+    ELEMENTOS = [('Chasis', 'Chasis'), ('Board', 'Board'), ('SubBoard', 'SubBoard'),
+                 ('Transceiver', 'Transceiver'), ('Power', 'Power'), ('', 'Sin definir')]
+
+    pn = models.CharField(max_length=60, unique=True)
+    descripcion = models.CharField(max_length=500, blank=True)
+    elemento = models.CharField(max_length=20, choices=ELEMENTOS, blank=True)
+    inventariable = models.BooleanField(default=True)
+    observacion = models.CharField(max_length=255, blank=True, help_text='Ej. Integrated')
+
+    class Meta:
+        db_table = 'cat_part_number'
+        ordering = ['pn']
+
+    def __str__(self):
+        return self.pn
+
+
+class SerialPartNumber(Auditado):
+    """PN de un transceiver cuyo PN no viene en el NCE (hoja SERIAL)."""
+    serial = models.CharField(max_length=80, unique=True)
+    pn = models.CharField(max_length=60)
+    comentario = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = 'cat_serial_part_number'
+        ordering = ['serial']
+
+    def __str__(self):
+        return f'{self.serial} → {self.pn}'
+
+
+# ─── Componentes cargados del NCE (Subrack, Board, Subcard, OpticalModule) ───
+
+class NceComponente(models.Model):
+    """
+    Una fila de los reportes de hardware del NCE, tal como llegó (solo NEs en
+    alcance). Se guarda para poder recalcular el inventario si cambia un catálogo.
+    """
+    TIPOS = [('frame', 'Subrack'), ('board', 'Board'), ('subboard', 'Subcard'), ('transceiver', 'Optical module')]
+
+    carga = models.ForeignKey(NceCarga, on_delete=models.CASCADE, related_name='componentes')
+    tipo = models.CharField(max_length=12, choices=TIPOS)
+    ne_name = models.CharField(max_length=150)
+    nombre = models.CharField(max_length=150, blank=True, help_text='Board Name / Subboard Type / tipo óptico')
+    slot = models.CharField(max_length=10, blank=True)
+    subslot = models.CharField(max_length=10, blank=True)
+    puerto = models.CharField(max_length=100, blank=True)
+    pn = models.CharField(max_length=60, blank=True)
+    sn = models.CharField(max_length=80, blank=True)
+    vendor_pn = models.CharField(max_length=80, blank=True)
+    port_custom = models.CharField(max_length=150, blank=True)
+    descripcion = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        db_table = 'nce_componente'
+        indexes = [models.Index(fields=['carga', 'tipo'], name='ix_componente_carga_tipo')]
+
+
+# ─── Inventario calculado ────────────────────────────────────────────────────
+
+class InvItem(models.Model):
+    """Un ítem del inventario de una carga (equivale a una fila de la hoja INVENTARIO)."""
+    carga = models.ForeignKey(NceCarga, on_delete=models.CASCADE, related_name='items')
+    ne = models.ForeignKey(NceNe, on_delete=models.PROTECT, related_name='items')
+    red = models.ForeignKey(Red, on_delete=models.PROTECT, related_name='items')
+    modelo = models.CharField(max_length=100, help_text='NE Type (Description Group)')
+    pn_chasis = models.CharField(max_length=60, blank=True, help_text='BOM Code Group')
+    elemento = models.CharField(max_length=12)
+    nombre = models.CharField(max_length=150)
+    sr = models.CharField(max_length=10, default='1')
+    b = models.CharField(max_length=10, default='.')
+    s = models.CharField(max_length=10, default='.')
+    p = models.CharField(max_length=20, default='.')
+    pn = models.CharField(max_length=60, blank=True)
+    sn = models.CharField(max_length=80, blank=True)
+    descripcion = models.CharField(max_length=500, blank=True)
+
+    class Meta:
+        db_table = 'inv_item'
+        indexes = [
+            models.Index(fields=['carga', 'elemento'], name='ix_item_carga_elemento'),
+            models.Index(fields=['carga', 'red'], name='ix_item_carga_red'),
+            models.Index(fields=['carga', 'sn'], name='ix_item_carga_sn'),
+            models.Index(fields=['carga', 'pn'], name='ix_item_carga_pn'),
+        ]
+
+
+class InvCambio(models.Model):
+    """
+    Alta, baja o movimiento de un ítem entre una carga y la anterior.
+    Se conserva aunque se borren las cargas viejas (historial permanente).
+    """
+    TIPOS = [('alta', 'Alta'), ('baja', 'Baja'), ('movimiento', 'Movimiento')]
+
+    carga = models.ForeignKey(NceCarga, on_delete=models.SET_NULL, null=True, related_name='cambios')
+    fecha = models.DateTimeField(help_text='Fecha del reporte de la carga que detectó el cambio')
+    fecha_anterior = models.DateTimeField()
+    tipo = models.CharField(max_length=12, choices=TIPOS)
+    elemento = models.CharField(max_length=12)
+    red = models.CharField(max_length=20)
+    pn = models.CharField(max_length=60, blank=True)
+    sn = models.CharField(max_length=80, blank=True)
+    descripcion = models.CharField(max_length=500, blank=True)
+    ne_antes = models.CharField(max_length=150, blank=True)
+    ne_despues = models.CharField(max_length=150, blank=True)
+    pos_antes = models.CharField(max_length=60, blank=True)
+    pos_despues = models.CharField(max_length=60, blank=True)
+
+    class Meta:
+        db_table = 'inv_cambio'
+        ordering = ['-fecha', 'tipo', 'elemento']
+        indexes = [
+            models.Index(fields=['fecha', 'tipo'], name='ix_cambio_fecha_tipo'),
+            models.Index(fields=['sn'], name='ix_cambio_sn'),
         ]
 
 

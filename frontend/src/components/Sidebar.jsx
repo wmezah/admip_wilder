@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom'
 import {
   Package, Users, ChevronDown, ChevronUp,
   Zap, BookOpen, FileText, Activity, ClipboardList,
-  PanelLeftClose, PanelLeftOpen, AlertTriangle, Radio, Map, Layers, Server
+  PanelLeftClose, PanelLeftOpen, AlertTriangle, Radio, Map, Layers, Server, Library, UploadCloud
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -31,7 +31,9 @@ const NAV_GROUPS = [
   {
     section: 'Planta instalada', collapsible: true,
     items: [
-      { label:'Huawei', icon:Server, to:'/planta/huawei' },
+      { label:'Huawei', icon:Server, to:'/planta/huawei' },     
+      { label:'Catálogos', icon:Library, to:'/planta/catalogos' },
+      { label:'Cargas NCE', icon:UploadCloud, to:'/planta/cargas' },
     ],
   },
   {

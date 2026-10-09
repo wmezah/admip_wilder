@@ -11,6 +11,8 @@ const ROUTE_LABELS = {
   '/catalogo': ['Catálogos',     'SAP / Centros / Stock'],
   '/usuarios': ['Usuarios',      'Administración de usuarios'],
   '/planta/huawei': ['Planta instalada', 'Huawei'],
+  '/planta/catalogos': ['Planta instalada', 'Catálogos'],
+  '/planta/cargas': ['Planta instalada', 'Cargas NCE'],
 }
 
 const DIAS  = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']

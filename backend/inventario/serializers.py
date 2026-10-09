@@ -1,6 +1,9 @@
 from rest_framework import serializers
 
-from inventario.models import Auditoria, EosHardware, EosSoftware, ModeloAlias, NceCarga, Red, SoftwareTarget
+from inventario.models import (
+    Auditoria, EosHardware, EosSoftware, InvCambio, InvItem, ModeloAlias, NceCarga, NceNe, PartNumber, Red,
+    ReglaRedSubnet, SerialPartNumber, SoftwareTarget,
+)
 from inventario.servicios import reglas
 
 
@@ -61,10 +64,14 @@ class ModeloAliasSerializer(serializers.ModelSerializer):
 
 class NceCargaSerializer(serializers.ModelSerializer):
     archivos = serializers.SerializerMethodField()
+    items = serializers.SerializerMethodField()
 
     class Meta:
         model = NceCarga
-        fields = ['id', 'fecha_reporte', 'estado', 'inicio', 'fin', 'mensaje', 'archivos']
+        fields = ['id', 'fecha_reporte', 'origen', 'estado', 'inicio', 'fin', 'mensaje', 'archivos', 'items']
+
+    def get_items(self, obj):
+        return obj.items.count()
 
     def get_archivos(self, obj):
         return list(obj.archivos.values('tipo_reporte', 'nombre_archivo', 'filas'))
@@ -74,3 +81,63 @@ class AuditoriaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Auditoria
         fields = ['id', 'tabla', 'registro_id', 'accion', 'antes', 'despues', 'usuario', 'fecha']
+
+
+class PartNumberSerializer(serializers.ModelSerializer):
+    actualizado_por = serializers.CharField(read_only=True)
+    actualizado_en = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = PartNumber
+        fields = ['id', 'pn', 'descripcion', 'elemento', 'inventariable', 'observacion',
+                  'actualizado_por', 'actualizado_en']
+
+    def validate_pn(self, valor):
+        return valor.strip()
+
+
+class SerialPartNumberSerializer(serializers.ModelSerializer):
+    actualizado_por = serializers.CharField(read_only=True)
+    actualizado_en = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = SerialPartNumber
+        fields = ['id', 'serial', 'pn', 'comentario', 'actualizado_por', 'actualizado_en']
+
+    def validate_serial(self, valor):
+        return valor.strip()
+
+
+class ReglaRedSubnetSerializer(_CatalogoSerializer):
+    class Meta:
+        model = ReglaRedSubnet
+        fields = ['id', 'segmento', 'red', 'actualizado_por', 'actualizado_en']
+
+
+class NceNeSerializer(serializers.ModelSerializer):
+    """RED de un NE. Al guardarla desde la página queda confirmada."""
+    red = serializers.SlugRelatedField(slug_field='codigo', queryset=Red.objects.all(), allow_null=True)
+    actualizado_por = serializers.CharField(read_only=True)
+    actualizado_en = serializers.DateTimeField(read_only=True)
+
+    class Meta:
+        model = NceNe
+        fields = ['id', 'ne_name', 'red', 'red_confirmada', 'actualizado_por', 'actualizado_en']
+        read_only_fields = ['ne_name', 'red_confirmada']
+
+
+class InvItemSerializer(serializers.ModelSerializer):
+    ne = serializers.CharField(source='ne.ne_name')
+    red = serializers.CharField(source='red.codigo')
+
+    class Meta:
+        model = InvItem
+        fields = ['id', 'red', 'ne', 'modelo', 'pn_chasis', 'elemento', 'nombre', 'sr', 'b', 's', 'p',
+                  'pn', 'sn', 'descripcion']
+
+
+class InvCambioSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InvCambio
+        fields = ['id', 'fecha', 'fecha_anterior', 'tipo', 'elemento', 'red', 'pn', 'sn', 'descripcion',
+                  'ne_antes', 'pos_antes', 'ne_despues', 'pos_despues']

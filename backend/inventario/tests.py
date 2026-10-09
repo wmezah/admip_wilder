@@ -70,3 +70,69 @@ class AlcanceYVigenciaTests(SimpleTestCase):
         self.assertEqual(reglas.vigencia(date(2027, 6, 30), hoy), '<1Y')
         self.assertEqual(reglas.vigencia(date(2036, 12, 31), hoy), 'Vigente')
         self.assertEqual(reglas.vigencia(None, hoy), 'No listado')
+
+
+# ─── Reglas del inventario (V7.5) ────────────────────────────────────────────
+
+from inventario.servicios import reglas_inventario as ri  # noqa: E402
+
+
+class ReglasInventarioTests(SimpleTestCase):
+    def setUp(self):
+        self.cat = ri.Catalogos(
+            part_numbers={'03030ABC': ri.ItemPN('Tarjeta X', True), '02350TJJ': ri.ItemPN('Switch', False)},
+            seriales={'V43EA06903Y': '02315285'})
+
+    def test_pn_board(self):
+        self.assertEqual(ri.pn_board('', '210227012345678'), '02270123')     # '02270' en SN[3..7]
+        self.assertEqual(ri.pn_board('', '033FPV10H1000001'), '03033FPV')
+        self.assertEqual(ri.pn_board('--', '2103030ABC10H1000001'), '03030ABC')
+        self.assertEqual(ri.pn_board('03030ABC', 'X'), '03030ABC')
+
+    def test_tipo_lpu(self):
+        self.assertEqual(ri.tipo_lpu('Flexible Card Line Processing Unit(LPUF-240)'), 'LPUF')
+        self.assertEqual(ri.tipo_lpu('Fan Box'), '')
+
+    def test_posicion_puerto(self):
+        self.assertEqual(ri.posicion_puerto('GigabitEthernet0/1/0'), ('0', '1', '0'))
+        self.assertEqual(ri.posicion_puerto('100GE10/0/1'), ('10', '0', '1'))
+        self.assertEqual(ri.posicion_puerto('25GE1/0/1:1'), ('1', '0', '1:1'))
+
+    def test_sn_transceiver(self):
+        self.assertEqual(ri.sn_transceiver('-'), '')
+        self.assertEqual(ri.sn_transceiver('NA'), '')
+        self.assertEqual(ri.sn_transceiver('Unknown'), '')
+        self.assertEqual(ri.sn_transceiver('AE245200049907  '), 'AE245200049907')
+
+    def test_pn_transceiver_orden(self):
+        t = {'pn': '--', 'vendor_pn': 'FTLX1471D3BCL', 'port_custom': '--'}
+        self.assertEqual(ri.pn_transceiver(t, 'X', self.cat), 'FTLX1471D3BCL')
+        t = {'pn': '', 'vendor_pn': '', 'port_custom': ''}
+        self.assertEqual(ri.pn_transceiver(t, 'X', self.cat), '')                # vacío no es '-': queda ''
+        t = {'pn': '--', 'vendor_pn': '--', 'port_custom': '--'}
+        self.assertEqual(ri.pn_transceiver(t, 'V43EA06903Y', self.cat), '02315285')  # por catálogo de seriales
+
+    def test_transceiver_sin_pn_no_entra(self):
+        t = {'tipo': 'SFP', 'puerto': 'XGigabitEthernet8/0/10', 'pn': '', 'vendor_pn': '', 'port_custom': '',
+             'serial': 'OTRO123'}
+        _, entra = ri.transceiver('NE1', t, self.cat)
+        self.assertFalse(entra)
+
+    def test_subboard_segun_lpu(self):
+        sb = {'nombre': 'ETH_CARD', 'slot': '1', 'subslot': '0', 'pn': '', 'sn': '', 'descripcion': ''}
+        self.assertTrue(ri.subboard('NE1', sb, 'LPUF', self.cat)[1])
+        self.assertFalse(ri.subboard('NE1', dict(sb, pn='03030ABC'), 'LPUI', self.cat)[1])
+        self.assertFalse(ri.subboard('NE1', dict(sb, nombre='CFCARD'), '', self.cat)[1])
+        self.assertTrue(ri.subboard('NE1', dict(sb, pn='03030ABC'), '', self.cat)[1])
+
+    def test_board_no_inventariable(self):
+        b = {'nombre': 'SW 1', 'slot': '1', 'pn': '02350TJJ', 'sn': 'SN1', 'descripcion': ''}
+        self.assertFalse(ri.board('NE1', b, self.cat)[1])
+        self.assertFalse(ri.board('NE1', dict(b, pn='03030ABC', sn=''), self.cat)[1])   # sin SN no entra
+        self.assertTrue(ri.board('NE1', dict(b, pn='03030ABC'), self.cat)[1])
+
+    def test_chasis_usa_primera_tarjeta(self):
+        frame = {'pn': '--', 'sn': '', 'descripcion': ''}
+        tarjeta = {'pn': '03030ABC', 'sn': 'SNT'}
+        c = ri.chasis('NE1', 'ATN910C-M', frame, tarjeta, self.cat, {'03030ABC': 'Tarjeta X'})
+        self.assertEqual((c['pn'], c['sn'], c['descripcion']), ('03030ABC', 'SNT', 'Tarjeta X'))

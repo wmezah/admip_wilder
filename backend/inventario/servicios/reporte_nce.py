@@ -46,10 +46,36 @@ def parsear_fecha_nce(texto):
         return None
 
 
-def leer_reporte(contenido: bytes, columna_clave: str) -> ReporteNce:
+# Título de la primera línea del CSV → (tipo de reporte, primera columna del encabezado)
+TIPOS_REPORTE = {
+    'NE REPORT': ('NE_Report', 'NE Name'),
+    'SUBRACK REPORT': ('Subrack_Report', 'NE'),
+    'BOARD REPORT': ('Board_Report', 'NE'),
+    'SUBCARD REPORT': ('Subcard_Report', 'NE'),
+    'OPTICALMODULE_INFORMATION': ('OpticalModule_Information', 'Serial No.'),
+}
+# Columna que identifica al NE en cada reporte (filas sin NE se descartan)
+COLUMNA_NE = {'NE_Report': 'NE Name', 'Subrack_Report': 'NE', 'Board_Report': 'NE',
+              'Subcard_Report': 'NE', 'OpticalModule_Information': 'NE Name'}
+REPORTES_REQUERIDOS = [t for t, _ in TIPOS_REPORTE.values()]
+
+
+def identificar_reporte(contenido: bytes):
+    """Tipo de reporte según su título ('Board Report' → 'Board_Report'), sin depender del nombre del archivo."""
+    titulo = next((l.strip().strip('"') for l in contenido[:500].decode('utf-8-sig', 'ignore').splitlines()
+                   if l.strip()), '')
+    tipo = TIPOS_REPORTE.get(titulo.upper())
+    if tipo is None:
+        raise ReporteInvalido(f'Reporte no reconocido: "{titulo}". Se esperan: '
+                              + ', '.join(REPORTES_REQUERIDOS) + '.')
+    return tipo
+
+
+def leer_reporte(contenido: bytes, columna_clave: str, columna_fila: str = None) -> ReporteNce:
     """
     Lee un CSV del NCE. `columna_clave` es la primera columna del encabezado
-    (ej. 'NE Name'); sirve para ubicar la línea de encabezados.
+    (ej. 'NE Name'); sirve para ubicar la línea de encabezados. Se descartan las
+    filas sin valor en `columna_fila` (por defecto, la misma columna clave).
     """
     texto = contenido.decode('utf-8-sig')
     lineas = texto.splitlines()
@@ -65,7 +91,7 @@ def leer_reporte(contenido: bytes, columna_clave: str) -> ReporteNce:
         raise ReporteInvalido(f'No se encontró la fila de encabezados que empieza con "{columna_clave}".')
 
     lector = csv.DictReader(io.StringIO('\n'.join(lineas[inicio:])))
-    filas = [f for f in lector if f.get(columna_clave)]
+    filas = [f for f in lector if f.get(columna_fila or columna_clave)]
     if not filas:
         raise ReporteInvalido('El reporte no tiene filas de datos.')
 
