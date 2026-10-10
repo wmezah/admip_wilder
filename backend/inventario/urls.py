@@ -29,6 +29,7 @@ urlpatterns = [
     path('huawei/integrados/', views.huawei_integrados, name='inv-huawei-integrados'),
     path('huawei/excel/', views.huawei_excel, name='inv-huawei-excel'),
     path('cargas/subir/', views.subir_carga, name='inv-cargas-subir'),
+    path('cargas/desde-nce/', views.cargar_desde_nce, name='inv-cargas-desde-nce'),
     path('catalogos/<str:catalogo>/excel/', views.exportar_catalogo, name='inv-catalogo-excel'),
     path('catalogos/<str:catalogo>/importar/', views.importar_catalogo, name='inv-catalogo-importar'),
     path('', include(router.urls)),

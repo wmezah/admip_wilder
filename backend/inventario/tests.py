@@ -136,3 +136,56 @@ class ReglasInventarioTests(SimpleTestCase):
         tarjeta = {'pn': '03030ABC', 'sn': 'SNT'}
         c = ri.chasis('NE1', 'ATN910C-M', frame, tarjeta, self.cat, {'03030ABC': 'Tarjeta X'})
         self.assertEqual((c['pn'], c['sn'], c['descripcion']), ('03030ABC', 'SNT', 'Tarjeta X'))
+
+
+class CargaSftpTests(SimpleTestCase):
+    """Elegir el día a cargar con los nombres reales de la carpeta del NCE."""
+    CARPETA = [
+        'NE_Report_2026-10-08_04-00-46.csv', 'OpticalModule_Information_2026-10-08_04-00-16.csv',
+        'SFP_Information_2026-10-07_04-00-14.csv', 'Subrack_Report_2026-10-07_04-08-21.csv',
+        'Subcard_Report_2026-10-07_04-08-14.csv', 'Port_Report_2026-10-07_04-02-25.csv',
+        'Board_Report_2026-10-07_04-00-49.csv', 'NE_Report_2026-10-07_04-00-45.csv',
+        'OpticalModule_Information_2026-10-07_04-00-19.csv',
+        'Subrack_Report_2026-10-06_04-08-26.csv', 'Subcard_Report_2026-10-06_04-08-21.csv',
+        'Board_Report_2026-10-06_04-00-58.csv', 'NE_Report_2026-10-06_04-00-50.csv',
+        'OpticalModule_Information_2026-10-06_04-00-18.csv',
+    ]
+
+    def setUp(self):
+        from inventario.servicios import sftp_nce
+        self.sftp = sftp_nce
+        self.dias = sftp_nce.agrupar_por_dia(self.CARPETA)
+
+    def test_agrupa_solo_los_5_reportes(self):
+        self.assertEqual(len(self.dias[date(2026, 10, 7)]), 5)          # sin Port ni SFP
+        self.assertEqual(self.sftp.faltantes(self.dias[date(2026, 10, 8)]),
+                         ['Subrack_Report', 'Board_Report', 'Subcard_Report'])
+
+    def test_salta_el_dia_incompleto_y_avisa(self):
+        dia, avisos = self.sftp.elegir_dia(self.dias, date(2026, 10, 2))
+        self.assertEqual(dia, date(2026, 10, 7))
+        self.assertEqual(avisos, ['08/10: faltan Subrack_Report, Board_Report, Subcard_Report'])
+
+    def test_nada_nuevo_si_ya_se_cargo(self):
+        dia, avisos = self.sftp.elegir_dia(self.dias, date(2026, 10, 7))
+        self.assertIsNone(dia)
+        self.assertEqual(len(avisos), 1)                                  # solo el 08/10 incompleto
+
+    def test_fecha_pedida(self):
+        self.assertEqual(self.sftp.elegir_dia(self.dias, date(2026, 10, 2), date(2026, 10, 6))[0], date(2026, 10, 6))
+        self.assertIsNone(self.sftp.elegir_dia(self.dias, date(2026, 10, 7), date(2026, 10, 6))[0])   # anterior
+        self.assertIsNone(self.sftp.elegir_dia(self.dias, date(2026, 10, 2), date(2026, 10, 8))[0])   # incompleto
+
+    def test_proximo_intento(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from inventario.servicios.carga_automatica import proximo_intento
+        lima = ZoneInfo('America/Lima')
+        horas = [5, 6, 7, 8, 9]
+        self.assertEqual(proximo_intento(datetime(2026, 10, 8, 23, 50, tzinfo=lima), horas),
+                         datetime(2026, 10, 9, 5, 0, tzinfo=lima))
+        self.assertEqual(proximo_intento(datetime(2026, 10, 9, 5, 0, 30, tzinfo=lima), horas),
+                         datetime(2026, 10, 9, 6, 0, tzinfo=lima))
+        # Hoy ya cargado: no reintenta hasta mañana
+        self.assertEqual(proximo_intento(datetime(2026, 10, 9, 5, 1, tzinfo=lima), horas, date(2026, 10, 9)),
+                         datetime(2026, 10, 10, 5, 0, tzinfo=lima))

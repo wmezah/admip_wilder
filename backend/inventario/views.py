@@ -20,7 +20,7 @@ from inventario.serializers import (
     ModeloAliasSerializer, NceCargaSerializer, NceNeSerializer, PartNumberSerializer, RedSerializer,
     ReglaRedSubnetSerializer, SerialPartNumberSerializer, SoftwareTargetSerializer,
 )
-from inventario.servicios import auditoria, catalogos, consultas, eos_import, software
+from inventario.servicios import auditoria, carga_automatica, catalogos, consultas, eos_import, sftp_nce, software
 from inventario.servicios.carga_ne import CargaRechazada
 from inventario.servicios.carga_nce import procesar_carga
 
@@ -366,3 +366,15 @@ def subir_carga(request):
     except CargaRechazada as e:
         return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
     return Response(r, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+@permission_classes([AdminOnlyWrite])
+def cargar_desde_nce(request):
+    """Botón "Cargar ahora": lo mismo que hace el scheduler diario, en el momento."""
+    try:
+        r = carga_automatica.ejecutar()
+    except (sftp_nce.SftpNoConfigurado, sftp_nce.ErrorSftp, CargaRechazada) as e:
+        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    return Response({'cargado': r.carga is not None, 'mensaje': r.mensaje},
+                    status=status.HTTP_201_CREATED if r.carga else status.HTTP_200_OK)

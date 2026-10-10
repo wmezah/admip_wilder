@@ -1,6 +1,6 @@
 import { useEffect, useState, Fragment } from 'react'
 import axios from 'axios'
-import { UploadCloud, History, ChevronDown, ChevronRight, FileText, RefreshCw } from 'lucide-react'
+import { UploadCloud, History, ChevronDown, ChevronRight, FileText, RefreshCw, DownloadCloud } from 'lucide-react'
 import { API, C, fmt, fechaHora, mensajeError, usePermisos, th, td, mono, Card, Aviso, Cargando, Paginador, Modal } from './planta/comun'
 
 // ─── Planta instalada › Cargas NCE ───────────────────────────────────────────
@@ -92,6 +92,19 @@ export default function PlantaCargasPage() {
   const [abierta, setAbierta] = useState(null)
   const [subiendo, setSubiendo] = useState(false)
   const [version, setVersion] = useState(0)
+  const [desdeNce, setDesdeNce] = useState({ estado: 'inicio', tipo: null, texto: null })   // inicio | cargando | listo
+
+  // Lo mismo que hace la carga automática de las 05:00, en el momento.
+  const cargarAhora = async () => {
+    setDesdeNce({ estado: 'cargando', tipo: null, texto: null })
+    try {
+      const r = await axios.post(`${API}/cargas/desde-nce/`, null, { timeout: 0 })
+      setDesdeNce({ estado: 'listo', tipo: r.data.cargado ? 'ok' : 'warn', texto: r.data.mensaje })
+      if (r.data.cargado) setVersion(v => v + 1)
+    } catch (e) {
+      setDesdeNce({ estado: 'listo', tipo: 'error', texto: mensajeError(e) })
+    }
+  }
 
   useEffect(() => {
     let vigente = true
@@ -115,9 +128,21 @@ export default function PlantaCargasPage() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-ghost" onClick={refrescar} title="Actualizar" style={{ height: 32, padding: '0 10px' }}><RefreshCw size={14} /></button>
+          {puedeEditar && (
+            <button className="btn-ghost" style={{ height: 32 }} disabled={desdeNce.estado === 'cargando'} onClick={cargarAhora}
+              title="Trae del NCE el último día completo que aún no está cargado">
+              <DownloadCloud size={14} />{desdeNce.estado === 'cargando' ? 'Cargando del NCE…' : 'Cargar ahora'}
+            </button>
+          )}
           {puedeEditar && <button className="btn-primary" style={{ height: 32 }} onClick={() => setSubiendo(true)}><UploadCloud size={14} />Subir 5 CSV</button>}
         </div>
       </div>
+
+      <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>
+        Carga automática todos los días a las 05:00 con el último día completo del NCE; si faltan reportes, reintenta cada hora hasta las 09:00.
+      </p>
+      {desdeNce.estado === 'cargando' && <Cargando texto="Descargando los 5 reportes del NCE y procesando… puede tardar uno o dos minutos." />}
+      {desdeNce.estado === 'listo' && <Aviso tipo={desdeNce.tipo}>{desdeNce.texto}</Aviso>}
 
       <Card icon={History} title="Historial de cargas">
         {error && <Aviso tipo="error">{error}</Aviso>}
